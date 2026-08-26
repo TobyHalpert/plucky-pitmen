@@ -6,18 +6,18 @@ This project turns **Plucky Pitmen** into a Gymnasium environment for testing st
 
 ## Rules
 
-The winner of a game is the player who **leaves the mine with the most gems**.
+The winner of a round is the player who **leaves the mine with the most gems**.
 Everyone inside the mine when the dragon is awakened loses everything.
 The players must **cooperate** to avoid waking the dragon and **compete** to win the game.
 
-During a game, **planning** and **execution phases** alternate.
+During a round, **planning** and **execution phases** alternate.
 The table shows the consequences in the execution phase, depending on where a player's figure stands at the end of the planning phase:
 
 | **Position** | **Loot** | **Dragon Awakened** | **Dragon Stays Asleep** |
 | :--- | :--- | :--- | :--- |
-| Card | **Receives the card** | Loses loot | Participates in the rest of the game |
-| Lorry | - | Loses loot | Participates in the rest of the game |
-| Pit cage | - | Leaves mine / <br>**Keeps loot** | Leaves mine / <br>Sits out for the rest of the game |
+| Card | **Receives the card** | Loses loot | Participates in the rest of the round |
+| Lorry | - | Loses loot | Participates in the rest of the round |
+| Pit cage | - | Leaves mine / <br>**Keeps loot** | Leaves mine / <br>Sits out for the rest of the round |
 
 Pit cages are in between each row of cards.
 
@@ -41,9 +41,9 @@ For the options "free card", "pit cage", and "displace", the following rule appl
 
 ### Execution Phase
 
-All players who are in a **pit cage** at the beginning of the execution phase leave the mine and **are safe from the dragon**. They sit out for the rest of the game, meaning they do not participate in any further planning or execution phases and only become active again for the final scoring.
+All players who are in a **pit cage** at the beginning of the execution phase leave the mine and **are safe from the dragon**. They sit out for the rest of the round, meaning they do not participate in any further planning or execution phases and only become active again for the final scoring.
 
-Beginning with the starting player, **everyone** who is still in the mine and not standing on a lorry **takes the card** beneath their figure and looks at it. If it is a **dragon**, the game ends immediately—the dragon has been awakened. Otherwise, the player places the card face down in front of them. The player remains in the mine. The card backs of collected cards remain visible to everyone.
+Beginning with the starting player, **everyone** who is still in the mine and not standing on a lorry **takes the card** beneath their figure and looks at it. If it is a **dragon**, the round ends immediately—the dragon has been awakened. Otherwise, the player places the card face down in front of them. The player remains in the mine. The card backs of collected cards remain visible to everyone.
 
 If no one has left the mine so far: Each player draws (if possible) a **card from the draw pile**, looks at it, and places it face down in their column of the newly created row at the bottom end of the mine (see Figure 2). If someone has left the mine: No cards are added.
 
@@ -55,7 +55,7 @@ If a player has collected two dynamites, they can announce a blast during their 
 
 If it becomes the player's turn again during the planning phase, choosing any option other than "Pass" aborts the blast. In this case, they flip their two dynamite cards back face down and choose a different option instead. They may announce a blast on a different space. Used dynamite is consumed at the end of the planning phase.
 
-In the **execution phase**, the player **receives the card as usual**. Additionally, the player draws **three cards from the draw pile** and places them face down in front of themselves. They must choose **two of them**. They look at the two cards. If a dragon is among them, the game ends immediately—the dragon has been awakened. Otherwise, they place the treasures face down in front of themselves. The third card is placed at the bottom of the draw pile. If there are fewer than three cards left in the draw pile, the choice is skipped and the player takes all remaining cards.
+In the **execution phase**, the player **receives the card as usual**. Additionally, the player draws **three cards from the draw pile** and places them face down in front of themselves. They must choose **two of them**. They look at the two cards. If a dragon is among them, the round ends immediately—the dragon has been awakened. Otherwise, they place the treasures face down in front of themselves. The third card is placed at the bottom of the draw pile. If there are fewer than three cards left in the draw pile, the choice is skipped and the player takes all remaining cards.
 
 ### End of a Round
 
