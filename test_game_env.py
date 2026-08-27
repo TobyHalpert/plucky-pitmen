@@ -331,15 +331,14 @@ def test_pass_preserves_previous_reward_during_planning():
     assert info["outcome"] == "planning"
 
 
-def test_planning_rewards_do_not_reveal_card_fronts():
+def test_planning_rewards_prefer_safe_cards_and_pit_cage_over_lorry():
     env = MineEnv(opponents=2)
     env.reset(seed=4)
     env.rows[0][0] = (GEM, BACKSIDE_A)
     env.rows[0][1] = (DRAGON, BACKSIDE_A)
 
-    assert env._planning_reward(0) == env._planning_reward(1)
-    assert env._planning_reward(0) == env._planning_reward(PIT_CAGE)
     assert env._planning_reward(0) > env._planning_reward(LORRY)
+    assert env._planning_reward(PIT_CAGE) > env._planning_reward(1)
 
 
 def test_action_selection_prefers_pass_when_q_values_are_tied():
@@ -457,37 +456,6 @@ def test_collected_card_backside_is_publicly_recorded():
     env.step(PASS)
 
     assert env.players[0].collected_backsides == [BACKSIDE_C]
-
-
-def test_ending_on_card_gets_position_reward_without_revealing_front():
-    env = MineEnv(opponents=2)
-    env.reset(seed=4)
-    env.players[0].position = 0
-    env.players[0].column = 0
-    env.rows[0][0] = (GEM, BACKSIDE_A)
-
-    reward, _info = env._execute_round()
-
-    gem_reward = reward
-
-    env.players[0].position = 0
-    env.players[0].column = 1
-    env.rows[0][1] = (DRAGON, BACKSIDE_A)
-    dragon_reward, _info = env._execute_round()
-
-    assert gem_reward == dragon_reward
-
-
-def test_ending_on_empty_space_gets_no_position_reward():
-    env = MineEnv(opponents=2)
-    env.reset(seed=4)
-    env.players[0].position = 0
-    env.players[0].column = 0
-    env.rows[0][0] = None
-
-    reward, _info = env._execute_round()
-
-    assert reward == 0.0
 
 
 def test_deck_has_thirty_cards_with_three_backside_sets():

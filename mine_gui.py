@@ -11,6 +11,7 @@ from tkinter import ttk
 import numpy as np
 
 from game_env import BACKSIDE_A, BACKSIDE_B, BACKSIDE_C, DRAGON, DYNAMITE, GEM, LORRY, MineEnv, PASS, PIT_CAGE
+from rule_policy import deterministic_policy
 from train_q_learning import select_action, train
 
 
@@ -22,7 +23,7 @@ EXIT_ACTION_LABELS = {
 PLAYER_COLORS = ("#f5c451", "#e05a5a", "#4d8fe8", "#55b979", "#f5f5f5")
 BACKSIDE_SYMBOLS = {BACKSIDE_A: "o", BACKSIDE_B: "v", BACKSIDE_C: "~"}
 FRONT_LABELS = {GEM: "GEM", DRAGON: "DRAGON", DYNAMITE: "DYNAMITE"}
-STRATEGIES = ("training", "random", "cautious", "greedy")
+STRATEGIES = ("simple", "training", "random", "cautious", "greedy")
 TRAINING_EPISODES = 1000
 TRAINING_CACHE_VERSION = 2
 TRAINING_CACHE_DIR = Path(__file__).with_name(".training_cache")
@@ -221,6 +222,11 @@ class MineViewer:
                 self.action_var.set(action)
                 self.action_menu.set(self._action_label(action))
                 _observation, reward, terminated, _truncated, info = self.env.step_one_player(action)
+            elif self.policy == "simple":
+                action = deterministic_policy(self.env)
+                self.action_var.set(action)
+                self.action_menu.set(self._action_label(action))
+                _observation, reward, terminated, _truncated, info = self.env.step_one_player(action)
             else:
                 action = PASS if self.env.players[0].position in (PIT_CAGE, LORRY) and PASS in legal else legal[0]
                 self.action_var.set(action)
@@ -381,7 +387,7 @@ class MineViewer:
 def main() -> None:
     parser = argparse.ArgumentParser(description="View MineEnv player progression.")
     parser.add_argument("--opponents", type=int, choices=(2, 3, 4), default=2)
-    parser.add_argument("--policy", choices=STRATEGIES, default="training")
+    parser.add_argument("--policy", choices=STRATEGIES, default="simple")
     parser.add_argument("--seed", type=int, default=7)
     args = parser.parse_args()
     root = tk.Tk()

@@ -26,7 +26,6 @@ BACKSIDE_UNKNOWN = 3
 PARTIES_PER_MATCH = 3
 SAFE_CARD_REWARD = 0.2
 DRAGON_CARD_REWARD = -0.3
-CARD_POSITION_REWARD = 0.1
 PIT_CAGE_REWARD = 0.0
 LORRY_REWARD = -0.05
 
@@ -73,7 +72,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
     def __init__(self, opponents: int = 2, opponent_policy: str = "random") -> None:
         if opponents not in (2, 3, 4):
             raise ValueError("opponents must be 2, 3, or 4")
-        if opponent_policy not in {"random", "cautious", "greedy"}:
+        if opponent_policy not in {"simple", "random", "cautious", "greedy"}:
             raise ValueError("unknown opponent policy")
         self.n_players = opponents + 1
         self.opponent_policy = opponent_policy
@@ -243,7 +242,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                 action = PASS
             action = int(action)
             if not self.action_space.contains(action) or not self._legal(action):
-                return self._observation(), -0.15, False, False, {"illegal_action": True}
+                return self._observation(), 0.0, False, False, {"illegal_action": True}
         else:
             action = self._opponent_action(player_index)
 
@@ -301,6 +300,13 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             if not any(player.escaped for player in self.players):
                 self.rows.append(self._deal_next_rows(1)[0])
             self._set_players_to_starting_positions()
+
+            active_next_round = [i for i, p in enumerate(self.players) if not p.escaped and not p.dead]
+            if active_next_round:
+                self.planning_player = min(active_next_round, key=lambda x: (x - self.starting_player) % self.n_players)
+            else:
+                self.planning_player = self.starting_player
+
         info["player"] = player_index
         return self._observation(), reward, terminated, False, info
 
@@ -343,16 +349,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         card_entry = self.rows[row][column]
         if card_entry is None:
             return 0.0
-        return 0.0
-
-    def _card_position_reward(self, player_index: int) -> float:
-        player = self.players[player_index]
-        if player.escaped or player.dead or player.position >= len(self.rows) or player.column is None:
-            return 0.0
-        card_entry = self.rows[player.position][player.column]
-        if card_entry is None:
-            return 0.0
-        return CARD_POSITION_REWARD
+        return DRAGON_CARD_REWARD if card_entry[0] == DRAGON else SAFE_CARD_REWARD
 
     def _match_reward(self) -> float:
         highest_score = max(player.score for player in self.players)
@@ -541,6 +538,9 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                 or self._can_displace(row, column, player_index)
             )
         ]
+        if self.opponent_policy == "simple":
+            from rule_policy import deterministic_policy
+            return deterministic_policy(self)
         if self.opponent_policy == "cautious" and self.round > 0:
             if movement_depth > 0 and self.rng.random() < 0.35:
                 return PIT_CAGE
@@ -555,7 +555,6 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
     def _execute_round(self) -> tuple[float, dict[str, Any]]:
         reward = 0.0
         info: dict[str, Any] = {"round": self.round, "action": self.last_action}
-        reward += self._card_position_reward(0)
         learner_was_escaped = self.players[0].escaped
         player_order = [
             (self.starting_player + offset) % self.n_players
