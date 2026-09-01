@@ -111,6 +111,19 @@ def test_observation_reveals_only_p1_column_fronts():
     )
 
 
+def test_player_view_masks_hidden_card_fronts_but_keeps_private_cards_visible():
+    env = MineEnv(opponents=2)
+    env.reset(seed=12)
+    env.rows[0][2] = (DRAGON, BACKSIDE_C)
+    env.players[1].collected_cards = [(GEM, BACKSIDE_A)]
+
+    view = env.player_view(1)
+
+    assert view["rows"][0][2] == (None, BACKSIDE_C)
+    assert view["private_cards"] == [(GEM, BACKSIDE_A)]
+    assert env.rows[0][2] == (DRAGON, BACKSIDE_C)
+
+
 def test_players_can_choose_any_free_card_not_only_their_column():
     env = MineEnv(opponents=2)
     env.reset(seed=4)

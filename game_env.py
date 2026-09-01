@@ -609,6 +609,32 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             or any(player.dead for player in self.players)
         )
 
+    def player_view(self, player_index: int) -> dict[str, Any]:
+        """Return the information a specific player is allowed to inspect.
+
+        Every player can see the public card backs in the mine and their own
+        collected cards. Hidden card fronts remain masked for everyone else.
+        """
+        if not 0 <= player_index < self.n_players:
+            raise IndexError("player_index out of range")
+
+        player = self.players[player_index]
+        public_rows = []
+        for row in self.rows[:5]:
+            public_row = []
+            for card_entry in row[:5]:
+                if card_entry is None:
+                    public_row.append(None)
+                else:
+                    public_row.append((None, card_entry[1]))
+            public_rows.append(public_row)
+
+        return {
+            "rows": public_rows,
+            "private_cards": list(player.collected_cards),
+            "player_index": player_index,
+        }
+
     def _observation(self) -> np.ndarray:
         player = self.players[0] if self.players else Player()
         values = [
