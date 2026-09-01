@@ -124,6 +124,22 @@ def test_player_view_masks_hidden_card_fronts_but_keeps_private_cards_visible():
     assert env.rows[0][2] == (DRAGON, BACKSIDE_C)
 
 
+def test_player_action_context_hides_raw_state_and_exposes_only_public_info():
+    env = MineEnv(opponents=2)
+    env.reset(seed=12)
+    env.rows[0][2] = (DRAGON, BACKSIDE_C)
+    env.players[1].collected_cards = [(GEM, BACKSIDE_A)]
+
+    context = env.player_action_context(1)
+
+    assert context.player_index == 1
+    assert context.public_rows[0][2] == (None, BACKSIDE_C)
+    assert context.private_cards == ((GEM, BACKSIDE_A),)
+    assert env.rows[0][2] == (DRAGON, BACKSIDE_C)
+    assert isinstance(context.legal_actions, tuple)
+    assert context.legal_actions == tuple(int(action) for action, allowed in enumerate(env.action_mask()) if allowed)
+
+
 def test_players_can_choose_any_free_card_not_only_their_column():
     env = MineEnv(opponents=2)
     env.reset(seed=4)
@@ -148,6 +164,33 @@ def test_cards_are_collected_only_after_consecutive_passes():
 
     env.step(PASS)
     assert env.players[0].dynamite == 1
+
+
+def test_blast_choice_draw_and_resolution_are_limited_to_three_cards():
+    env = MineEnv(opponents=2)
+    env.reset(seed=5)
+    env.players[0].collected_cards = [(DYNAMITE, BACKSIDE_A), (DYNAMITE, BACKSIDE_B)]
+    env.cards_remaining = [
+        (GEM, BACKSIDE_A),
+        (DYNAMITE, BACKSIDE_B),
+        (DRAGON, BACKSIDE_C),
+        (GEM, BACKSIDE_C),
+        (DYNAMITE, BACKSIDE_A),
+        (GEM, BACKSIDE_B),
+    ]
+
+    env.begin_blast(0)
+
+    assert env.players[0].blast_pending is True
+    assert len(env.players[0].blast_cards) == 3
+    assert [card[1] for card in env.players[0].blast_cards] == [BACKSIDE_A, BACKSIDE_B, BACKSIDE_C]
+    assert len(env.cards_remaining) == 3
+
+    chosen = env.resolve_blast(0, 1)
+
+    assert chosen[1] == BACKSIDE_B
+    assert env.players[0].blast_pending is False
+    assert env.players[0].collected_cards[-1] == chosen
 
 
 def test_opponent_passes_complete_the_pass_sequence():

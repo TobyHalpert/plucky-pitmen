@@ -30,6 +30,23 @@ PIT_CAGE_REWARD = 0.0
 LORRY_REWARD = -0.05
 
 
+@dataclass(frozen=True)
+class PlayerActionContext:
+    """Public, player-scoped view for agent behaviour.
+
+    This intentionally omits all raw internal state and hides unseen card fronts.
+    Blast state is public: all players see who is blasting. The blasting player's
+    specific cards remain hidden from opponents.
+    """
+
+    player_index: int
+    legal_actions: tuple[int, ...]
+    public_rows: tuple[tuple[tuple[int | None, int] | None, ...], ...]
+    private_cards: tuple[tuple[int, int], ...]
+    blast_pending_by_player: tuple[bool, ...]  # Which players are blasting (public)
+    own_blast_cards: tuple[tuple[int, int], ...] = ()  # Only for requesting player
+
+
 @dataclass
 class Player:
     position: int = 3
@@ -39,6 +56,8 @@ class Player:
     escaped: bool = False
     dead: bool = False
     score: int = 0
+    blast_pending: bool = False
+    blast_cards: list[tuple[int, int]] = field(default_factory=list)
 
     @property
     def collected_backsides(self) -> list[int]:
@@ -609,11 +628,54 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             or any(player.dead for player in self.players)
         )
 
+    def begin_blast(self, player_index: int) -> None:
+        """Start the end-of-blast choice phase for a player.
+
+        The player must already have collected at least two dynamite cards.
+        """
+        if not 0 <= player_index < self.n_players:
+            raise IndexError("player_index out of range")
+        player = self.players[player_index]
+        if player.dynamite < 2:
+            raise ValueError("player needs at least two dynamite cards to blast")
+        if player.blast_pending:
+            return
+        draw_count = min(3, len(self.cards_remaining))
+        player.blast_cards = self.cards_remaining[:draw_count]
+        self.cards_remaining = self.cards_remaining[draw_count:]
+        player.blast_pending = True
+
+    def resolve_blast(self, player_index: int, choice_index: int) -> tuple[int, int]:
+        """Resolve the selected blast card and return the chosen (front, backside)."""
+        if not 0 <= player_index < self.n_players:
+            raise IndexError("player_index out of range")
+        player = self.players[player_index]
+        if not player.blast_pending:
+            raise ValueError("no blast in progress")
+        if not 0 <= choice_index < len(player.blast_cards):
+            raise ValueError("blast choice out of range")
+
+        chosen_card = player.blast_cards.pop(choice_index)
+        player.blast_pending = False
+        if chosen_card[0] == DRAGON:
+            for remaining_player in self.players:
+                if not remaining_player.escaped:
+                    remaining_player.dead = True
+            player.collected_cards.append(chosen_card)
+            return chosen_card
+
+        player.collected_cards.append(chosen_card)
+        return chosen_card
+
     def player_view(self, player_index: int) -> dict[str, Any]:
         """Return the information a specific player is allowed to inspect.
 
-        Every player can see the public card backs in the mine and their own
-        collected cards. Hidden card fronts remain masked for everyone else.
+        Every player can see:
+        - The public card backs in the mine
+        - Their own collected cards
+        - Which players are currently blasting (public information)
+        - If they are blasting: the three drawn cards (private to them)
+        - Hidden card fronts remain masked for everyone else
         """
         if not 0 <= player_index < self.n_players:
             raise IndexError("player_index out of range")
@@ -629,11 +691,52 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                     public_row.append((None, card_entry[1]))
             public_rows.append(public_row)
 
+        blast_pending_by_player = [p.blast_pending for p in self.players]
+        own_blast_cards = list(player.blast_cards) if player.blast_pending else []
+
         return {
             "rows": public_rows,
             "private_cards": list(player.collected_cards),
             "player_index": player_index,
+            "blast_pending_by_player": blast_pending_by_player,
+            "own_blast_cards": own_blast_cards,
         }
+
+    def player_action_context(self, player_index: int) -> PlayerActionContext:
+        """Return the public action context for a given player.
+
+        This is the safe API for external behaviour scripts: they receive only the
+        legal moves and public information, never the raw engine state.
+        Blast state is public: all players know who is blasting.
+        """
+        if not 0 <= player_index < self.n_players:
+            raise IndexError("player_index out of range")
+
+        public_rows = []
+        for row in self.rows[:5]:
+            public_row = []
+            for card_entry in row[:5]:
+                if card_entry is None:
+                    public_row.append(None)
+                else:
+                    public_row.append((None, card_entry[1]))
+            public_rows.append(tuple(public_row))
+
+        player = self.players[player_index]
+        legal_actions = tuple(
+            int(action) for action, allowed in enumerate(self.action_mask()) if allowed
+        )
+        blast_pending_by_player = tuple(p.blast_pending for p in self.players)
+        own_blast_cards = tuple(tuple(card) for card in player.blast_cards) if player.blast_pending else ()
+
+        return PlayerActionContext(
+            player_index=player_index,
+            legal_actions=legal_actions,
+            public_rows=tuple(public_rows),
+            private_cards=tuple(tuple(card) for card in player.collected_cards),
+            blast_pending_by_player=blast_pending_by_player,
+            own_blast_cards=own_blast_cards,
+        )
 
     def _observation(self) -> np.ndarray:
         player = self.players[0] if self.players else Player()

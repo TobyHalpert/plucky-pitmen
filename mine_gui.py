@@ -125,6 +125,13 @@ class MineViewer:
 
     def _action_label_selected(self, _event: tk.Event) -> None:
         selected = self.action_menu.get()
+        player = self.env.players[0]
+        if player.blast_pending and player.blast_cards:
+            labels = list(self.action_menu["values"])
+            if selected in labels:
+                self.action_var.set(labels.index(selected))
+            return
+
         for action in range(self.env.action_space.n):
             if self._action_label(action) == selected:
                 self.action_var.set(action)
@@ -169,7 +176,20 @@ class MineViewer:
         )
 
     def take_action(self) -> None:
+        player = self.env.players[0]
+        if player.blast_pending and player.blast_cards:
+            choice_index = int(self.action_var.get())
+            if not 0 <= choice_index < len(player.blast_cards):
+                self.message_var.set("Select one of the three blast cards.")
+                return
+            chosen = self.env.resolve_blast(0, choice_index)
+            self.message_var.set(f"Blast choice: {BACKSIDE_SYMBOLS[chosen[1]]}. Reward +0.00.")
+            self.draw_scene()
+            self._update_action_options()
+            return
+
         action = self.action_var.get()
+
         if action >= self.env.action_space.n or not self.env.action_mask()[action]:
             self.message_var.set("That destination is not legal from your current position.")
             return
@@ -323,6 +343,10 @@ class MineViewer:
             color = PLAYER_COLORS[player_index]
             canvas.create_oval(x - 11, y - 11, x + 11, y + 11, fill=color, outline="#101820", width=2)
             canvas.create_text(x, y, text=str(player_index + 1), fill="#101820", font=("Segoe UI", 9, "bold"))
+            # Draw blast indicator if player is blasting
+            if player.blast_pending:
+                canvas.create_oval(x - 16, y - 16, x + 16, y + 16, fill="", outline="#ff6b6b", width=3)
+                canvas.create_text(x, y - 24, text="💥", font=("Segoe UI", 14, "bold"))
 
         self.round_var.set(f"Round {self.env.round + 1}  |  {self.env.opponent_policy} opponents")
         self.partie_var.set(f"Partie {self.env.partie}/3")
@@ -354,17 +378,26 @@ class MineViewer:
         self.players_text.delete("1.0", "end")
         for index, player in enumerate(self.env.players):
             starting = " (starting player)" if index == self.env.starting_player else ""
+            blast_indicator = " 💥 BLASTING" if player.blast_pending else ""
             collected = ", ".join(BACKSIDE_SYMBOLS[backside] for backside in player.collected_backsides) or "-"
             if index == 0:
                 gems = ", ".join(BACKSIDE_SYMBOLS[backside] for front, backside in player.collected_cards if front == GEM) or "-"
                 dynamite = ", ".join(BACKSIDE_SYMBOLS[backside] for front, backside in player.collected_cards if front == DYNAMITE) or "-"
-                self.players_text.insert("end", f"P{index + 1} (you){starting}\t{player.score} VP\n")
+                self.players_text.insert("end", f"P{index + 1} (you){starting}{blast_indicator}\t{player.score} VP\n")
                 self.players_text.insert("end", f"gems: {gems}  dynamite: {dynamite}\n\n")
             else:
-                self.players_text.insert("end", f"P{index + 1}{starting}\t{player.score} VP\nbacks: {collected}\n\n")
+                self.players_text.insert("end", f"P{index + 1}{starting}{blast_indicator}\t{player.score} VP\nbacks: {collected}\n\n")
         self.players_text.configure(state="disabled")
 
     def _update_action_options(self) -> None:
+        player = self.env.players[0]
+        if player.blast_pending and player.blast_cards:
+            labels = [f"Blast choice {index + 1} ({BACKSIDE_SYMBOLS[card[1]]})" for index, card in enumerate(player.blast_cards)]
+            self.action_menu.configure(values=labels)
+            self.action_var.set(0)
+            self.action_menu.set(labels[0])
+            return
+
         legal_actions = [
             int(action) for action, allowed in enumerate(self.env.action_mask()) if allowed
         ]
