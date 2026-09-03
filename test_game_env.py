@@ -56,6 +56,19 @@ def test_new_game_randomizes_starter_and_execution_rotates_starter():
     assert env.players[0].score == 0
 
 
+def test_opponents_before_p1_can_move_before_p1s_first_turn():
+    env = MineEnv(opponents=3)
+    env.reset(seed=2)
+    assert env.starting_player == 3
+    assert env.planning_player == 3
+
+    while env.planning_player != 0:
+        env.step_one_player()
+
+    assert env.players[3].position < len(env.rows)
+    assert env.players[0].position == len(env.rows)
+
+
 def test_passing_is_not_allowed_on_first_planning_turn():
     env = MineEnv(opponents=2)
     env.reset(seed=4)
@@ -63,6 +76,22 @@ def test_passing_is_not_allowed_on_first_planning_turn():
     assert not env._legal(PASS)
     env.step(0)
     assert env._legal(PASS)
+
+
+def test_row_zero_allows_pit_cage_lorry_and_pass_choices():
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+
+    env.step(0)
+
+    legal = env.action_mask()
+    assert legal[PIT_CAGE]
+    assert legal[LORRY]
+    assert legal[PASS]
+
+    env.step(PIT_CAGE)
+    assert env.players[0].position == PIT_CAGE
+    assert env.players[0].cage_index == 0
 
 
 def test_p1_cannot_pass_when_an_opponent_started():
@@ -74,6 +103,18 @@ def test_p1_cannot_pass_when_an_opponent_started():
 
     env.planning_player = 0
     assert not env._legal(PASS)
+
+
+def test_opponent_cannot_move_to_their_current_row():
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    env.planning_player = 1
+    env.players[1].position = 2
+
+    legal = env.action_mask(1)
+
+    assert not legal[2 * 5:3 * 5].any()
+    assert legal[0 * 5:2 * 5].any()
 
 
 def test_observation_exposes_backsides_but_not_fronts():
@@ -170,6 +211,9 @@ def test_blast_choice_draw_and_resolution_are_limited_to_three_cards():
     env = MineEnv(opponents=2)
     env.reset(seed=5)
     env.players[0].collected_cards = [(DYNAMITE, BACKSIDE_A), (DYNAMITE, BACKSIDE_B)]
+    env.rows[0][0] = (GEM, BACKSIDE_A)
+    env.players[0].position = 0
+    env.players[0].column = 0
     env.cards_remaining = [
         (GEM, BACKSIDE_A),
         (DYNAMITE, BACKSIDE_B),
@@ -182,6 +226,10 @@ def test_blast_choice_draw_and_resolution_are_limited_to_three_cards():
     env.begin_blast(0)
 
     assert env.players[0].blast_pending is True
+    assert len(env.cards_remaining) == 6
+
+    env._execute_round()
+
     assert len(env.players[0].blast_cards) == 3
     assert [card[1] for card in env.players[0].blast_cards] == [BACKSIDE_A, BACKSIDE_B, BACKSIDE_C]
     assert len(env.cards_remaining) == 3
@@ -189,8 +237,28 @@ def test_blast_choice_draw_and_resolution_are_limited_to_three_cards():
     chosen = env.resolve_blast(0, 1)
 
     assert chosen[1] == BACKSIDE_B
+    assert env.players[0].blast_pending is True
+    second = env.resolve_blast(0, 0)
     assert env.players[0].blast_pending is False
-    assert env.players[0].collected_cards[-1] == chosen
+    assert env.players[0].collected_cards[-2:] == [chosen, second]
+
+
+def test_announced_blast_keeps_same_row_out_of_next_turn_choices():
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    env.players[0].collected_cards = [(DYNAMITE, BACKSIDE_A), (DYNAMITE, BACKSIDE_B)]
+    env.planning_player = 0
+
+    env.step_one_player(2 * 5)
+    env.begin_blast(0)
+
+    legal_cards = [
+        action for action, allowed in enumerate(env.action_mask())
+        if allowed and action < PIT_CAGE
+    ]
+
+    assert legal_cards
+    assert all(action // 5 < 2 for action in legal_cards)
 
 
 def test_opponent_passes_complete_the_pass_sequence():
@@ -316,13 +384,31 @@ def test_collected_cards_disappear_and_new_row_requires_no_departure():
     env.starting_player = 0
     env.rows[0][2] = (GEM, BACKSIDE_A)
     initial_row_count = len(env.rows)
+    top_stack_card = env.cards_remaining[0]
 
     env.step(2)
     env.step(PASS)
 
     assert env.rows[0][2] is None
     assert len(env.rows) == initial_row_count + 1
+    assert env.rows[-1][0] == top_stack_card
+    assert env.players[0].column is None
+    assert not env.players[0].collected_cards or env.players[0].collected_cards[-1] != top_stack_card
     assert all(player.position == len(env.rows) for player in env.players)
+
+
+def test_new_row_deals_cards_in_starting_player_order():
+    env = MineEnv(opponents=3)
+    env.reset(seed=4)
+    env.starting_player = 2
+    env.rows[0][2] = (GEM, BACKSIDE_A)
+    top_cards = env.cards_remaining[:env.n_players]
+
+    env.step(2)
+    env.step(PASS)
+
+    assert env.starting_player == 3
+    assert env.rows[-1] == [top_cards[2], top_cards[3], top_cards[0], top_cards[1]]
 
 
 def test_lorry_player_stays_in_the_mine_for_the_next_round():

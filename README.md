@@ -45,11 +45,11 @@ All players who are in a **pit cage** at the beginning of the execution phase le
 
 Beginning with the starting player, **everyone** who is still in the mine and not standing on a lorry **takes the card** beneath their figure and looks at it. If it is a **dragon**, the round ends immediately—the dragon has been awakened. Otherwise, the player places the card face down in front of them. The player remains in the mine. The card backs of collected cards remain visible to everyone.
 
-If no one has left the mine so far: Each player draws (if possible) a **card from the draw pile**, looks at it, and places it face down in their column of the newly created row at the bottom end of the mine (see Figure 2). If someone has left the mine: No cards are added.
+If no one has left the mine so far: Beginning with the starting player, each player draws (if possible) a **card from the draw pile**, looks at it, and places it face down in their column of the newly created row at the bottom end of the mine (see Figure 2). If someone has left the mine: No cards are added.
 
 The **figures** of the remaining players are placed **in front of the newly created row of cards**. The starting player marker is passed clockwise. (The starting player does not necessarily have to be inside the mine.) The next planning phase begins.
 
-### Blasting (not yet implemented)
+### Blasting
 
 If a player has collected two dynamites, they can announce a blast during their turn in the **planning phase**. To do this, they flip **two dynamite cards** face up and place their figure on a free card as described.
 

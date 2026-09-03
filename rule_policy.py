@@ -8,13 +8,13 @@ def deterministic_policy(env: MineEnv) -> int:
     This policy is intentionally limited to public information: legal actions,
     visible positions of other players, and the current player's own status.
     """
-    mask = env.action_mask()
+    player_index = env.planning_player
+    mask = env.action_mask(player_index)
     legal_actions = [action for action, allowed in enumerate(mask) if allowed]
 
     if not legal_actions:
         return PASS
 
-    player_index = env.planning_player
     current_player = env.players[player_index]
     current_pos = current_player.position if current_player.position is not None else -1
 

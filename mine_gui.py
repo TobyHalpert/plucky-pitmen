@@ -15,9 +15,9 @@ from rule_policy import deterministic_policy
 from train_q_learning import select_action, train
 
 
-EXIT_ACTION_LABELS = {
+SPECIAL_ACTION_LABELS = {
     PIT_CAGE: "Leave via pit cage",
-    LORRY: "Leave by lorry",
+    LORRY: "Lorry",
     PASS: "Pass",
 }
 PLAYER_COLORS = ("#f5c451", "#e05a5a", "#4d8fe8", "#55b979", "#f5f5f5")
@@ -27,6 +27,7 @@ STRATEGIES = ("simple", "training", "random", "cautious", "greedy")
 TRAINING_EPISODES = 1000
 TRAINING_CACHE_VERSION = 2
 TRAINING_CACHE_DIR = Path(__file__).with_name(".training_cache")
+BLAST_ACTION_PREFIX = "Blast: "
 
 
 class MineViewer:
@@ -48,8 +49,10 @@ class MineViewer:
 
         self.round_var = tk.StringVar()
         self.partie_var = tk.StringVar()
+        self.stack_var = tk.StringVar()
         self.message_var = tk.StringVar()
         self.action_var = tk.IntVar(value=0)
+        self.blast_requested = False
         self.policy_var = tk.StringVar(value=policy)
         self.opponents_var = tk.IntVar(value=opponents)
         self.seed_var = tk.IntVar(value=seed)
@@ -73,6 +76,10 @@ class MineViewer:
         tk.Label(
             controls, textvariable=self.partie_var, fg="#d7e4e8", bg="#182832",
             font=("Segoe UI", 11, "bold"),
+        ).pack(side="left", padx=(14, 0))
+        tk.Label(
+            controls, textvariable=self.stack_var, fg="#b7c8cc", bg="#182832",
+            font=("Segoe UI", 10),
         ).pack(side="left", padx=(14, 0))
 
         settings = tk.Frame(controls, bg="#182832")
@@ -132,6 +139,9 @@ class MineViewer:
                 self.action_var.set(labels.index(selected))
             return
 
+        self.blast_requested = selected.startswith(BLAST_ACTION_PREFIX)
+        if self.blast_requested:
+            selected = selected[len(BLAST_ACTION_PREFIX):]
         for action in range(self.env.action_space.n):
             if self._action_label(action) == selected:
                 self.action_var.set(action)
@@ -144,6 +154,7 @@ class MineViewer:
             self.training_q_table = None
             self.env = MineEnv(opponents=self.opponents_var.get(), opponent_policy=self._environment_policy())
             self.env.reset(seed=self.seed_var.get())
+            self._advance_opponents_to_p1()
             if self.policy == "training":
                 cache_path = self._training_cache_path()
                 if cache_path.exists():
@@ -169,6 +180,12 @@ class MineViewer:
     def _environment_policy(self) -> str:
         return "random" if self.policy == "training" else self.policy
 
+    def _advance_opponents_to_p1(self) -> None:
+        while self.env.planning_player != 0:
+            _observation, _reward, terminated, _truncated, _info = self.env.step_one_player()
+            if terminated or self.env.players[0].escaped or self.env.players[0].dead:
+                return
+
     def _training_cache_path(self) -> Path:
         return TRAINING_CACHE_DIR / (
             f"q_table_opponents_{self.opponents_var.get()}_seed_{self.seed_var.get()}_"
@@ -188,12 +205,43 @@ class MineViewer:
             self._update_action_options()
             return
 
+        blast_requested = self.blast_requested
+        self.blast_requested = False
+
+        while self.env.planning_player != 0 and not (player.escaped or player.dead):
+            _observation, reward, terminated, _truncated, info = self.env.step_one_player()
+            if terminated:
+                self.draw_scene()
+                self._update_action_options()
+                self.step_button.state(["disabled"])
+                self.message_var.set(
+                    f"Player {info.get('player', 0) + 1}: {info.get('outcome', 'continued')}. "
+                    f"Reward {reward:+.2f}. Game over. Start a new game to play again."
+                )
+                return
+
+        if player.escaped or player.dead:
+            self.draw_scene()
+            self._update_action_options()
+            return
+
         action = self.action_var.get()
 
         if action >= self.env.action_space.n or not self.env.action_mask()[action]:
             self.message_var.set("That destination is not legal from your current position.")
             return
-        _observation, reward, terminated, _truncated, info = self.env.step(action)
+        if blast_requested:
+            try:
+                _observation, reward, terminated, _truncated, info = self.env.step_one_player(action)
+                if not terminated:
+                    self.env.begin_blast(0)
+            except ValueError as error:
+                self.message_var.set(str(error))
+                return
+        else:
+            _observation, reward, terminated, _truncated, info = self.env.step_one_player(action)
+        while not terminated and self.env.planning_player != 0:
+            _observation, reward, terminated, _truncated, info = self.env.step_one_player()
         outcome = info.get("outcome", "continued")
         self.message_var.set(f"Round {info.get('round', self.env.round)}: {outcome}. Reward {reward:+.2f}.")
         self.draw_scene()
@@ -350,6 +398,11 @@ class MineViewer:
 
         self.round_var.set(f"Round {self.env.round + 1}  |  {self.env.opponent_policy} opponents")
         self.partie_var.set(f"Partie {self.env.partie}/3")
+        top_backside = (
+            BACKSIDE_SYMBOLS[self.env.cards_remaining[0][1]]
+            if self.env.cards_remaining else "-"
+        )
+        self.stack_var.set(f"Stack: {len(self.env.cards_remaining)}  |  top back: {top_backside}")
         self._update_player_list()
 
     @staticmethod
@@ -379,14 +432,15 @@ class MineViewer:
         for index, player in enumerate(self.env.players):
             starting = " (starting player)" if index == self.env.starting_player else ""
             blast_indicator = " 💥 BLASTING" if player.blast_pending else ""
+            status = " OUT" if player.escaped else ""
             collected = ", ".join(BACKSIDE_SYMBOLS[backside] for backside in player.collected_backsides) or "-"
             if index == 0:
                 gems = ", ".join(BACKSIDE_SYMBOLS[backside] for front, backside in player.collected_cards if front == GEM) or "-"
                 dynamite = ", ".join(BACKSIDE_SYMBOLS[backside] for front, backside in player.collected_cards if front == DYNAMITE) or "-"
-                self.players_text.insert("end", f"P{index + 1} (you){starting}{blast_indicator}\t{player.score} VP\n")
+                self.players_text.insert("end", f"P{index + 1} (you){status}{starting}{blast_indicator}\t{player.score} VP\n")
                 self.players_text.insert("end", f"gems: {gems}  dynamite: {dynamite}\n\n")
             else:
-                self.players_text.insert("end", f"P{index + 1}{starting}{blast_indicator}\t{player.score} VP\nbacks: {collected}\n\n")
+                self.players_text.insert("end", f"P{index + 1}{status}{starting}{blast_indicator}\t{player.score} VP\nbacks: {collected}\n\n")
         self.players_text.configure(state="disabled")
 
     def _update_action_options(self) -> None:
@@ -402,6 +456,13 @@ class MineViewer:
             int(action) for action, allowed in enumerate(self.env.action_mask()) if allowed
         ]
         labels = [self._action_label(action) for action in legal_actions]
+        if player.dynamite >= 2:
+            movement_depth = self.env._movement_depth(player)
+            labels.extend(
+                f"{BLAST_ACTION_PREFIX}{self._action_label(action)}"
+                for action in legal_actions
+                if action < PIT_CAGE and action // 5 < movement_depth
+            )
         self.action_menu.configure(values=labels)
         if legal_actions:
             self.action_var.set(legal_actions[0])
@@ -411,8 +472,8 @@ class MineViewer:
             self.action_menu.set("")
 
     def _action_label(self, action: int) -> str:
-        if action in EXIT_ACTION_LABELS:
-            return EXIT_ACTION_LABELS[action]
+        if action in SPECIAL_ACTION_LABELS:
+            return SPECIAL_ACTION_LABELS[action]
         row, column = divmod(action, 5)
         return f"Card row {row}, column {column + 1}"
 

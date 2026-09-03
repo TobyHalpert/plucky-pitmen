@@ -147,6 +147,8 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.planning_turns += 1
         self.planned_players[0] = True
         planning_reward = self._planning_reward(action)
+        if self.players[0].blast_pending and action != PASS:
+            self._cancel_blast(0)
         if action == PASS:
             self.consecutive_passes += 1
         else:
@@ -216,10 +218,12 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.planning_turns = 0
         reward, info = self._execute_round()
         self.last_reward = reward
-        self._advance_starting_player()
         partie_over = self._game_over() or not self._can_deal_row()
         if not self._can_deal_row():
             info["mine_empty"] = True
+        if not partie_over and not any(player.escaped for player in self.players):
+            self.rows.append(self._deal_next_row_in_turn_order(self.starting_player))
+        self._advance_starting_player()
         terminated = False
         if partie_over:
             self._prepare_partie_scoring(info)
@@ -235,8 +239,6 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                 info["next_partie"] = self.partie
         else:
             self.round += 1
-            if not any(player.escaped for player in self.players):
-                self.rows.append(self._deal_next_rows(1)[0])
             self._set_players_to_starting_positions()
         return self._observation(), reward, terminated, False, info
 
@@ -256,6 +258,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             self.planning_player = active_players[0]
 
         player_index = self.planning_player
+        player = self.players[player_index]
         if player_index == 0:
             if action is None:
                 action = PASS
@@ -269,6 +272,8 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.planning_turns += 1
         self.planned_players[player_index] = True
         planning_reward = self._planning_reward(action, player_index)
+        if player.blast_pending and action != PASS:
+            self._cancel_blast(player_index)
         if action == PASS:
             self.consecutive_passes += 1
         else:
@@ -296,11 +301,13 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.planned_players = [False] * self.n_players
         reward, info = self._execute_round()
         self.last_reward = reward
-        self._advance_starting_player()
-        self.planning_player = self.starting_player
         partie_over = self._game_over() or not self._can_deal_row()
         if not self._can_deal_row():
             info["mine_empty"] = True
+        if not partie_over and not any(player.escaped for player in self.players):
+            self.rows.append(self._deal_next_row_in_turn_order(self.starting_player))
+        self._advance_starting_player()
+        self.planning_player = self.starting_player
         terminated = False
         if partie_over:
             self._prepare_partie_scoring(info)
@@ -316,8 +323,6 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                 info["next_partie"] = self.partie
         else:
             self.round += 1
-            if not any(player.escaped for player in self.players):
-                self.rows.append(self._deal_next_rows(1)[0])
             self._set_players_to_starting_positions()
 
             active_next_round = [i for i, p in enumerate(self.players) if not p.escaped and not p.dead]
@@ -448,17 +453,28 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             for row in range(depth)
         ]
 
+    def _deal_next_row_in_turn_order(self, starting_player: int) -> list[tuple[int, int]]:
+        cards = self._deal_next_rows(1)[0]
+        row = [cards[0]] * self.n_players
+        for offset, card in enumerate(cards):
+            player_index = (starting_player + offset) % self.n_players
+            row[player_index] = card
+        return row
+
     def _can_deal_row(self) -> bool:
         return len(self.cards_remaining) >= self.n_players
 
     def _pass_threshold(self) -> int:
         return max(1, sum(not player.escaped and not player.dead for player in self.players) - 1)
 
-    def action_mask(self) -> np.ndarray:
-        return np.array([self._legal(action) for action in range(self.action_space.n)], dtype=np.int8)
+    def action_mask(self, player_index: int = 0) -> np.ndarray:
+        return np.array(
+            [self._legal(action, player_index) for action in range(self.action_space.n)],
+            dtype=np.int8,
+        )
 
-    def _legal(self, action: int) -> bool:
-        player = self.players[0]
+    def _legal(self, action: int, player_index: int = 0) -> bool:
+        player = self.players[player_index]
         if player.dead:
             return False
         if player.escaped:
@@ -474,16 +490,16 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                 and column < len(self.rows[row])
                 and self.rows[row][column] is not None
                 and (
-                    not self._card_occupied(row, column, ignore_player=0)
-                    or self._can_displace(row, column, 0)
+                    not self._card_occupied(row, column, ignore_player=player_index)
+                    or self._can_displace(row, column, player_index)
                 )
             )
         if action == PIT_CAGE:
-            return player.position != PIT_CAGE and (player.position == LORRY or self._movement_depth(player) > 0)
+            return player.position != PIT_CAGE and player.position >= 0
         if action == LORRY:
             return player.position != LORRY and player.position >= 0
         if action == PASS:
-            return self.planned_players[0]
+            return self.planned_players[player_index]
         return False
 
     def _movement_depth(self, player: Player) -> int:
@@ -617,6 +633,8 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             info["outcome"] = "escaped"
         elif not info.get("outcome"):
             info["outcome"] = "continued"
+        if info["outcome"] != "dragon":
+            self._prepare_blasts()
         return reward, info
 
     def _game_over(self) -> bool:
@@ -629,7 +647,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         )
 
     def begin_blast(self, player_index: int) -> None:
-        """Start the end-of-blast choice phase for a player.
+        """Announce a blast during planning for a player.
 
         The player must already have collected at least two dynamite cards.
         """
@@ -640,13 +658,11 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             raise ValueError("player needs at least two dynamite cards to blast")
         if player.blast_pending:
             return
-        draw_count = min(3, len(self.cards_remaining))
-        player.blast_cards = self.cards_remaining[:draw_count]
-        self.cards_remaining = self.cards_remaining[draw_count:]
+        player.blast_cards = []
         player.blast_pending = True
 
     def resolve_blast(self, player_index: int, choice_index: int) -> tuple[int, int]:
-        """Resolve the selected blast card and return the chosen (front, backside)."""
+        """Choose one of the two blast cards kept after execution."""
         if not 0 <= player_index < self.n_players:
             raise IndexError("player_index out of range")
         player = self.players[player_index]
@@ -656,16 +672,45 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             raise ValueError("blast choice out of range")
 
         chosen_card = player.blast_cards.pop(choice_index)
-        player.blast_pending = False
         if chosen_card[0] == DRAGON:
             for remaining_player in self.players:
                 if not remaining_player.escaped:
                     remaining_player.dead = True
-            player.collected_cards.append(chosen_card)
+            player.blast_cards = []
+            player.blast_pending = False
             return chosen_card
 
         player.collected_cards.append(chosen_card)
+        if len(player.blast_cards) == 1:
+            self.cards_remaining.append(player.blast_cards.pop())
+            player.blast_pending = False
         return chosen_card
+
+    def _cancel_blast(self, player_index: int) -> None:
+        player = self.players[player_index]
+        player.blast_pending = False
+        player.blast_cards = []
+
+    def _prepare_blasts(self) -> None:
+        for player in self.players:
+            if not player.blast_pending:
+                continue
+            dynamite_removed = 0
+            remaining_cards = []
+            for card in player.collected_cards:
+                if card[0] == DYNAMITE and dynamite_removed < 2:
+                    dynamite_removed += 1
+                else:
+                    remaining_cards.append(card)
+            player.collected_cards = remaining_cards
+
+            draw_count = min(3, len(self.cards_remaining))
+            player.blast_cards = self.cards_remaining[:draw_count]
+            self.cards_remaining = self.cards_remaining[draw_count:]
+            if draw_count < 3:
+                player.collected_cards.extend(player.blast_cards)
+                player.blast_cards = []
+                player.blast_pending = False
 
     def player_view(self, player_index: int) -> dict[str, Any]:
         """Return the information a specific player is allowed to inspect.
