@@ -55,6 +55,7 @@ class MineViewer:
         self.message_var = tk.StringVar()
         self.action_var = tk.IntVar(value=0)
         self.blast_requested = False
+        self._shown_displacement_count = 0
         self.policy_var = tk.StringVar(value=policy)
         self.opponents_var = tk.IntVar(value=opponents)
         self.seed_var = tk.IntVar(value=seed)
@@ -167,6 +168,7 @@ class MineViewer:
 
     def reset_game(self) -> None:
         self.stop_autoplay()
+        self._shown_displacement_count = 0
         self.message_text.configure(state="normal")
         self.message_text.delete("1.0", "end")
         self.message_text.configure(state="disabled")
@@ -320,6 +322,13 @@ class MineViewer:
         dragon_player = info.get("dragon_player")
         if outcome == "dragon" and dragon_player is not None:
             message += f" Player {dragon_player + 1} awakened the dragon."
+        new_displacements = self.env.displacement_events[self._shown_displacement_count:]
+        for displaced_player, displacing_player in new_displacements:
+            message += (
+                f" Player {displaced_player + 1} stood on his own card, "
+                f"Player {displacing_player + 1} displaced him."
+            )
+        self._shown_displacement_count += len(new_displacements)
         return message
 
     def _resolve_tie_breaker(self, choice_index: int) -> None:

@@ -24,8 +24,6 @@ BACKSIDE_B = 1
 BACKSIDE_C = 2
 BACKSIDE_UNKNOWN = 3
 HAULS_PER_GAME = 3
-SAFE_CARD_REWARD = 0.2
-DRAGON_CARD_REWARD = -0.3
 PIT_CAGE_REWARD = 0.0
 LORRY_REWARD = -0.05
 
@@ -119,6 +117,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.tie_breaker_contenders: list[int] = []
         self.tie_breaker_turn = 0
         self.used_blast_backsides: list[int] = []
+        self.displacement_events: list[tuple[int, int]] = []
 
     def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None):
         super().reset(seed=seed)
@@ -139,6 +138,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.tie_breaker_contenders = []
         self.tie_breaker_turn = 0
         self.used_blast_backsides = []
+        self.displacement_events = []
         self.planning_player = self.starting_player
         self.planned_players = [False] * self.n_players
         return self._observation(), {"round": self.round, "haul": self.haul}
@@ -225,8 +225,9 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.planning_turns = 0
         reward, info = self._execute_round()
         self.last_reward = reward
-        haul_over = self._game_over() or not self._can_deal_row()
-        if not self._can_deal_row():
+        mine_empty = not self._mine_has_cards()
+        haul_over = self._game_over() or not self._can_deal_row() or mine_empty
+        if not self._can_deal_row() or mine_empty:
             info["mine_empty"] = True
         if not haul_over and not any(player.escaped for player in self.players):
             self.rows.append(self._deal_next_row_in_turn_order(self.starting_player))
@@ -315,8 +316,9 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.planned_players = [False] * self.n_players
         reward, info = self._execute_round()
         self.last_reward = reward
-        haul_over = self._game_over() or not self._can_deal_row()
-        if not self._can_deal_row():
+        mine_empty = not self._mine_has_cards()
+        haul_over = self._game_over() or not self._can_deal_row() or mine_empty
+        if not self._can_deal_row() or mine_empty:
             info["mine_empty"] = True
         if not haul_over and not any(player.escaped for player in self.players):
             self.rows.append(self._deal_next_row_in_turn_order(self.starting_player))
@@ -387,11 +389,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             return self.last_reward
         if action >= PIT_CAGE:
             return 0.0
-        row, column = divmod(action, MAX_COLUMNS)
-        card_entry = self.rows[row][column]
-        if card_entry is None:
-            return 0.0
-        return DRAGON_CARD_REWARD if card_entry[0] == DRAGON else SAFE_CARD_REWARD
+        return 0.0
 
     def _game_reward(self) -> float:
         highest_score = max(player.score for player in self.players)
@@ -557,6 +555,9 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
     def _can_deal_row(self) -> bool:
         return len(self.cards_remaining) >= self.n_players
 
+    def _mine_has_cards(self) -> bool:
+        return any(card is not None for row in self.rows for card in row)
+
     def _pass_threshold(self) -> int:
         return max(1, sum(not player.escaped and not player.dead for player in self.players) - 1)
 
@@ -636,6 +637,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             self.players[occupant].position = PIT_CAGE
             self.players[occupant].column = None
             self.players[occupant].cage_index = cage_index
+            self.displacement_events.append((occupant, player_index))
 
     def _deal_rows(self, depth: int) -> list[list[tuple[int, int]]]:
         deck = [

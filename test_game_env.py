@@ -361,6 +361,7 @@ def test_player_can_displace_occupant_in_that_players_own_column():
 
     assert env.players[1].position == PIT_CAGE
     assert env.players[1].column is None
+    assert env.displacement_events == [(1, 0)]
 
 
 def test_pit_cage_is_planned_before_the_player_leaves():
@@ -431,6 +432,21 @@ def test_lorry_allows_only_previous_cage_or_pass():
     env.step(PIT_CAGE)
     assert env.players[0].position == PIT_CAGE
     assert env.players[0].cage_index == 0
+
+
+def test_haul_scores_when_only_one_player_remains_for_next_planning_phase():
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    env.players[1].escaped = True
+    env.players[2].escaped = True
+
+    env.step(LORRY)
+    _observation, _reward, terminated, _truncated, info = env.step(PASS)
+
+    assert not terminated
+    assert info["haul"] == 1
+    assert info["next_haul"] == 2
+    assert env.haul == 2
 
 
 def test_surviving_players_keep_unused_dynamite_for_next_haul():
@@ -517,6 +533,21 @@ def test_lorry_players_can_continue_after_two_additional_rows():
     assert len(env.rows) == 5
 
 
+def test_players_leave_when_no_cards_remain_in_the_mine():
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    env.rows = [[None] * env.n_players for _ in env.rows]
+    env.planned_players = [True] * env.n_players
+    env.consecutive_passes = 1
+
+    _observation, _reward, terminated, _truncated, info = env.step(PASS)
+
+    assert not terminated
+    assert info["mine_empty"] is True
+    assert env.haul == 2
+    assert all(not player.dead for player in env.players)
+
+
 def test_players_at_new_mine_start_can_pass_without_collecting_a_card():
     env = MineEnv(opponents=2)
     env.reset(seed=4)
@@ -546,14 +577,15 @@ def test_pass_preserves_previous_reward_during_planning():
     assert info["outcome"] == "planning"
 
 
-def test_planning_rewards_prefer_safe_cards_and_pit_cage_over_lorry():
+def test_planning_rewards_do_not_reveal_card_fronts():
     env = MineEnv(opponents=2)
     env.reset(seed=4)
     env.rows[0][0] = (GEM, BACKSIDE_A)
     env.rows[0][1] = (DRAGON, BACKSIDE_A)
 
-    assert env._planning_reward(0) > env._planning_reward(LORRY)
-    assert env._planning_reward(PIT_CAGE) > env._planning_reward(1)
+    assert env._planning_reward(0) == env._planning_reward(1) == 0.0
+    assert env._planning_reward(0) == env._planning_reward(PIT_CAGE)
+    assert env._planning_reward(LORRY) < env._planning_reward(0)
 
 
 def test_action_selection_prefers_pass_when_q_values_are_tied():
