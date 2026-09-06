@@ -23,7 +23,7 @@ BACKSIDE_A = 0
 BACKSIDE_B = 1
 BACKSIDE_C = 2
 BACKSIDE_UNKNOWN = 3
-PARTIES_PER_MATCH = 3
+HAULS_PER_GAME = 3
 SAFE_CARD_REWARD = 0.2
 DRAGON_CARD_REWARD = -0.3
 PIT_CAGE_REWARD = 0.0
@@ -45,6 +45,7 @@ class PlayerActionContext:
     private_cards: tuple[tuple[int, int], ...]
     blast_pending_by_player: tuple[bool, ...]  # Which players are blasting (public)
     own_blast_cards: tuple[tuple[int, int], ...] = ()  # Only for requesting player
+    used_blast_backsides: tuple[int, ...] = ()  # Dynamite backs used during this haul
 
 
 @dataclass
@@ -114,7 +115,10 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.starting_player = 0
         self.planning_player = 0
         self.planned_players: list[bool] = [False] * self.n_players
-        self.partie = 1
+        self.haul = 1
+        self.tie_breaker_contenders: list[int] = []
+        self.tie_breaker_turn = 0
+        self.used_blast_backsides: list[int] = []
 
     def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None):
         super().reset(seed=seed)
@@ -131,10 +135,13 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.planning_turns = 0
         starter_rng = np.random.default_rng(seed)
         self.starting_player = int(starter_rng.integers(self.n_players))
-        self.partie = 1
+        self.haul = 1
+        self.tie_breaker_contenders = []
+        self.tie_breaker_turn = 0
+        self.used_blast_backsides = []
         self.planning_player = self.starting_player
         self.planned_players = [False] * self.n_players
-        return self._observation(), {"round": self.round, "partie": self.partie}
+        return self._observation(), {"round": self.round, "haul": self.haul}
 
     def step(self, action: int):
         action = int(action)
@@ -218,31 +225,35 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.planning_turns = 0
         reward, info = self._execute_round()
         self.last_reward = reward
-        partie_over = self._game_over() or not self._can_deal_row()
+        haul_over = self._game_over() or not self._can_deal_row()
         if not self._can_deal_row():
             info["mine_empty"] = True
-        if not partie_over and not any(player.escaped for player in self.players):
+        if not haul_over and not any(player.escaped for player in self.players):
             self.rows.append(self._deal_next_row_in_turn_order(self.starting_player))
         self._advance_starting_player()
         terminated = False
-        if partie_over:
-            self._prepare_partie_scoring(info)
-            self._score_partie(info)
-            info["partie"] = self.partie
-            info["match"] = f"{self.partie}/{PARTIES_PER_MATCH}"
-            if self.partie == PARTIES_PER_MATCH:
-                terminated = True
-                info["match_over"] = True
-                reward = self._match_reward()
+        if haul_over:
+            self._return_used_blast_cards()
+            self._prepare_haul_scoring(info)
+            self._score_haul(info)
+            info["haul"] = self.haul
+            info["game"] = f"{self.haul}/{HAULS_PER_GAME}"
+            if self.haul == HAULS_PER_GAME:
+                if self._begin_tie_breaker():
+                    info["tie_break"] = True
+                else:
+                    terminated = True
+                    info["game_over"] = True
+                    reward = self._game_reward()
             else:
-                self._start_next_partie()
-                info["next_partie"] = self.partie
+                self._start_next_haul()
+                info["next_haul"] = self.haul
         else:
             self.round += 1
             self._set_players_to_starting_positions()
         return self._observation(), reward, terminated, False, info
 
-    def step_one_player(self, action: int | None = None):
+    def step_one_player(self, action: int | None = None, *, announce_blast: bool = False):
         """Advance exactly one player's planning decision.
 
         This is used by the viewer for inspecting individual player turns;
@@ -253,7 +264,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             if not player.escaped and not player.dead
         ]
         if not active_players:
-            return self._observation(), 0.0, True, False, {"match_over": True}
+            return self._observation(), 0.0, True, False, {"game_over": True}
         if self.planning_player not in active_players:
             self.planning_player = active_players[0]
 
@@ -268,11 +279,14 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         else:
             action = self._opponent_action(player_index)
 
+        if announce_blast:
+            self.begin_blast(player_index)
+
         self.last_action = action
         self.planning_turns += 1
         self.planned_players[player_index] = True
         planning_reward = self._planning_reward(action, player_index)
-        if player.blast_pending and action != PASS:
+        if player.blast_pending and action != PASS and not announce_blast:
             self._cancel_blast(player_index)
         if action == PASS:
             self.consecutive_passes += 1
@@ -301,26 +315,30 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.planned_players = [False] * self.n_players
         reward, info = self._execute_round()
         self.last_reward = reward
-        partie_over = self._game_over() or not self._can_deal_row()
+        haul_over = self._game_over() or not self._can_deal_row()
         if not self._can_deal_row():
             info["mine_empty"] = True
-        if not partie_over and not any(player.escaped for player in self.players):
+        if not haul_over and not any(player.escaped for player in self.players):
             self.rows.append(self._deal_next_row_in_turn_order(self.starting_player))
         self._advance_starting_player()
         self.planning_player = self.starting_player
         terminated = False
-        if partie_over:
-            self._prepare_partie_scoring(info)
-            self._score_partie(info)
-            info["partie"] = self.partie
-            info["match"] = f"{self.partie}/{PARTIES_PER_MATCH}"
-            if self.partie == PARTIES_PER_MATCH:
-                terminated = True
-                info["match_over"] = True
-                reward = self._match_reward()
+        if haul_over:
+            self._return_used_blast_cards()
+            self._prepare_haul_scoring(info)
+            self._score_haul(info)
+            info["haul"] = self.haul
+            info["game"] = f"{self.haul}/{HAULS_PER_GAME}"
+            if self.haul == HAULS_PER_GAME:
+                if self._begin_tie_breaker():
+                    info["tie_break"] = True
+                else:
+                    terminated = True
+                    info["game_over"] = True
+                    reward = self._game_reward()
             else:
-                self._start_next_partie()
-                info["next_partie"] = self.partie
+                self._start_next_haul()
+                info["next_haul"] = self.haul
         else:
             self.round += 1
             self._set_players_to_starting_positions()
@@ -375,9 +393,75 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             return 0.0
         return DRAGON_CARD_REWARD if card_entry[0] == DRAGON else SAFE_CARD_REWARD
 
-    def _match_reward(self) -> float:
+    def _game_reward(self) -> float:
         highest_score = max(player.score for player in self.players)
         return 1.0 if self.players[0].score == highest_score else 0.0
+
+    def _begin_tie_breaker(self) -> bool:
+        highest_score = max(player.score for player in self.players)
+        contenders = [
+            index for index, player in enumerate(self.players)
+            if player.score == highest_score
+        ]
+        if len(contenders) < 2:
+            self.tie_breaker_contenders = []
+            return False
+        self.tie_breaker_contenders = contenders
+        first_contender = next(
+            (self.starting_player + offset) % self.n_players
+            for offset in range(self.n_players)
+            if (self.starting_player + offset) % self.n_players in contenders
+        )
+        self.tie_breaker_turn = contenders.index(first_contender)
+        return True
+
+    def resolve_tie_breaker(
+        self, source: str, row: int | None = None, column: int | None = None,
+    ) -> dict[str, Any]:
+        """Draw a tie-break card for the current contender.
+
+        ``source`` is ``"deck"`` for the top deck card or ``"mine"`` for a
+        selected card in the mine. Non-dragons are discarded; a dragon removes
+        the current contender. The last remaining contender wins.
+        """
+        if len(self.tie_breaker_contenders) < 2:
+            raise ValueError("no tie-breaker is active")
+        player_index = self.tie_breaker_contenders[self.tie_breaker_turn]
+        if source == "deck":
+            if not self.cards_remaining:
+                raise ValueError("the draw pile is empty")
+            card = self.cards_remaining.pop(0)
+        elif source == "mine":
+            if row is None or column is None:
+                raise ValueError("a mine row and column are required")
+            if not 0 <= row < len(self.rows) or not 0 <= column < len(self.rows[row]):
+                raise ValueError("mine card out of range")
+            card = self.rows[row][column]
+            if card is None:
+                raise ValueError("no card at selected mine position")
+            self.rows[row][column] = None
+        else:
+            raise ValueError("tie-break source must be 'mine' or 'deck'")
+
+        result = {
+            "player": player_index,
+            "card": card,
+            "source": source,
+            "outcome": "safe",
+        }
+        if card[0] == DRAGON:
+            result["outcome"] = "dragon"
+            self.tie_breaker_contenders.pop(self.tie_breaker_turn)
+            if len(self.tie_breaker_contenders) == 1:
+                result["winner"] = self.tie_breaker_contenders[0]
+                result["game_over"] = True
+                self.tie_breaker_contenders = []
+                return result
+            self.tie_breaker_turn %= len(self.tie_breaker_contenders)
+        else:
+            self.players[player_index].collected_cards.append(card)
+            self.tie_breaker_turn = (self.tie_breaker_turn + 1) % len(self.tie_breaker_contenders)
+        return result
 
     def _set_players_to_starting_positions(self) -> None:
         starting_position = len(self.rows)
@@ -386,7 +470,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                 player.position = starting_position
                 player.column = None
 
-    def _prepare_partie_scoring(self, info: dict[str, Any]) -> None:
+    def _prepare_haul_scoring(self, info: dict[str, Any]) -> None:
         if info.get("outcome") == "dragon":
             return
         active = [player for player in self.players if not player.escaped and not player.dead]
@@ -394,13 +478,13 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             for player in active:
                 player.escaped = True
 
-    def _score_partie(self, info: dict[str, Any]) -> None:
+    def _score_haul(self, info: dict[str, Any]) -> None:
         escaped = [player for player in self.players if player.escaped]
         if escaped:
             highest_gems = max(player.gems for player in escaped)
             gem_winners = [player for player in escaped if player.gems == highest_gems]
             if len(escaped) == 1 or len(gem_winners) == 1:
-                gem_winners[0].score += 3 if self.partie < PARTIES_PER_MATCH else 4
+                gem_winners[0].score += 3 if self.haul < HAULS_PER_GAME else 4
             else:
                 for player in gem_winners:
                     player.score += 1
@@ -414,14 +498,20 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                 player.score += 2 if no_one_escaped and info.get("outcome") == "dragon" else -1
             player.score = max(-1, player.score)
 
-    def _start_next_partie(self) -> None:
+    def _return_used_blast_cards(self) -> None:
+        self.cards_remaining.extend(
+            (DYNAMITE, backside) for backside in self.used_blast_backsides
+        )
+        self.rng.shuffle(self.cards_remaining)
+
+    def _start_next_haul(self) -> None:
         retained_dynamite_cards = [
             [card for card in player.collected_cards if card[0] == DYNAMITE]
-            if player.escaped else []
+            if not player.dead else []
             for player in self.players
         ]
         scores = [player.score for player in self.players]
-        self.partie += 1
+        self.haul += 1
         self.players = [
             Player(collected_cards=dynamite_cards, score=score)
             for dynamite_cards, score in zip(retained_dynamite_cards, scores)
@@ -437,6 +527,9 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.planning_turns = 0
         self.planning_player = self.starting_player
         self.planned_players = [False] * self.n_players
+        self.tie_breaker_contenders = []
+        self.tie_breaker_turn = 0
+        self.used_blast_backsides = []
 
     def _new_deck(self) -> list[tuple[int, int]]:
         return [
@@ -601,6 +694,10 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                 continue
             if player.position == PIT_CAGE:
                 player.escaped = True
+
+        for player_index in player_order:
+            player = self.players[player_index]
+            if player.escaped or player.dead:
                 continue
             if player.position == LORRY or player.position >= len(self.rows) or player.column is None:
                 continue
@@ -678,6 +775,14 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                     remaining_player.dead = True
             player.blast_cards = []
             player.blast_pending = False
+            info = {"outcome": "dragon", "dragon_player": player_index}
+            self._prepare_haul_scoring(info)
+            self._score_haul(info)
+            if self.haul < HAULS_PER_GAME:
+                self._start_next_haul()
+            else:
+                self._return_used_blast_cards()
+                self._begin_tie_breaker()
             return chosen_card
 
         player.collected_cards.append(chosen_card)
@@ -700,6 +805,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             for card in player.collected_cards:
                 if card[0] == DYNAMITE and dynamite_removed < 2:
                     dynamite_removed += 1
+                    self.used_blast_backsides.append(card[1])
                 else:
                     remaining_cards.append(card)
             player.collected_cards = remaining_cards
@@ -745,6 +851,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             "player_index": player_index,
             "blast_pending_by_player": blast_pending_by_player,
             "own_blast_cards": own_blast_cards,
+            "used_blast_backsides": list(self.used_blast_backsides),
         }
 
     def player_action_context(self, player_index: int) -> PlayerActionContext:
@@ -781,6 +888,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             private_cards=tuple(tuple(card) for card in player.collected_cards),
             blast_pending_by_player=blast_pending_by_player,
             own_blast_cards=own_blast_cards,
+            used_blast_backsides=tuple(self.used_blast_backsides),
         )
 
     def _observation(self) -> np.ndarray:

@@ -32,6 +32,33 @@ def test_random_game_terminates():
     assert terminated or truncated
 
 
+def test_tie_breaker_uses_turn_order_and_eliminates_dragon_drawers():
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    env.starting_player = 1
+    env.haul = 3
+    env.players[0].score = 5
+    env.players[1].score = 5
+    env.players[2].score = 1
+    env.cards_remaining = [(GEM, BACKSIDE_A)]
+    env.rows[0][0] = (DRAGON, BACKSIDE_B)
+
+    assert env._begin_tie_breaker() is True
+    assert env.tie_breaker_contenders == [0, 1]
+    assert env.tie_breaker_turn == 1
+
+    first = env.resolve_tie_breaker("deck")
+    assert first["player"] == 1
+    assert first["outcome"] == "safe"
+    assert env.players[1].collected_cards[-1] == (GEM, BACKSIDE_A)
+
+    second = env.resolve_tie_breaker("mine", 0, 0)
+    assert second["player"] == 0
+    assert second["outcome"] == "dragon"
+    assert second["winner"] == 1
+    assert second["game_over"] is True
+
+
 def test_seeded_reset_is_reproducible():
     first = MineEnv().reset(seed=12)[0]
     second = MineEnv().reset(seed=12)[0]
@@ -49,7 +76,7 @@ def test_new_game_randomizes_starter_and_execution_rotates_starter():
     env.step(LORRY)
     env.step(PASS)
     assert env.starting_player == (first_starter + 1) % env.n_players
-    assert env.partie == 2
+    assert env.haul == 2
 
     env.reset(seed=4)
     assert env.starting_player == first_starter
@@ -210,6 +237,7 @@ def test_cards_are_collected_only_after_consecutive_passes():
 def test_blast_choice_draw_and_resolution_are_limited_to_three_cards():
     env = MineEnv(opponents=2)
     env.reset(seed=5)
+    env.planning_player = 0
     env.players[0].collected_cards = [(DYNAMITE, BACKSIDE_A), (DYNAMITE, BACKSIDE_B)]
     env.rows[0][0] = (GEM, BACKSIDE_A)
     env.players[0].position = 0
@@ -231,6 +259,7 @@ def test_blast_choice_draw_and_resolution_are_limited_to_three_cards():
     env._execute_round()
 
     assert len(env.players[0].blast_cards) == 3
+    assert env.used_blast_backsides == [BACKSIDE_A, BACKSIDE_B]
     assert [card[1] for card in env.players[0].blast_cards] == [BACKSIDE_A, BACKSIDE_B, BACKSIDE_C]
     assert len(env.cards_remaining) == 3
 
@@ -241,6 +270,32 @@ def test_blast_choice_draw_and_resolution_are_limited_to_three_cards():
     second = env.resolve_blast(0, 0)
     assert env.players[0].blast_pending is False
     assert env.players[0].collected_cards[-2:] == [chosen, second]
+
+
+def test_blast_announcement_survives_a_turn_that_reaches_execution():
+    env = MineEnv(opponents=2)
+    env.reset(seed=5)
+    env.planning_player = 0
+    env.players[0].collected_cards = [(DYNAMITE, BACKSIDE_A), (DYNAMITE, BACKSIDE_B)]
+    env.rows[0][0] = (GEM, BACKSIDE_A)
+    env.players[0].position = 2
+    env.players[0].column = 0
+    env.cards_remaining = [
+        (GEM, BACKSIDE_A),
+        (DYNAMITE, BACKSIDE_B),
+        (GEM, BACKSIDE_C),
+        (DYNAMITE, BACKSIDE_A),
+        (GEM, BACKSIDE_B),
+        (DYNAMITE, BACKSIDE_C),
+    ]
+
+    env.step_one_player(0, announce_blast=True)
+    env.planning_player = 0
+    env.consecutive_passes = 2
+    env.step_one_player(PASS)
+
+    assert env.players[0].blast_pending is True
+    assert len(env.players[0].blast_cards) == 3
 
 
 def test_announced_blast_keeps_same_row_out_of_next_turn_choices():
@@ -320,22 +375,22 @@ def test_pit_cage_is_planned_before_the_player_leaves():
     assert any(env.action_mask()[:PIT_CAGE])
 
     env.step(PASS)
-    assert env.partie == 1
+    assert env.haul == 1
     assert env.players[0].escaped
 
 
-def test_match_scores_three_parties_and_terminates_after_the_third():
+def test_game_scores_three_hauls_and_terminates_after_the_third():
     env = MineEnv(opponents=2)
     env.reset(seed=4)
     for player in env.players[1:]:
         player.dead = True
 
-    for partie in (1, 2):
+    for haul in (1, 2):
         env.step(PIT_CAGE)
         _observation, _reward, terminated, _truncated, info = env.step(PASS)
         assert not terminated
-        assert info["match"] == f"{partie}/3"
-        assert env.partie == partie + 1
+        assert info["game"] == f"{haul}/3"
+        assert env.haul == haul + 1
 
         for player in env.players[1:]:
             player.dead = True
@@ -343,8 +398,8 @@ def test_match_scores_three_parties_and_terminates_after_the_third():
     env.step(PIT_CAGE)
     _observation, _reward, terminated, _truncated, info = env.step(PASS)
     assert terminated
-    assert info["match"] == "3/3"
-    assert info["match_over"]
+    assert info["game"] == "3/3"
+    assert info["game_over"]
     assert env.players[0].score == 10
 
 
@@ -376,6 +431,24 @@ def test_lorry_allows_only_previous_cage_or_pass():
     env.step(PIT_CAGE)
     assert env.players[0].position == PIT_CAGE
     assert env.players[0].cage_index == 0
+
+
+def test_surviving_players_keep_unused_dynamite_for_next_haul():
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    env.players[0].collected_cards = [
+        (DYNAMITE, BACKSIDE_A),
+        (GEM, BACKSIDE_B),
+    ]
+    env.players[1].collected_cards = [(DYNAMITE, BACKSIDE_C)]
+    env.players[2].collected_cards = [(DYNAMITE, BACKSIDE_B)]
+    env.players[2].dead = True
+
+    env._start_next_haul()
+
+    assert env.players[0].collected_cards == [(DYNAMITE, BACKSIDE_A)]
+    assert env.players[1].collected_cards == [(DYNAMITE, BACKSIDE_C)]
+    assert env.players[2].collected_cards == []
 
 
 def test_collected_cards_disappear_and_new_row_requires_no_departure():
@@ -440,7 +513,7 @@ def test_lorry_players_can_continue_after_two_additional_rows():
         env.planning_turns = 1
         env.planned_players = [True] * env.n_players
 
-    assert env.partie == 1
+    assert env.haul == 1
     assert len(env.rows) == 5
 
 
@@ -548,11 +621,11 @@ def test_one_player_passes_advance_lorry_and_pit_cage_positions():
         else:
             env.step_one_player()
 
-    assert env.partie == 2
+    assert env.haul == 2
     assert all(player.position == 3 for player in env.players)
 
 
-def test_pit_cage_player_does_not_end_partie_while_lorry_players_remain():
+def test_pit_cage_player_does_not_end_haul_while_lorry_players_remain():
     env = MineEnv(opponents=2)
     env.reset(seed=4)
     env.starting_player = 0
@@ -569,7 +642,7 @@ def test_pit_cage_player_does_not_end_partie_while_lorry_players_remain():
         _observation, _reward, terminated, _truncated, info = env.step_one_player()
 
     assert not terminated
-    assert env.partie == 1
+    assert env.haul == 1
     assert info["outcome"] == "continued"
 
 

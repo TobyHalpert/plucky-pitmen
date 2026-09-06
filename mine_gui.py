@@ -10,7 +10,10 @@ from tkinter import ttk
 
 import numpy as np
 
-from game_env import BACKSIDE_A, BACKSIDE_B, BACKSIDE_C, DRAGON, DYNAMITE, GEM, LORRY, MineEnv, PASS, PIT_CAGE
+from game_env import (
+    BACKSIDE_A, BACKSIDE_B, BACKSIDE_C, DRAGON, DYNAMITE, GEM, LORRY,
+    HAULS_PER_GAME, MineEnv, PASS, PIT_CAGE,
+)
 from rule_policy import deterministic_policy
 from train_q_learning import select_action, train
 
@@ -47,8 +50,7 @@ class MineViewer:
         root.minsize(860, 620)
         root.configure(bg="#101820")
 
-        self.round_var = tk.StringVar()
-        self.partie_var = tk.StringVar()
+        self.haul_var = tk.StringVar()
         self.stack_var = tk.StringVar()
         self.message_var = tk.StringVar()
         self.action_var = tk.IntVar(value=0)
@@ -70,11 +72,7 @@ class MineViewer:
             font=("Georgia", 18, "bold"),
         ).pack(side="left", padx=(0, 20))
         tk.Label(
-            controls, textvariable=self.round_var, fg="#d7e4e8", bg="#182832",
-            font=("Segoe UI", 11, "bold"),
-        ).pack(side="left")
-        tk.Label(
-            controls, textvariable=self.partie_var, fg="#d7e4e8", bg="#182832",
+            controls, textvariable=self.haul_var, fg="#d7e4e8", bg="#182832",
             font=("Segoe UI", 11, "bold"),
         ).pack(side="left", padx=(14, 0))
         tk.Label(
@@ -125,14 +123,34 @@ class MineViewer:
         self.autoplay_button.pack(fill="x", pady=(6, 0))
         self.autoplay_step_button = ttk.Button(side, text="Autoplay step", command=self.autoplay_once)
         self.autoplay_step_button.pack(fill="x", pady=(6, 0))
-        tk.Label(
-            side, textvariable=self.message_var, fg="#b7c8cc", bg="#14242c",
-            justify="left", wraplength=205, anchor="nw",
-        ).pack(fill="both", expand=True, pady=(18, 0))
+        message_frame = tk.Frame(side, bg="#14242c")
+        message_frame.pack(fill="both", expand=True, pady=(18, 0))
+        self.message_text = tk.Text(
+            message_frame, bg="#0e1a20", fg="#b7c8cc", relief="flat",
+            font=("Segoe UI", 9), padx=8, pady=8, wrap="word", state="disabled",
+        )
+        self.message_text.pack(side="left", fill="both", expand=True)
+        message_scrollbar = ttk.Scrollbar(
+            message_frame, orient="vertical", command=self.message_text.yview,
+        )
+        message_scrollbar.pack(side="right", fill="y")
+        self.message_text.configure(yscrollcommand=message_scrollbar.set)
+        self.message_var.trace_add("write", self._append_message)
+
+    def _append_message(self, *_args: object) -> None:
+        self.message_text.configure(state="normal")
+        self.message_text.insert("end", self.message_var.get() + "\n")
+        self.message_text.configure(state="disabled")
+        self.message_text.see("end")
 
     def _action_label_selected(self, _event: tk.Event) -> None:
         selected = self.action_menu.get()
         player = self.env.players[0]
+        if self.env.tie_breaker_contenders:
+            labels = list(self.action_menu["values"])
+            if selected in labels:
+                self.action_var.set(labels.index(selected))
+            return
         if player.blast_pending and player.blast_cards:
             labels = list(self.action_menu["values"])
             if selected in labels:
@@ -149,6 +167,9 @@ class MineViewer:
 
     def reset_game(self) -> None:
         self.stop_autoplay()
+        self.message_text.configure(state="normal")
+        self.message_text.delete("1.0", "end")
+        self.message_text.configure(state="disabled")
         try:
             self.policy = self.policy_var.get()
             self.training_q_table = None
@@ -180,6 +201,22 @@ class MineViewer:
     def _environment_policy(self) -> str:
         return "random" if self.policy == "training" else self.policy
 
+    def setup_tie_break_test(self) -> None:
+        self.env.haul = 3
+        self.env.starting_player = 0
+        self.env.players[0].score = 5
+        self.env.players[1].score = 5
+        for player in self.env.players[2:]:
+            player.score = 0
+        self.env.rows = [[None] * self.env.n_players for _ in range(3)]
+        self.env.rows[0][0] = (GEM, BACKSIDE_A)
+        self.env.rows[0][1] = (DRAGON, BACKSIDE_B)
+        self.env.cards_remaining = [(GEM, BACKSIDE_C)]
+        self.env._begin_tie_breaker()
+        self._update_action_options()
+        self.message_var.set("Tie-break test: Player 1 draws first. Choose a mine card or the deck.")
+        self.draw_scene()
+
     def _advance_opponents_to_p1(self) -> None:
         while self.env.planning_player != 0:
             _observation, _reward, terminated, _truncated, _info = self.env.step_one_player()
@@ -193,14 +230,27 @@ class MineViewer:
         )
 
     def take_action(self) -> None:
+        if self.env.tie_breaker_contenders:
+            self._resolve_tie_breaker(int(self.action_var.get()))
+            return
+
         player = self.env.players[0]
         if player.blast_pending and player.blast_cards:
             choice_index = int(self.action_var.get())
             if not 0 <= choice_index < len(player.blast_cards):
                 self.message_var.set("Select one of the three blast cards.")
                 return
+            final_haul = self.env.haul == HAULS_PER_GAME
             chosen = self.env.resolve_blast(0, choice_index)
-            self.message_var.set(f"Blast choice: {BACKSIDE_SYMBOLS[chosen[1]]}. Reward +0.00.")
+            if chosen[0] == DRAGON:
+                if final_haul:
+                    self.message_var.set("Blast choice: DRAGON. Player 1 awakened the dragon. Game over.")
+                    self.stop_autoplay()
+                    self.step_button.state(["disabled"])
+                else:
+                    self.message_var.set("Blast choice: DRAGON. Player 1 awakened the dragon. Starting the next haul.")
+            else:
+                self.message_var.set(f"Blast choice: {FRONT_LABELS[chosen[0]]}. Reward +0.00.")
             self.draw_scene()
             self._update_action_options()
             return
@@ -215,8 +265,7 @@ class MineViewer:
                 self._update_action_options()
                 self.step_button.state(["disabled"])
                 self.message_var.set(
-                    f"Player {info.get('player', 0) + 1}: {info.get('outcome', 'continued')}. "
-                    f"Reward {reward:+.2f}. Game over. Start a new game to play again."
+                    self._format_outcome(info, reward) + " Game over. Start a new game to play again."
                 )
                 return
 
@@ -232,9 +281,9 @@ class MineViewer:
             return
         if blast_requested:
             try:
-                _observation, reward, terminated, _truncated, info = self.env.step_one_player(action)
-                if not terminated:
-                    self.env.begin_blast(0)
+                _observation, reward, terminated, _truncated, info = self.env.step_one_player(
+                    action, announce_blast=True
+                )
             except ValueError as error:
                 self.message_var.set(str(error))
                 return
@@ -242,8 +291,7 @@ class MineViewer:
             _observation, reward, terminated, _truncated, info = self.env.step_one_player(action)
         while not terminated and self.env.planning_player != 0:
             _observation, reward, terminated, _truncated, info = self.env.step_one_player()
-        outcome = info.get("outcome", "continued")
-        self.message_var.set(f"Round {info.get('round', self.env.round)}: {outcome}. Reward {reward:+.2f}.")
+        self.message_var.set(self._format_outcome(info, reward))
         self.draw_scene()
         self._update_action_options()
         if terminated:
@@ -266,6 +314,76 @@ class MineViewer:
             self.root.after_cancel(self.autoplay_job)
             self.autoplay_job = None
 
+    def _format_outcome(self, info: dict, reward: float) -> str:
+        outcome = info.get("outcome", "continued")
+        message = f"Round {info.get('round', self.env.round)}: {outcome}. Reward {reward:+.2f}."
+        dragon_player = info.get("dragon_player")
+        if outcome == "dragon" and dragon_player is not None:
+            message += f" Player {dragon_player + 1} awakened the dragon."
+        return message
+
+    def _resolve_tie_breaker(self, choice_index: int) -> None:
+        options = self._tie_break_options()
+        if not 0 <= choice_index < len(options):
+            self.message_var.set("Select a tie-break card source.")
+            return
+        source, row, column = options[choice_index]
+        result = self.env.resolve_tie_breaker(source, row, column)
+        player_number = result["player"] + 1
+        if result.get("game_over"):
+            self.message_var.set(
+                f"Player {player_number} drew a dragon and was eliminated from the tie-break. "
+                f"Player {result['winner'] + 1} wins the tie-break. Game over."
+            )
+            self.stop_autoplay()
+            self.step_button.state(["disabled"])
+        elif result["outcome"] == "dragon":
+            self.message_var.set(f"Player {player_number} drew a dragon and was eliminated from the tie-break.")
+        else:
+            self.message_var.set(f"Player {player_number} drew a safe tie-break card.")
+
+        while self.env.tie_breaker_contenders:
+            current_player = self.env.tie_breaker_contenders[self.env.tie_breaker_turn]
+            if current_player == 0:
+                break
+            opponent_options = self._tie_break_options()
+            if len(opponent_options) == 1:
+                opponent_source, opponent_row, opponent_column = opponent_options[0]
+            else:
+                opponent_source, opponent_row, opponent_column = opponent_options[
+                    int(self.env.rng.integers(len(opponent_options)))
+                ]
+            opponent_result = self.env.resolve_tie_breaker(
+                opponent_source, opponent_row, opponent_column,
+            )
+            opponent_number = opponent_result["player"] + 1
+            if opponent_result.get("game_over"):
+                self.message_var.set(
+                    f"Player {opponent_number} drew a dragon and was eliminated from the tie-break. "
+                    f"Player {opponent_result['winner'] + 1} wins the tie-break. Game over."
+                )
+                self.stop_autoplay()
+                self.step_button.state(["disabled"])
+                break
+            if opponent_result["outcome"] == "dragon":
+                self.message_var.set(
+                    f"Player {opponent_number} drew a dragon and was eliminated from the tie-break."
+                )
+            else:
+                self.message_var.set(f"Player {opponent_number} drew a safe tie-break card.")
+        self.draw_scene()
+        self._update_action_options()
+
+    def _tie_break_options(self) -> list[tuple[str, int | None, int | None]]:
+        options = [("deck", None, None)] if self.env.cards_remaining else []
+        options.extend(
+            ("mine", row_index, column_index)
+            for row_index, row in enumerate(self.env.rows)
+            for column_index, card in enumerate(row)
+            if card is not None
+        )
+        return options
+
     def _autoplay_step(self) -> None:
         if not self.autoplay:
             return
@@ -279,6 +397,27 @@ class MineViewer:
         self._run_single_player_step()
 
     def _run_single_player_step(self) -> None:
+        if self.env.tie_breaker_contenders:
+            self._resolve_tie_breaker(0)
+            return
+
+        player = self.env.players[0]
+        if player.blast_pending and player.blast_cards:
+            final_haul = self.env.haul == HAULS_PER_GAME
+            chosen = self.env.resolve_blast(0, 0)
+            if chosen[0] == DRAGON:
+                if final_haul:
+                    self.message_var.set("Blast choice: DRAGON. Player 1 awakened the dragon. Game over.")
+                    self.stop_autoplay()
+                    self.step_button.state(["disabled"])
+                else:
+                    self.message_var.set("Blast choice: DRAGON. Player 1 awakened the dragon. Starting the next haul.")
+            else:
+                self.message_var.set(f"Blast choice: {FRONT_LABELS[chosen[0]]}. Reward +0.00.")
+            self.draw_scene()
+            self._update_action_options()
+            return
+
         if self.env.planning_player == 0:
             legal = [int(action) for action, allowed in enumerate(self.env.action_mask()) if allowed]
             if not legal and not (self.env.players[0].escaped or self.env.players[0].dead):
@@ -302,8 +441,7 @@ class MineViewer:
                 _observation, reward, terminated, _truncated, info = self.env.step_one_player(action)
         else:
             _observation, reward, terminated, _truncated, info = self.env.step_one_player()
-        outcome = info.get("outcome", "continued")
-        self.message_var.set(f"Player {info.get('player', 0) + 1}: {outcome}. Reward {reward:+.2f}.")
+        self.message_var.set(self._format_outcome(info, reward))
         self.draw_scene()
         self._update_action_options()
         if terminated:
@@ -391,13 +529,11 @@ class MineViewer:
             color = PLAYER_COLORS[player_index]
             canvas.create_oval(x - 11, y - 11, x + 11, y + 11, fill=color, outline="#101820", width=2)
             canvas.create_text(x, y, text=str(player_index + 1), fill="#101820", font=("Segoe UI", 9, "bold"))
-            # Draw blast indicator if player is blasting
+            # Draw blast indicator while the blast is in progress
             if player.blast_pending:
                 canvas.create_oval(x - 16, y - 16, x + 16, y + 16, fill="", outline="#ff6b6b", width=3)
-                canvas.create_text(x, y - 24, text="💥", font=("Segoe UI", 14, "bold"))
 
-        self.round_var.set(f"Round {self.env.round + 1}  |  {self.env.opponent_policy} opponents")
-        self.partie_var.set(f"Partie {self.env.partie}/3")
+        self.haul_var.set(f"Haul {self.env.haul}/3")
         top_backside = (
             BACKSIDE_SYMBOLS[self.env.cards_remaining[0][1]]
             if self.env.cards_remaining else "-"
@@ -438,15 +574,36 @@ class MineViewer:
                 gems = ", ".join(BACKSIDE_SYMBOLS[backside] for front, backside in player.collected_cards if front == GEM) or "-"
                 dynamite = ", ".join(BACKSIDE_SYMBOLS[backside] for front, backside in player.collected_cards if front == DYNAMITE) or "-"
                 self.players_text.insert("end", f"P{index + 1} (you){status}{starting}{blast_indicator}\t{player.score} VP\n")
+                self.players_text.insert("end", f"backs: {collected}\n")
                 self.players_text.insert("end", f"gems: {gems}  dynamite: {dynamite}\n\n")
             else:
                 self.players_text.insert("end", f"P{index + 1}{status}{starting}{blast_indicator}\t{player.score} VP\nbacks: {collected}\n\n")
+        if self.env.used_blast_backsides:
+            used_cards = ", ".join(
+                BACKSIDE_SYMBOLS[backside] for backside in self.env.used_blast_backsides
+            )
+            self.players_text.insert("end", f"used cards: {used_cards}\n")
         self.players_text.configure(state="disabled")
 
     def _update_action_options(self) -> None:
+        if self.env.tie_breaker_contenders:
+            labels = []
+            for source, row, column in self._tie_break_options():
+                if source == "deck":
+                    labels.append("Draw from deck")
+                else:
+                    labels.append(f"Draw from mine (row {row}, column {column + 1})")
+            self.action_menu.configure(values=labels)
+            self.action_var.set(0)
+            self.action_menu.set(labels[0])
+            return
+
         player = self.env.players[0]
         if player.blast_pending and player.blast_cards:
-            labels = [f"Blast choice {index + 1} ({BACKSIDE_SYMBOLS[card[1]]})" for index, card in enumerate(player.blast_cards)]
+            labels = [
+                f"Blast choice {index + 1} ({BACKSIDE_SYMBOLS[card[1]]})"
+                for index, card in enumerate(player.blast_cards)
+            ]
             self.action_menu.configure(values=labels)
             self.action_var.set(0)
             self.action_menu.set(labels[0])
@@ -483,9 +640,12 @@ def main() -> None:
     parser.add_argument("--opponents", type=int, choices=(2, 3, 4), default=2)
     parser.add_argument("--policy", choices=STRATEGIES, default="simple")
     parser.add_argument("--seed", type=int, default=7)
+    parser.add_argument("--tie-break-test", action="store_true", help="open directly at a tie-break scenario")
     args = parser.parse_args()
     root = tk.Tk()
-    MineViewer(root, args.opponents, args.policy, args.seed)
+    viewer = MineViewer(root, args.opponents, args.policy, args.seed)
+    if args.tie_break_test:
+        viewer.setup_tie_break_test()
     root.mainloop()
 
 
