@@ -32,7 +32,8 @@ LORRY_REWARD = -0.05
 class PlayerActionContext:
     """Public, player-scoped view for agent behaviour.
 
-    This intentionally omits all raw internal state and hides unseen card fronts.
+    This intentionally omits raw internal state and hides unseen card fronts
+    except in the home column of the requesting player.
     Blast state is public: all players see who is blasting. The blasting player's
     specific cards remain hidden from opponents.
     """
@@ -80,9 +81,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
     This is an intentionally compact abstraction of the supplied rules:
     rows are represented by depths 0..2, and each round the agent chooses a
     destination while opponents use a fixed policy. Card identities remain
-    hidden; only the agent's own collected cards are observed. The visible
-    backside pattern of every card in the mine is also included in the
-    observation; card fronts remain hidden until resolved.
+    hidden unless they lie in the player's own home column.
     """
 
     metadata = {"render_modes": []}
@@ -147,7 +146,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         action = int(action)
         if not self.action_space.contains(action):
             raise ValueError(f"invalid action: {action}")
-        if not self._legal(action):
+        if not self._legal(action, player_index=0):
             return self._observation(), -0.15, False, False, {"illegal_action": True}
 
         self.last_action = action
@@ -255,11 +254,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         return self._observation(), reward, terminated, False, info
 
     def step_one_player(self, action: int | None = None, *, announce_blast: bool = False):
-        """Advance exactly one player's planning decision.
-
-        This is used by the viewer for inspecting individual player turns;
-        ``step`` retains the learner-plus-opponents Gymnasium behavior.
-        """
+        """Advance exactly one player's planning decision."""
         active_players = [
             index for index, player in enumerate(self.players)
             if not player.escaped and not player.dead
@@ -275,7 +270,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             if action is None:
                 action = PASS
             action = int(action)
-            if not self.action_space.contains(action) or not self._legal(action):
+            if not self.action_space.contains(action) or not self._legal(action, player_index):
                 return self._observation(), 0.0, False, False, {"illegal_action": True}
         else:
             action = self._opponent_action(player_index)
@@ -416,12 +411,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
     def resolve_tie_breaker(
         self, source: str, row: int | None = None, column: int | None = None,
     ) -> dict[str, Any]:
-        """Draw a tie-break card for the current contender.
-
-        ``source`` is ``"deck"`` for the top deck card or ``"mine"`` for a
-        selected card in the mine. Non-dragons are discarded; a dragon removes
-        the current contender. The last remaining contender wins.
-        """
+        """Draw a tie-break card for the current contender."""
         if len(self.tie_breaker_contenders) < 2:
             raise ValueError("no tie-breaker is active")
         player_index = self.tie_breaker_contenders[self.tie_breaker_turn]
@@ -639,17 +629,14 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             self.players[occupant].cage_index = cage_index
             self.displacement_events.append((occupant, player_index))
 
-    def _deal_rows(self, depth: int) -> list[list[tuple[int, int]]]:
-        deck = [
-            (card, backside)
-            for backside in (BACKSIDE_A, BACKSIDE_B, BACKSIDE_C)
-            for card in ([DRAGON] * 2 + [GEM] * 4 + [DYNAMITE] * 4)
-        ]
-        self.rng.shuffle(deck)
-        return [deck[row * self.n_players : (row + 1) * self.n_players] for row in range(depth)]
-
     def _opponent_action(self, player_index: int) -> int:
         player = self.players[player_index]
+
+        # Delegate to the rule-based policy first, before any position-based fallbacks
+        if self.opponent_policy == "simple":
+            from rule_policy import deterministic_policy
+            return deterministic_policy(self)
+
         if player.position in (PIT_CAGE, LORRY):
             if not self.planned_players[player_index]:
                 if player.position == LORRY:
@@ -668,9 +655,6 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                 or self._can_displace(row, column, player_index)
             )
         ]
-        if self.opponent_policy == "simple":
-            from rule_policy import deterministic_policy
-            return deterministic_policy(self)
         if self.opponent_policy == "cautious" and self.round > 0:
             if movement_depth > 0 and self.rng.random() < 0.35:
                 return PIT_CAGE
@@ -746,10 +730,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         )
 
     def begin_blast(self, player_index: int) -> None:
-        """Announce a blast during planning for a player.
-
-        The player must already have collected at least two dynamite cards.
-        """
+        """Announce a blast during planning for a player."""
         if not 0 <= player_index < self.n_players:
             raise IndexError("player_index out of range")
         player = self.players[player_index]
@@ -824,11 +805,11 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         """Return the information a specific player is allowed to inspect.
 
         Every player can see:
-        - The public card backs in the mine
-        - Their own collected cards
-        - Which players are currently blasting (public information)
-        - If they are blasting: the three drawn cards (private to them)
-        - Hidden card fronts remain masked for everyone else
+        - The public card backs in the mine.
+        - Card FRONTS in their own home column (column == player_index).
+        - Their own collected cards.
+        - Which players are currently blasting (public information).
+        - If they are blasting: the three drawn cards (private to them).
         """
         if not 0 <= player_index < self.n_players:
             raise IndexError("player_index out of range")
@@ -837,10 +818,14 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         public_rows = []
         for row in self.rows[:5]:
             public_row = []
-            for card_entry in row[:5]:
+            for col, card_entry in enumerate(row[:5]):
                 if card_entry is None:
                     public_row.append(None)
+                elif col == player_index:
+                    # Own home column: front value is revealed
+                    public_row.append((card_entry[0], card_entry[1]))
                 else:
+                    # Other columns: front is masked
                     public_row.append((None, card_entry[1]))
             public_rows.append(public_row)
 
@@ -859,9 +844,8 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
     def player_action_context(self, player_index: int) -> PlayerActionContext:
         """Return the public action context for a given player.
 
-        This is the safe API for external behaviour scripts: they receive only the
-        legal moves and public information, never the raw engine state.
-        Blast state is public: all players know who is blasting.
+        This is the safe API for external behaviour scripts.
+        Card fronts in the player's own home column are visible. All others remain hidden.
         """
         if not 0 <= player_index < self.n_players:
             raise IndexError("player_index out of range")
@@ -869,16 +853,20 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         public_rows = []
         for row in self.rows[:5]:
             public_row = []
-            for card_entry in row[:5]:
+            for col, card_entry in enumerate(row[:5]):
                 if card_entry is None:
                     public_row.append(None)
+                elif col == player_index:
+                    # Own home column: front value is revealed
+                    public_row.append((card_entry[0], card_entry[1]))
                 else:
+                    # Other columns: front is masked
                     public_row.append((None, card_entry[1]))
             public_rows.append(tuple(public_row))
 
         player = self.players[player_index]
         legal_actions = tuple(
-            int(action) for action, allowed in enumerate(self.action_mask()) if allowed
+            int(action) for action, allowed in enumerate(self.action_mask(player_index)) if allowed
         )
         blast_pending_by_player = tuple(p.blast_pending for p in self.players)
         own_blast_cards = tuple(tuple(card) for card in player.blast_cards) if player.blast_pending else ()
@@ -907,11 +895,11 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         backside_values = [BACKSIDE_UNKNOWN] * 25
         own_front_values = [BACKSIDE_UNKNOWN] * 25
         for row_index, row in enumerate(self.rows[:5]):
-            for player_index, card_entry in enumerate(row[:5]):
+            for col_index, card_entry in enumerate(row[:5]):
                 if card_entry is not None:
-                    backside_values[row_index * 5 + player_index] = card_entry[1]
-                    if player_index == 0:
-                        own_front_values[row_index * 5 + player_index] = card_entry[0] + 4
+                    backside_values[row_index * 5 + col_index] = card_entry[1]
+                    if col_index == 0:  # Player 0's column is index 0
+                        own_front_values[row_index * 5 + col_index] = card_entry[0] + 4
         values.extend(backside_values)
         values.extend(own_front_values)
         return np.asarray(values, dtype=np.int8)
