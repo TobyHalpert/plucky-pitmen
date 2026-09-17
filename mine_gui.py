@@ -646,7 +646,7 @@ class MineViewer:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="View MineEnv player progression.")
-    parser.add_argument("--opponents", type=int, choices=(2, 3, 4), default=2)
+    parser.add_argument("--opponents", type=int, choices=(2, 3, 4), default=3)
     parser.add_argument("--policy", choices=STRATEGIES, default="simple")
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--tie-break-test", action="store_true", help="open directly at a tie-break scenario")

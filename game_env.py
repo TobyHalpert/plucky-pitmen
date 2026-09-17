@@ -1,4 +1,4 @@
-"""Gymnasium environment for a simplified Plucky Pitmen strategy model."""
+"""Gymnasium environment for Plucky Pitmen."""
 
 from __future__ import annotations
 
@@ -23,6 +23,7 @@ BACKSIDE_A = 0
 BACKSIDE_B = 1
 BACKSIDE_C = 2
 BACKSIDE_UNKNOWN = 3
+
 HAULS_PER_GAME = 3
 PIT_CAGE_REWARD = 0.0
 LORRY_REWARD = -0.05
@@ -31,11 +32,6 @@ LORRY_REWARD = -0.05
 @dataclass(frozen=True)
 class PlayerActionContext:
     """Public, player-scoped view for agent behaviour.
-
-    This intentionally omits raw internal state and hides unseen card fronts
-    except in the home column of the requesting player.
-    Blast state is public: all players see who is blasting. The blasting player's
-    specific cards remain hidden from opponents.
     """
 
     player_index: int
@@ -76,16 +72,10 @@ class Player:
 
 
 class MineEnv(gym.Env[np.ndarray, np.int64]):
-    """Single-agent Gymnasium environment for learning mine-exit decisions.
-
-    Hauls end immediately when any player dies. Players who have already escaped,
-    or who are standing in the pit cage when a round resolves, survive a dragon.
-    A game ends after the final haul is scored and any tie-breaker is resolved.
-    """
 
     metadata = {"render_modes": []}
 
-    def __init__(self, opponents: int = 2, opponent_policy: str = "random") -> None:
+    def __init__(self, opponents: int = 3, opponent_policy: str = "random") -> None:
         if opponents not in (2, 3, 4):
             raise ValueError("opponents must be 2, 3, or 4")
         if opponent_policy not in {"simple", "random", "cautious", "greedy"}:
@@ -294,7 +284,6 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         if not self._can_deal_row() or mine_empty:
             info["mine_empty"] = True
 
-        # A new row is only dealt if the haul continues and nobody left the mine.
         if not haul_over and not any(player.escaped for player in self.players):
             self.rows.append(self._deal_next_row_in_turn_order(self.starting_player))
 
@@ -382,74 +371,6 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
     def _game_reward(self) -> float:
         highest_score = max(player.score for player in self.players)
         return 1.0 if self.players[0].score == highest_score else 0.0
-
-    # ------------------------------------------------------------------
-    # Tie-breaker
-    # ------------------------------------------------------------------
-
-    def _begin_tie_breaker(self) -> bool:
-        highest_score = max(player.score for player in self.players)
-        contenders = [
-            index for index, player in enumerate(self.players)
-            if player.score == highest_score
-        ]
-        if len(contenders) < 2:
-            self.tie_breaker_contenders = []
-            return False
-        self.tie_breaker_contenders = contenders
-        first_contender = next(
-            (self.starting_player + offset) % self.n_players
-            for offset in range(self.n_players)
-            if (self.starting_player + offset) % self.n_players in contenders
-        )
-        self.tie_breaker_turn = contenders.index(first_contender)
-        return True
-
-    def resolve_tie_breaker(
-        self, source: str, row: int | None = None, column: int | None = None,
-    ) -> dict[str, Any]:
-        """Draw a tie-break card for the current contender."""
-        if len(self.tie_breaker_contenders) < 2:
-            raise ValueError("no tie-breaker is active")
-        player_index = self.tie_breaker_contenders[self.tie_breaker_turn]
-        if source == "deck":
-            if not self.cards_remaining:
-                raise ValueError("the draw pile is empty")
-            card = self.cards_remaining.pop(0)
-        elif source == "mine":
-            if row is None or column is None:
-                raise ValueError("a mine row and column are required")
-            if not 0 <= row < len(self.rows) or not 0 <= column < len(self.rows[row]):
-                raise ValueError("mine card out of range")
-            card = self.rows[row][column]
-            if card is None:
-                raise ValueError("no card at selected mine position")
-            self.rows[row][column] = None
-        else:
-            raise ValueError("tie-break source must be 'mine' or 'deck'")
-
-        result = {
-            "player": player_index,
-            "card": card,
-            "source": source,
-            "outcome": "safe",
-        }
-        if card[0] == DRAGON:
-            result["outcome"] = "dragon"
-            self.tie_breaker_contenders.pop(self.tie_breaker_turn)
-            if len(self.tie_breaker_contenders) == 1:
-                result["winner"] = self.tie_breaker_contenders[0]
-                result["game_over"] = True
-                self.tie_breaker_contenders = []
-                self.game_finished = True
-                return result
-            self.tie_breaker_turn %= len(self.tie_breaker_contenders)
-        else:
-            self.players[player_index].collected_cards.append(card)
-            self.tie_breaker_turn = (
-                (self.tie_breaker_turn + 1) % len(self.tie_breaker_contenders)
-            )
-        return result
 
     # ------------------------------------------------------------------
     # Haul lifecycle
@@ -854,6 +775,74 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                 player.collected_cards.extend(player.blast_cards)
                 player.blast_cards = []
                 player.blast_pending = False
+
+    # ------------------------------------------------------------------
+    # Tie-breaker
+    # ------------------------------------------------------------------
+
+    def _begin_tie_breaker(self) -> bool:
+        highest_score = max(player.score for player in self.players)
+        contenders = [
+            index for index, player in enumerate(self.players)
+            if player.score == highest_score
+        ]
+        if len(contenders) < 2:
+            self.tie_breaker_contenders = []
+            return False
+        self.tie_breaker_contenders = contenders
+        first_contender = next(
+            (self.starting_player + offset) % self.n_players
+            for offset in range(self.n_players)
+            if (self.starting_player + offset) % self.n_players in contenders
+        )
+        self.tie_breaker_turn = contenders.index(first_contender)
+        return True
+
+    def resolve_tie_breaker(
+        self, source: str, row: int | None = None, column: int | None = None,
+    ) -> dict[str, Any]:
+        """Draw a tie-break card for the current contender."""
+        if len(self.tie_breaker_contenders) < 2:
+            raise ValueError("no tie-breaker is active")
+        player_index = self.tie_breaker_contenders[self.tie_breaker_turn]
+        if source == "deck":
+            if not self.cards_remaining:
+                raise ValueError("the draw pile is empty")
+            card = self.cards_remaining.pop(0)
+        elif source == "mine":
+            if row is None or column is None:
+                raise ValueError("a mine row and column are required")
+            if not 0 <= row < len(self.rows) or not 0 <= column < len(self.rows[row]):
+                raise ValueError("mine card out of range")
+            card = self.rows[row][column]
+            if card is None:
+                raise ValueError("no card at selected mine position")
+            self.rows[row][column] = None
+        else:
+            raise ValueError("tie-break source must be 'mine' or 'deck'")
+
+        result = {
+            "player": player_index,
+            "card": card,
+            "source": source,
+            "outcome": "safe",
+        }
+        if card[0] == DRAGON:
+            result["outcome"] = "dragon"
+            self.tie_breaker_contenders.pop(self.tie_breaker_turn)
+            if len(self.tie_breaker_contenders) == 1:
+                result["winner"] = self.tie_breaker_contenders[0]
+                result["game_over"] = True
+                self.tie_breaker_contenders = []
+                self.game_finished = True
+                return result
+            self.tie_breaker_turn %= len(self.tie_breaker_contenders)
+        else:
+            self.players[player_index].collected_cards.append(card)
+            self.tie_breaker_turn = (
+                (self.tie_breaker_turn + 1) % len(self.tie_breaker_contenders)
+            )
+        return result
 
     # ------------------------------------------------------------------
     # Views
