@@ -15,37 +15,57 @@ from game_env import (
     MAX_COLUMNS,
     PASS,
     PIT_CAGE,
+    DRAGONS_PER_BACKSIDE,
+    TOTAL_PER_BACKSIDE,
 )
 
 
 def _estimate_dragon_risk(env: MineEnv, player_index: int, backside: int) -> float:
-    """Estimate probability that a card with the given backside is a DRAGON.
+    """Estimate probability that an unknown-front card with the given backside is a DRAGON.
 
-    Uses strictly player-accessible information (own hand + known used blast cards).
-    Each backside pool starts with 2 Dragons, 4 Gems, 4 Dynamites (10 cards total).
+    Dragons are never collected — pulling one ends the haul. Known non-dragons therefore
+    come from four sources:
+    - Own collected cards with this backside (definitely non-dragons).
+    - Opponent collected cards with this backside (backsides are public).
+    - Used blast backsides matching this backside (definitely dynamite).
+    - Non-dragon fronts visible in the player's own home column with this backside.
+
+    Known dragons can only come from dragons visible in the player's own home column.
     """
-    player = env.players[player_index]
-    total_dragons_per_back = 2
-    total_cards_per_back = 10
+    my_column = player_index
 
-    known_dragons = sum(
-        1 for card, back in player.collected_cards
-        if card == DRAGON and back == backside
-    )
-    known_cards = sum(
-        1 for _, back in player.collected_cards
-        if back == backside
-    )
+    known_dragons = 0
+    known_non_dragons = 0
 
-    known_cards += sum(
-        1 for back in env.used_blast_backsides
-        if back == backside
-    )
+    # Every player's collected cards: never dragons. Backsides are public.
+    for other in env.players:
+        for _, back in other.collected_cards:
+            if back == backside:
+                known_non_dragons += 1
 
-    remaining_dragons = max(0, total_dragons_per_back - known_dragons)
-    remaining_cards = max(1, total_cards_per_back - known_cards)
+    # Used blast backsides: always dynamite.
+    for back in env.used_blast_backsides:
+        if back == backside:
+            known_non_dragons += 1
 
-    return remaining_dragons / remaining_cards
+    # Own home column: fronts are fully visible.
+    for row in env.rows:
+        if my_column >= len(row):
+            continue
+        card_entry = row[my_column]
+        if card_entry is None or card_entry[1] != backside:
+            continue
+        if card_entry[0] == DRAGON:
+            known_dragons += 1
+        else:
+            known_non_dragons += 1
+
+    remaining_dragons = max(0, DRAGONS_PER_BACKSIDE - known_dragons)
+    unknown_cards = TOTAL_PER_BACKSIDE - known_dragons - known_non_dragons
+
+    if unknown_cards <= 0:
+        return 0.0
+    return remaining_dragons / unknown_cards
 
 
 def _dragon_under_opponent(env: MineEnv, player_index: int) -> bool:

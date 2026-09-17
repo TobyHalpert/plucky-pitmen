@@ -24,6 +24,14 @@ BACKSIDE_B = 1
 BACKSIDE_C = 2
 BACKSIDE_UNKNOWN = 3
 
+# Deck composition per backside pool.
+DRAGONS_PER_BACKSIDE = 2
+GEMS_PER_BACKSIDE = 4
+DYNAMITES_PER_BACKSIDE = 4
+TOTAL_PER_BACKSIDE = (
+    DRAGONS_PER_BACKSIDE + GEMS_PER_BACKSIDE + DYNAMITES_PER_BACKSIDE
+)
+
 HAULS_PER_GAME = 3
 PIT_CAGE_REWARD = 0.0
 LORRY_REWARD = -0.05
@@ -457,7 +465,11 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         return [
             (card, backside)
             for backside in (BACKSIDE_A, BACKSIDE_B, BACKSIDE_C)
-            for card in ([DRAGON] * 2 + [GEM] * 4 + [DYNAMITE] * 4)
+            for card in (
+                [DRAGON] * DRAGONS_PER_BACKSIDE
+                + [GEM] * GEMS_PER_BACKSIDE
+                + [DYNAMITE] * DYNAMITES_PER_BACKSIDE
+            )
         ]
 
     def _deal_next_rows(self, depth: int) -> list[list[tuple[int, int]]]:
