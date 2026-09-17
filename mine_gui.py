@@ -439,7 +439,7 @@ class MineViewer:
                 self.action_menu.set(self._action_label(action))
                 _observation, reward, terminated, _truncated, info = self.env.step_one_player(action)
             elif self.policy == "simple":
-                action = deterministic_policy(self.env)
+                action = deterministic_policy(self.env.player_action_context(0))
                 self.action_var.set(action)
                 self.action_menu.set(self._action_label(action))
                 _observation, reward, terminated, _truncated, info = self.env.step_one_player(action)

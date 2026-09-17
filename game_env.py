@@ -38,17 +38,61 @@ LORRY_REWARD = -0.05
 
 
 @dataclass(frozen=True)
+class OpponentPublicView:
+    """Everything a player is allowed to know about another player.
+
+    Fronts of collected cards are deliberately excluded: only the backsides
+    (which are physically visible when cards are picked up) are exposed.
+    """
+
+    player_index: int
+    position: int
+    column: int | None
+    cage_index: int | None
+    escaped: bool
+    dead: bool
+    score: int
+    collected_backsides: tuple[int, ...]
+    card_count: int
+    blast_pending: bool
+
+
+@dataclass(frozen=True)
 class PlayerActionContext:
-    """Public, player-scoped view for agent behaviour.
+    """Cheat-safe, player-scoped view for agent behaviour.
+
+    A policy must be able to make every decision from this object alone.
+    It intentionally hides:
+    - Fronts of any card outside the requesting player's home column.
+    - Fronts of any opponent's collected cards.
+    - Any opponent's private blast draws.
     """
 
     player_index: int
     legal_actions: tuple[int, ...]
     public_rows: tuple[tuple[tuple[int | None, int] | None, ...], ...]
+
+    # Own private information
     private_cards: tuple[tuple[int, int], ...]
-    blast_pending_by_player: tuple[bool, ...]  # Which players are blasting (public)
-    own_blast_cards: tuple[tuple[int, int], ...] = ()  # Only for requesting player
-    used_blast_backsides: tuple[int, ...] = ()  # Dynamite backs used during this haul
+    own_blast_cards: tuple[tuple[int, int], ...]
+    own_score: int
+    own_position: int
+    own_column: int | None
+    own_cage_index: int | None
+    own_blast_pending: bool
+
+    # Public information about opponents (and self, minus fronts)
+    opponents: tuple[OpponentPublicView, ...]
+    used_blast_backsides: tuple[int, ...]
+
+    # Public game-state information
+    haul: int
+    round: int
+    starting_player: int
+    n_players: int
+    cards_remaining_in_deck: int
+    displacement_events: tuple[tuple[int, int], ...]
+    tie_breaker_contenders: tuple[int, ...]
 
 
 @dataclass
@@ -65,17 +109,17 @@ class Player:
 
     @property
     def collected_backsides(self) -> list[int]:
-        """Return the back sides from the cards this player collected."""
+        """PUBLIC: The backsides of collected cards (visible to all players)."""
         return [backside for _, backside in self.collected_cards]
 
     @property
     def gems(self) -> int:
-        """Return the number of gems in the collected cards."""
+        """PRIVATE: Only the owning player should read this. Fronts are hidden."""
         return sum(card == GEM for card, _ in self.collected_cards)
 
     @property
     def dynamite(self) -> int:
-        """Return the number of dynamite cards collected."""
+        """PRIVATE: Only the owning player should read this. Fronts are hidden."""
         return sum(card == DYNAMITE for card, _ in self.collected_cards)
 
 
@@ -589,8 +633,10 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         player = self.players[player_index]
 
         if self.opponent_policy == "simple":
+            # Policies receive ONLY the cheat-safe context, never the env directly.
             from rule_policy import deterministic_policy
-            return deterministic_policy(self)
+            ctx = self.player_action_context(player_index)
+            return deterministic_policy(ctx)
 
         if player.position in (PIT_CAGE, LORRY):
             if not self.planned_players[player_index]:
@@ -857,11 +903,16 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         return result
 
     # ------------------------------------------------------------------
-    # Views
+    # Views (cheat-safe)
     # ------------------------------------------------------------------
 
     def player_view(self, player_index: int) -> dict[str, Any]:
-        """Return the information a specific player is allowed to inspect."""
+        """Return the information a specific player is allowed to inspect.
+
+        This dictionary excludes any opponent's card fronts and any opponent's
+        private blast draws. Only backsides of opponents' collected cards are
+        exposed (they are publicly visible when picked up).
+        """
         if not 0 <= player_index < self.n_players:
             raise IndexError("player_index out of range")
 
@@ -873,22 +924,62 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                 if card_entry is None:
                     public_row.append(None)
                 elif col == player_index:
+                    # Home column: fronts are visible to the owner.
                     public_row.append((card_entry[0], card_entry[1]))
                 else:
+                    # Other columns: fronts are hidden.
                     public_row.append((None, card_entry[1]))
             public_rows.append(public_row)
 
+        opponents_public = [
+            {
+                "player_index": idx,
+                "position": other.position,
+                "column": other.column,
+                "cage_index": other.cage_index,
+                "escaped": other.escaped,
+                "dead": other.dead,
+                "score": other.score,
+                "collected_backsides": list(other.collected_backsides),
+                "card_count": len(other.collected_cards),
+                "blast_pending": other.blast_pending,
+            }
+            for idx, other in enumerate(self.players)
+            if idx != player_index
+        ]
+
         return {
+            "player_index": player_index,
             "rows": public_rows,
             "private_cards": list(player.collected_cards),
-            "player_index": player_index,
-            "blast_pending_by_player": [p.blast_pending for p in self.players],
-            "own_blast_cards": list(player.blast_cards) if player.blast_pending else [],
+            "own_blast_cards": (
+                list(player.blast_cards) if player.blast_pending else []
+            ),
+            "own_score": player.score,
+            "own_position": player.position,
+            "own_column": player.column,
+            "own_cage_index": player.cage_index,
+            "own_blast_pending": player.blast_pending,
+            "opponents": opponents_public,
             "used_blast_backsides": list(self.used_blast_backsides),
+            "haul": self.haul,
+            "round": self.round,
+            "starting_player": self.starting_player,
+            "n_players": self.n_players,
+            "cards_remaining_in_deck": len(self.cards_remaining),
+            "displacement_events": list(self.displacement_events),
         }
 
     def player_action_context(self, player_index: int) -> PlayerActionContext:
-        """Return the public action context for a given player."""
+        """Return the cheat-safe action context for a given player.
+
+        This is the ONLY object a policy is allowed to consume. It exposes:
+        - The requesting player's own private cards, blast draws, score, etc.
+        - Publicly visible information about every opponent (position, backsides,
+          card count, blast_pending, score) - but NEVER opponent card fronts.
+        - Publicly visible mine cards (home-column fronts revealed to the owner).
+        - Publicly derivable game state (haul, round, deck size, etc.).
+        """
         if not 0 <= player_index < self.n_players:
             raise IndexError("player_index out of range")
 
@@ -899,30 +990,62 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                 if card_entry is None:
                     public_row.append(None)
                 elif col == player_index:
+                    # Home column: fronts are visible to the owner.
                     public_row.append((card_entry[0], card_entry[1]))
                 else:
+                    # Other columns: fronts are hidden.
                     public_row.append((None, card_entry[1]))
             public_rows.append(tuple(public_row))
 
-        player = self.players[player_index]
+        me = self.players[player_index]
+
+        opponents = tuple(
+            OpponentPublicView(
+                player_index=idx,
+                position=other.position,
+                column=other.column,
+                cage_index=other.cage_index,
+                escaped=other.escaped,
+                dead=other.dead,
+                score=other.score,
+                collected_backsides=tuple(back for _, back in other.collected_cards),
+                card_count=len(other.collected_cards),
+                blast_pending=other.blast_pending,
+            )
+            for idx, other in enumerate(self.players)
+            if idx != player_index
+        )
+
         legal_actions = tuple(
             int(action)
             for action, allowed in enumerate(self.action_mask(player_index))
             if allowed
         )
         own_blast_cards = (
-            tuple(tuple(card) for card in player.blast_cards)
-            if player.blast_pending else ()
+            tuple(tuple(card) for card in me.blast_cards)
+            if me.blast_pending else ()
         )
 
         return PlayerActionContext(
             player_index=player_index,
             legal_actions=legal_actions,
             public_rows=tuple(public_rows),
-            private_cards=tuple(tuple(card) for card in player.collected_cards),
-            blast_pending_by_player=tuple(p.blast_pending for p in self.players),
+            private_cards=tuple(tuple(card) for card in me.collected_cards),
             own_blast_cards=own_blast_cards,
+            own_score=me.score,
+            own_position=me.position,
+            own_column=me.column,
+            own_cage_index=me.cage_index,
+            own_blast_pending=me.blast_pending,
+            opponents=opponents,
             used_blast_backsides=tuple(self.used_blast_backsides),
+            haul=self.haul,
+            round=self.round,
+            starting_player=self.starting_player,
+            n_players=self.n_players,
+            cards_remaining_in_deck=len(self.cards_remaining),
+            displacement_events=tuple(self.displacement_events),
+            tie_breaker_contenders=tuple(self.tie_breaker_contenders),
         )
 
     def _observation(self) -> np.ndarray:
