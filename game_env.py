@@ -451,7 +451,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
     def _prepare_haul_scoring(self, info: dict[str, Any]) -> None:
         # On a dragon every survivor is already flagged escaped and every
         # victim is already flagged dead, so there is nothing left to assign.
-        if info.get("outcome") == "dragon":
+        if info.get("outcome") in ("dragon", "blast_dragon"):
             return
         active = [player for player in self.players if not player.escaped and not player.dead]
         if info.get("mine_empty") or len(active) <= 1:
@@ -471,13 +471,18 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
 
         dragon_player = info.get("dragon_player")
         no_one_escaped = not escaped
+        home_column_dragon = info.get("home_column_dragon", False)
+
         for player_index, player in enumerate(self.players):
             if dragon_player == player_index:
                 player.score -= 2
             elif player.dead:
-                player.score += (
-                    2 if no_one_escaped and info.get("outcome") == "dragon" else -1
-                )
+                if no_one_escaped and home_column_dragon:
+                    player.score += 2
+                else:
+                    player.score -= 1
+            
+            # Bound the minimum score at -1
             player.score = max(-1, player.score)
 
     def _return_used_blast_cards(self) -> None:
@@ -729,6 +734,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                         remaining_player.dead = True
                 info["outcome"] = "dragon"
                 info["dragon_player"] = player_index
+                info["home_column_dragon"] = (player.column == player_index)
                 if player_index == 0:
                     reward -= 2.0
                 elif self.players[0].dead:
@@ -808,7 +814,11 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             
             # Since a dragon was drawn, the haul ends immediately.
             # We call the central finish handler with the dragon outcome.
-            info = {"outcome": "dragon", "dragon_player": player_index}
+            info = {
+                "outcome": "blast_dragon",
+                "dragon_player": player_index,
+                "home_column_dragon": False
+            }
             self._finish_round(0.0, info)
             return chosen_card
 
