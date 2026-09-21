@@ -190,7 +190,6 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
     # ------------------------------------------------------------------
     # Stepping
     # ------------------------------------------------------------------
-
     def step(self, action: int):
         action = int(action)
         if not self.action_space.contains(action):
@@ -244,6 +243,12 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.planning_turns = 0
         reward, info = self._execute_round()
         self.last_reward = reward
+
+        # --- DELAY FINISHING THE ROUND IF A BLAST IS PENDING ---
+        if any(p.blast_pending for p in self.players):
+            info["blast_active"] = True
+            return self._observation(), reward, False, False, info
+
         reward, terminated = self._finish_round(reward, info)
         return self._observation(), reward, terminated, False, info
 
@@ -308,6 +313,14 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.planned_players = [False] * self.n_players
         reward, info = self._execute_round()
         self.last_reward = reward
+
+        # --- DELAY FINISHING THE ROUND IF A BLAST IS PENDING ---
+        if any(p.blast_pending for p in self.players):
+            info["blast_active"] = True
+            info["player"] = player_index
+            return self._observation(), reward, False, False, info
+
+        # Finish round normally if there is no blast
         reward, terminated = self._finish_round(reward, info)
 
         if not terminated and not self._haul_just_ended(info):
@@ -786,25 +799,32 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
 
         chosen_card = player.blast_cards.pop(choice_index)
         if chosen_card[0] == DRAGON:
+            # Blast failed (dragon). All survivors inside the mine die.
             for remaining_player in self.players:
                 if not remaining_player.escaped:
                     remaining_player.dead = True
             player.blast_cards = []
             player.blast_pending = False
-            info: dict[str, Any] = {"outcome": "dragon", "dragon_player": player_index}
-            self._return_used_blast_cards()
-            self._prepare_haul_scoring(info)
-            self._score_haul(info)
-            if self.haul < HAULS_PER_GAME:
-                self._start_next_haul()
-            elif not self._begin_tie_breaker():
-                self.game_finished = True
+            
+            # Since a dragon was drawn, the haul ends immediately.
+            # We call the central finish handler with the dragon outcome.
+            info = {"outcome": "dragon", "dragon_player": player_index}
+            self._finish_round(0.0, info)
             return chosen_card
 
+        # Safe card collected
         player.collected_cards.append(chosen_card)
         if len(player.blast_cards) == 1:
+            # We have kept 2 safe cards; the remaining 3rd card goes back to the deck.
+            # Blasting is now complete and successful!
             self.cards_remaining.append(player.blast_cards.pop())
             player.blast_pending = False
+            
+            # Since blasting finished successfully, finalize the round now
+            # (deals the new row, resets active player positions, increments round)
+            if not any(p.blast_pending for p in self.players):
+                self._finish_round(0.0, {"round": self.round, "outcome": "continued"})
+                
         return chosen_card
 
     def _cancel_blast(self, player_index: int) -> None:
