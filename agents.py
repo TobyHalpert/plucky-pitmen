@@ -279,6 +279,62 @@ class RusherAgent(Agent):
         return int(ctx.legal_actions[0])
 
 
+class LeaverAgent(Agent):
+    """Take a gem, then walk out. The counter to :class:`RusherAgent`.
+
+    A rusher only scores while its opponents *stay* in the mine: the printed
+    rules compare gems among everybody who left, so an empty-handed escape is
+    worth nothing as soon as somebody else leaves with loot. This agent is the
+    cheapest policy that exploits that: collect one gem, then go to the nearest
+    pit cage.
+    """
+
+    name = "leaver"
+
+    def __init__(self, target_gems: int = 1) -> None:
+        self.target_gems = target_gems
+        self._planning_key: tuple[int, int] | None = None
+        self._moved = False
+
+    def act(self, ctx: PlayerActionContext) -> int:
+        key = (int(ctx.haul), int(ctx.round))
+        if key != self._planning_key:
+            self._planning_key = key
+            self._moved = False
+
+        gems = sum(1 for front, _ in ctx.private_cards if front == GEM)
+        if gems >= self.target_gems and PIT_CAGE in ctx.legal_actions:
+            return PIT_CAGE
+        if self._moved:
+            # Standing on the chosen card: hold position, or the planning phase
+            # walks straight past it and collects nothing.
+            if PASS in ctx.legal_actions:
+                return PASS
+            return PIT_CAGE if PIT_CAGE in ctx.legal_actions else int(ctx.legal_actions[0])
+
+        cards = _card_actions(ctx)
+        own = [action for action in cards if action % MAX_COLUMNS == ctx.player_index]
+        known_gems = [action for action in cards if card_front(ctx, action) == GEM]
+        safe_own = [action for action in own if card_front(ctx, action) != DRAGON]
+        for pool in (known_gems, safe_own, own, cards):
+            if pool:
+                # The deepest reachable row, i.e. collect something now.
+                self._moved = True
+                return int(max(pool))
+        if PIT_CAGE in ctx.legal_actions:
+            return PIT_CAGE
+        return PASS if PASS in ctx.legal_actions else int(ctx.legal_actions[0])
+
+
+def card_front(ctx: PlayerActionContext, action: int) -> int | None:
+    """Front of a mine card, or ``None`` if that card is hidden to the player."""
+    row, col = divmod(int(action), MAX_COLUMNS)
+    if row >= len(ctx.public_rows) or col >= len(ctx.public_rows[row]):
+        return None
+    entry = ctx.public_rows[row][col]
+    return None if entry is None else entry[0]
+
+
 def should_blast(mode: str, ctx: PlayerActionContext) -> bool:
     """Shared blast heuristic for scripted agents.
 
@@ -374,7 +430,7 @@ class NeuralAgent(Agent):
 # ----------------------------------------------------------------------
 # Factory
 # ----------------------------------------------------------------------
-SCRIPTED = ("random", "greedy", "cautious", "rule", "rusher")
+SCRIPTED = ("random", "greedy", "cautious", "rule", "rusher", "leaver")
 
 
 def make_scripted_agent(
@@ -390,6 +446,8 @@ def make_scripted_agent(
         return RuleAgent(blast=blast)
     if policy == "rusher":
         return RusherAgent()
+    if policy == "leaver":
+        return LeaverAgent()
     raise ValueError(f"unknown scripted agent: {policy}")
 
 
@@ -401,9 +459,11 @@ __all__ = [
     "NeuralAgent",
     "RandomAgent",
     "RuleAgent",
+    "LeaverAgent",
     "RusherAgent",
     "SCRIPTED",
     "make_scripted_agent",
+    "card_front",
     "preferred_blast_choice",
     "safe_tie_break",
     "should_blast",

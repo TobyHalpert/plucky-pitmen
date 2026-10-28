@@ -1,140 +1,116 @@
 # Is Plucky Pitmen balanced?
 
-Short answer: **no, as printed.** A player who walks straight to the pit cage on
-turn one and leaves with zero gems beats the hand-tuned rule policy **54% of the
-time** (3-player, 300 games) and out-scores it by **+2.69 points per game**.
-A trained self-play agent independently converges on the same behaviour and
-does even better (**63%**, **+3.67**). One scoring-rule change removes the
-exploit; after that change no policy in this repository beats the cautious rule
-baseline at all.
+**Correction (this revision).** An earlier version of this document claimed
+that "leave on turn one" is a dominant strategy. That claim was wrong, and the
+error is worth keeping on the record because it is the classic benchmarking
+trap. Against opponents who collect loot and then leave — which the printed
+rules let them do — an empty-handed escape is worth **exactly zero**. The
+rusher's big margins came from opponents who *stayed in the mine and died*, and
+from a stall valve that voided those opponents' loot while still paying the
+escaping player.
 
-This document collects every measurement behind those sentences, the tools that
-produce them, the three engine bugs that were found on the way, and the rule
-experiments that should be run next.
+The supportable conclusions are:
+
+* There is **no dominant strategy**. Leaving early is a *parasite*: it converts
+  other players' mistakes into points, and it is worthless against a player who
+  simply takes a gem and walks out.
+* The best policy in this repository is the opposite of rushing: **collect loot,
+  then leave**. It beats the rusher **+8.72 points, 100% top score** and beats
+  the trained self-play agent **+5.08 points**.
+* A leaderboard against fixed bots cannot detect this on its own, because the
+  ranking depends on what the bots do. Head-to-head against a leaver is the test
+  that matters.
 
 All numbers: 3 players, seats rotated every game, 300 games per leaderboard row,
-100 games per head-to-head direction, 95% bootstrap confidence intervals
-(2000 resamples). Reproduce with the commands at the end.
+60 games per head-to-head direction, 95% bootstrap CIs (2000 resamples).
 
 ---
 
-## 1. The dominant strategy: leave on turn one
+## 1. The parasite: what "leave on turn one" is actually worth
 
-The printed rules award the haul bonus (+3 points, +4 in the last haul) to a
-sole escapee **even when that player has no gems**. Three hauls of that is
-+10 points for taking no risk at all, while everyone who stays can lose 1-2
-points to the dragon.
+`agents.RusherAgent` walks to the nearest pit cage and never looks at a card.
+Against the shipped benchmarks it looks strong:
 
-`agents.RusherAgent` implements exactly that, in thirty lines: walk to the
-nearest pit cage, sit there, pass forever. It never looks at a card front.
-
-### Leaderboard, printed rules (`reports/balance_default_rules.md`)
-
-| policy | win % | top-score % | mean score | margin vs 2 × rule [95% CI] | escapes (0 gems) |
-| :-- | --: | --: | --: | :-- | --: |
-| selfplay (60 gens) | 63.0% | 69.0% | +4.94 | **+3.67 [+3.09, +4.22]** | 98% (100%) |
-| rusher | 54.0% | 58.0% | +4.48 | **+2.69 [+2.13, +3.27]** | 100% (100%) |
-| random | 43.7% | 45.3% | +2.10 | +0.97 [+0.46, +1.41] | 57% (69%) |
-| rule | 31.7% | 39.3% | +1.79 | -0.23 [-0.62, +0.17] | 67% (21%) |
-| cautious | 32.3% | 36.7% | +0.87 | -0.34 [-0.71, +0.06] | 46% (56%) |
-| greedy | 21.3% | 28.7% | +0.09 | -1.09 [-1.41, -0.79] | 30% (53%) |
-
-"Margin" is the policy's score minus the mean score of the other two seats. A
-33.3% win rate is chance; 54% is a strategy.
-
-### Head-to-head (`reports/balance_default_rules.md`)
-
-| A | B | A alone vs 2 × B | B alone vs 2 × A |
-| :-- | :-- | :-- | :-- |
-| rusher | rule | **+2.85 [+1.92, +3.78]** | +1.30 [+0.99, +1.65] |
-| selfplay | rule | **+4.85 [+3.85, +5.80]** | +1.78 [+0.97, +2.59] |
-| selfplay | rusher | **+1.49 [+0.89, +2.06]** | -1.04 [-1.35, -0.72] |
-| random | rule | +0.56 [-0.25, +1.40] | +0.24 [-0.46, +0.98] |
-| greedy | rule | -0.94 [-1.49, -0.35] | +0.24 [-0.49, +0.95] |
-
-Two things to read out of this table:
-
-* The exploit is **frequency dependent**. One rusher among rule players wins
-  +2.85; one rule player among two rushers is *not* crushed (+1.30), because
-  two escapees with zero gems split the bonus into +1 each. Rushing pays best
-  when you are the only one doing it, which is exactly what makes it a
-  temptation in a real group.
-* The learned agent beats the pure rusher head-to-head (+1.49 vs -1.04). It
-  rushes as well, but it also punishes other rushers.
-
-### Does the learned agent find the exploit on its own?
-
-Yes. The shipped checkpoint (`checkpoints/selfplay.npz`, 60 generations of
-league self-play, no hand-coded heuristics) escapes in 98% of hauls with **zero
-gems in 100% of them**, exactly like the hand-written rusher. That is the
-strongest evidence that this is a discovered strategy and not an artifact of
-the `RusherAgent` implementation.
-
-The catch: 0 gems on every escape means the behaviour is pure bonus farming.
-The margin is real points, but it is not skill at the game's stated objective
-("leaves the mine with the most gems").
-
----
-
-## 2. The fix: don't pay for an empty escape
-
-`MineEnv(solo_escape_bonus=False)` (CLI: `--no-solo-escape-bonus`) awards nothing
-when the only escapee has zero gems. Everything else is unchanged.
-
-### Leaderboard, fixed rules (`reports/balance_fixed_rules.md`)
-
-| policy | win % | mean score | margin [95% CI] | escapes (0 gems) |
+| policy | win % | mean score | margin vs 2 × rule [95% CI] | escapes (0 gems) |
 | :-- | --: | --: | :-- | --: |
-| rule | 32.7% | +1.54 | -0.27 [-0.63, +0.09] | 67% (21%) |
-| random | 31.0% | +0.07 | -0.31 [-0.60, -0.05] | 57% (69%) |
-| cautious | 23.0% | -0.14 | -0.89 [-1.14, -0.62] | 46% (56%) |
-| greedy | 16.7% | -0.47 | -0.99 [-1.22, -0.76] | 30% (53%) |
-| selfplay_no_bonus | 24.7% | +0.06 | -1.17 [-1.40, -0.94] | 98% (99%) |
-| rusher | 19.3% | +0.16 | **-1.62 [-1.82, -1.42]** | 100% (100%) |
+| selfplay (60 gens) | 68.0% | +5.26 | **+4.14 [+3.54, +4.70]** | 99% (99%) |
+| rusher | 54.0% | +4.48 | **+2.69 [+2.13, +3.27]** | 100% (100%) |
+| leaver (collect + leave) | 51.3% | +3.95 | +2.17 [+1.60, +2.73] | 99% (94%) |
+| random | 43.7% | +2.10 | +0.97 [+0.46, +1.41] | 57% (69%) |
+| rule | 31.7% | +1.79 | -0.23 [-0.62, +0.17] | 67% (21%) |
+| cautious | 32.3% | +0.87 | -0.34 [-0.71, +0.06] | 46% (56%) |
+| greedy | 21.3% | +0.09 | -1.09 [-1.41, -0.79] | 30% (53%) |
 
-The same rusher that was +2.69 points up is now **1.62 points down**, and the
-learned agent trained under the fixed rule is **1.17 points down**. Nobody beats
-the rule policy. The exploit is gone.
+Now split the rusher's points by what its opponents did (200 games, rusher vs
+2 × rule, per haul):
 
-**But the game is not thereby "solved" into something rich.** The fixed-rules
-learner did not learn to mine: it still leaves empty-handed in 99% of hauls and
-scores ~0. It is not punished much for that, because leaving scores 0 while
-staying risks -1 or -2. The equilibrium moves from "farm the bonus" to "take
-the safe zero and hope everyone else wakes the dragon". That is a second, milder
-degenerate strategy, and it is the reason the rule change alone is not the
-whole answer (see §5).
-
----
-
-## 3. Skill vs luck
-
-Mirror matches: every seat runs the *same* policy, so the spread is luck and
-seat position only.
-
-| rules | mean within-game spread | games with a tied top score |
+| what the other two did | share of hauls | rusher points/haul |
 | :-- | --: | --: |
-| printed | **4.92 points** | 11% |
-| fixed | **4.20 points** | 18% |
-| `n` passes | 4.50 points | 10% |
-| `n-1` passes | 4.68 points | 15% |
+| left the mine **with gems** | **50.7%** | **0.00** |
+| woke the dragon, still inside | 29.0% | +3.29 |
+| stalled on their lorries, still inside | 13.2% | +3.24 |
 
-The largest real skill margin in this document is the self-play agent's +3.67,
-which is *smaller* than the 4.9-point spread of identical agents playing each
-other. Conclusion: **a single game is mostly luck**. The skill signal is real
-(selfplay's confidence interval is far from zero and it wins in both
-directions against every policy), but you need tens of games to see it, and
-`win %` alone is a poor metric because ties are broken by drawing cards.
+**Every single point the rusher earns comes from hauls where nobody else
+banked loot.** When the other players leave with gems, the rules compare gems
+among everybody who left and the rusher's empty escape is worth nothing. This
+is the mechanism the first version of this report missed.
 
-Seat position is not a big factor: mean score by seat is 1.83 / 1.70 / 1.71.
+The same split for every policy in the pool is in the report's
+"Where the points come from" section, which is generated for exactly this
+reason.
 
----
+## 2. The counter: collect loot, then leave
 
-## 4. Is blasting too weak? No - the engine was peeking
+`agents.LeaverAgent` is the cheapest policy that exploits the race: take a gem,
+then walk to the pit cage. It is not clever — it picks a card, holds position,
+and leaves once it holds loot.
+
+| A | B | A top-score % | A margin [95% CI] | B top-score % | B margin [95% CI] |
+| :-- | :-- | --: | :-- | --: | :-- |
+| **leaver** | **rusher** | **100.0%** | **+8.72 [+8.20, +9.20]** | 41.7% | -0.41 [-1.28, +0.48] |
+| **leaver** | **selfplay** | 81.7% | **+5.08 [+4.03, +6.06]** | 13.3% | -3.00 [-3.64, -2.28] |
+| selfplay | rusher | 73.3% | +0.62 [-0.12, +1.38] | 51.7% | -0.60 [-0.89, -0.32] |
+| rusher | rule | 60.0% | +2.34 [+1.23, +3.50] | 100.0% | +1.08 [+0.70, +1.53] |
+
+* A single rusher against two leavers tops the scoreboard 41.7% of the time
+  with a **negative** margin: it is a losing seat.
+* A single leaver against two rushers wins **99.5%** of games (measured over 200
+  games) with a **+8.68** margin, because the rushers leave, no further rows are
+  dealt, and the leaver then picks up loot unopposed before walking out with
+  more gems than the empty-handed pair.
+* The trained self-play agent loses to the leaver as well (−3.00 as the lone
+  seat, +5.08 for the leaver). Self-play converged on the exploit because its
+  opponent pool — scripted bots and its own snapshots — did not punish it.
+
+Under the fixed scoring (`--no-solo-escape-bonus`) the ordering is the same
+where it matters: leaver vs rusher **+8.72**, leaver vs the retrained agent
+**+5.29** at 93.3% top score.
+
+## 3. Why the leaderboard lied
+
+Two things made the rusher look dominant, and neither is about the game's
+quality:
+
+1. **The benchmark population decides the ranking.** Against the scripted bots
+   the order is selfplay > rusher > leaver. Against a leaver it inverts
+   completely. A margin measured against a fixed, exploitable opponent says
+   nothing about whether a strategy is strong — only that it is strong *there*.
+2. **The stall valve pays the parasite.** Once somebody leaves, no new rows are
+   dealt, and parked players can keep a haul alive forever. `stall_rounds=8`
+   ends such a haul and gives the campers nothing — while still paying the
+   escapee the +3 they had already earned. So the valve converts "the campers
+   might still have left and won" into "the camper's loot is void, the escapee
+   banks the bonus".
+
+The methodological fix that is now built in: always include a `rusher` **and** a
+`leaver` in `--agents`, and read the "Where the points come from" table. A
+policy whose points vanish whenever a rival banks loot is farming mistakes.
+
+## 4. Is blasting too weak? No — the engine was peeking
 
 The printed blast rule: draw three cards **face down**, choose two, *then* look
-at them. `MineEnv` used to hand the chooser all three fronts, which turns the
-gamble into a card-selection engine. `--blind-blast-choice` restores the printed
-rule.
+at them. `MineEnv` handed the chooser all three fronts, turning a gamble into a
+card-selection engine. `--blind-blast-choice` restores the printed rule.
 
 `rule:always` = announce a blast whenever two dynamite are in hand.
 
@@ -143,15 +119,13 @@ rule.
 | peek (old default) | **+1.65 [+1.10, +2.20]** | +0.70 [-0.11, +1.48] | **-1.23 [-1.88, -0.49]** |
 | blind (printed) | +0.62 [+0.11, +1.14] | -0.23 [-1.07, +0.70] | -0.27 [-1.02, +0.57] |
 
-With the peek, blasting is one of the strongest things you can do. Without it,
+With the peek, blasting is one of the strongest things you can do; without it,
 blasting is statistically neutral. So "blasting is too weak" is **not
-supported**; the observed 0.00-0.22 blasts per game from trained agents is a
-consequence of the escape exploit (a player who leaves on turn one never
-collects the two dynamite a blast needs), not of the blast payoff.
+supported**, and the near-zero blast rate of the trained agents is a consequence
+of the escape behaviour (a player who leaves on turn one never collects the two
+dynamite a blast needs), not of the blast payoff.
 
----
-
-## 5. Open question: n-1 passes or n passes?
+## 5. n-1 passes or n passes?
 
 The printed rule is "as many players pass in a row as there are players in the
 mine, minus one". `--pass-rule n` plays the alternative.
@@ -161,88 +135,68 @@ mine, minus one". `--pass-rule n` plays the alternative.
 | **n-1 (printed)** | 48.0% | +2.07 [+1.40, +2.75] | **4.8%** | 58.2% | **77.2** | 4.68 |
 | n | 84.5% | +5.74 [+5.20, +6.24] | **27.6%** | 39.2% | 143.4 | 4.50 |
 
-`n-1` is clearly better: the same games run in half the decisions, deadlocks
-drop by a factor of six, and the dominant strategy is roughly halved in power.
-It does not remove the exploit (that is the bonus rule), but it removes a whole
-class of "everybody sits still" endings.
+`n-1` is better on every operational measure: half the decisions per game, a
+sixth of the deadlocks. (Both columns still show the rusher beating the scripted
+bots, for the reasons in §1.)
 
-While measuring this, a bug surfaced: `step_one_player()` - the API the
-self-play driver uses - compared the pass count against `len(active_players)`
+While measuring this, a bug surfaced: `step_one_player()` — the API the
+self-play driver uses — compared the pass count against `len(active_players)`
 instead of `self._pass_threshold()`, so `--pass-rule` was silently ignored
-outside the single-learner `step()` API. That is fixed, and `test_selfplay.py`
-now covers the multi-agent path. Every number in this document uses the
-corrected code.
+everywhere except the single-learner `step()` API. Fixed, with a test.
 
 ### The lorry stall
 
-Even with `n-1`, a haul can deadlock. Sitting on your lorry is safe from the
-dragon, and the printed rules give the haul no ending condition for "everybody
-is parked". `stall_rounds=8` ends such a haul and gives campers zero, which is a
-band-aid, not a rule.
+In rule-only games the stall rate is **2.0% of hauls at a threshold of 8 rounds
+and 2.0% at 40 rounds** — raising `--stall-rounds` only lengthens games. With
+parked policies at the table it rises to 4.8%. It is a genuine absorbing state
+of the printed rules, not a threshold set too tight. Suggested real fix: end a
+haul when a full round passes with no card collected, and score it like any
+other ending.
 
-The valve is not the problem: in rule-only games the stall rate is **2.0% of
-hauls at 8 rounds and 2.0% at 40 rounds**. What raises it is a policy that
-actually parks - 4.8% across the mixed benchmark and 13.6% when a rusher is at
-the table. So the deadlock is a genuinely absorbing state, not a threshold set
-too tight, and raising `--stall-rounds` only makes those games longer.
+## 6. Skill vs luck
 
-Suggested real fix: a haul also ends when a full round passes without any card
-being collected, or when every remaining player has been on their lorry for a
-round. Then score normally.
+Mirror matches: every seat runs the *same* policy, so the spread is luck plus
+seat position only.
 
----
+| rules | mean within-game spread | games with a tied top score |
+| :-- | --: | --: |
+| printed | **4.92 points** | 11% |
+| fixed | 4.20 points | 18% |
+| `n` passes | 4.50 points | 10% |
 
-## 6. What the learner did and did not learn
+The largest skill margin measured here is the leaver's +8.72 head-to-head, which
+dwarfs the luck band. But the between-policy margins that a leaderboard reports
+(0.2-4 points) are the same order as pure luck between identical agents, so
+`win %` alone is not evidence of anything. Seat position is not a big factor
+(mean score by seat 1.83 / 1.70 / 1.71).
 
-* League self-play (`train_selfplay.py`, 60 generations x 64 games, one hidden
-  layer, REINFORCE + value baseline) **discovered the escape exploit**
-  (98% of hauls, zero gems, 63% wins, +3.67 margin). Training is unaided: no
-  rule heuristics, no demonstrations, and the encoder only sees the cheat-safe
-  `PlayerActionContext`.
-* Trained under the fixed rule (`--no-solo-escape-bonus --escape-shaping 0`) it
-  **does not** learn a mining policy; it converges to leaving empty-handed and
-  ends up 1.17 points *behind* the scripted rule agent.
-* Re-running the same training under the corrected pass rule (60 generations)
-  did not re-find the exploit either: best evaluation was 0.425 wins at
-  generation 50, with a flat 0.25-0.43 curve. The earlier high score came from
-  the exploit, not from general strength.
+## 7. What is actually worth changing
 
-That is a limitation of the learner, not a proof that the game cannot be played
-well. A human who counts card backs should beat all of these agents. If you want
-the agents themselves to become the balance oracle, the next step is a stronger
-learner (longer training, deeper network, PPO or search), not more evaluation.
-
----
-
-## 7. Recommended changes, in order
-
-1. **Do not pay the haul bonus for an empty escape.** Either require at least
-   one gem, or award the bonus to the gem leader whether or not they left the
-   mine. Measured effect: rusher 54% -> 19% wins, margin +2.69 -> -1.62.
-2. **Fix the blast information leak.** Draw three, choose two, then look.
-   Measured effect: blasting goes from dominant (+1.65) to neutral (+0.62).
-3. **Keep `n-1` passes and add an anti-camping end condition.** Measured effect:
-   halved game length, 4.8% instead of 27.6% stalled hauls.
-4. **Consider scoring gems directly** (e.g. +1 per gem brought out). Today gems
-   only decide who gets the 3-point bonus, so risking a card has no upside
-   beyond that bonus and the safe zero is structurally attractive. This is the
-   most promising untested lever; `_score_haul` is the only place to change.
-5. Tune victory points last. The 3/4-point bonus is ~60% of a 10-point game, so
-   it dominates any tuning of the -1/-2 penalties. Change the bonus rule before
-   changing its size.
-
----
+1. **Ship the controls, not just the leaderboard.** `rusher` and `leaver` are
+   now first-class policies (`--agents ...,rusher,leaver`) and the report always
+   prints the "where the points come from" split. Without them, any future
+   tuning can be gamed the same way this report was.
+2. **Fix the stall scoring.** A stalled haul currently pays the escapee and
+   voids the campers. Score it like a normal ending (or pay nobody).
+3. **Then reconsider the empty-escape bonus.** It is a free-ride payoff in weak
+   fields, and removing it costs the game little — but it is no longer the
+   headline problem it looked like.
+4. **Only then tune points.** The 3/4-point haul bonus is ~60% of a typical
+   10-point game, so it dominates any tuning of the -1/-2 penalties.
+5. **Retrain against a pool that includes leavers.** Self-play found a
+   best response to a weak population, which is exactly what it is supposed to
+   do — the population, not the learner, was the problem.
 
 ## 8. Reproduce
 
 ```powershell
 python -m pip install -r requirements.txt
 
-# 300-game leaderboards and pairwise table
-python evaluate_balance.py --agents rule,greedy,random,cautious,rusher,checkpoints/selfplay.npz --games 300 --out reports/balance_default_rules.md
-python evaluate_balance.py --agents rule,greedy,random,cautious,rusher,checkpoints/selfplay_no_bonus.npz --no-solo-escape-bonus --games 300 --out reports/balance_fixed_rules.md
+# the two controls that make the leaderboard honest
+python evaluate_balance.py --agents rule,greedy,random,cautious,rusher,leaver,checkpoints/selfplay.npz --games 300 --out reports/balance_default_rules.md
+python evaluate_balance.py --agents rule,greedy,random,cautious,rusher,leaver,checkpoints/selfplay_no_bonus.npz --no-solo-escape-bonus --games 300 --out reports/balance_fixed_rules.md
 
-# blast: peek vs printed rule
+# blast: peek vs the printed face-down rule
 python evaluate_balance.py --agents rule,rule:rich,rule:always --games 200 --skip-mirror --out reports/balance_blast.md
 python evaluate_balance.py --agents rule,rule:rich,rule:always --games 200 --skip-mirror --blind-blast-choice --out reports/balance_blast_blind.md
 
@@ -253,19 +207,19 @@ python evaluate_balance.py --agents rule,greedy,random,rusher --games 200 --pass
 python train_selfplay.py --generations 60 --games-per-generation 64
 ```
 
-`reports/` is git-ignored; it holds the generated leaderboards and the JSON
-behind every table above.
+`reports/` is git-ignored and holds the generated leaderboards plus the JSON
+behind every table.
 
 ## 9. Caveats
 
-* Everything here is 3-player. The code supports 3-5; player count changes the
-  bonus maths (see the frequency dependence in §1) and should be measured.
-* The "rule" baseline is hand-tuned, not optimal. Under the printed rules it is
-  statistically indistinguishable from random mining, so beating it is a low
-  bar; losing to the rusher by 1.6 points is a strong signal. Under the fixed
-  rules it beats every other scripted policy in both directions.
+* Everything here is 3-player. The scoring is a race for a single +3 bonus among
+  everyone who left, so player count changes the incentives and should be
+  measured separately.
+* `leaver` and `rusher` are crude scripted controls, not strong players. They
+  are strong enough to separate "wins by playing" from "wins by being left
+  alone", which is the job. A human who counts card backs should beat all of
+  them.
 * The learner is small (48-64 hidden units, REINFORCE). "Self-play did not find
   a better policy" only means "at this budget".
-* Bootstrap intervals assume the games are independent draws. They are (fresh
-  seeds), but 300 games still leaves about +/-0.25 points of uncertainty on a
-  margin.
+* Bootstrap intervals assume independent games. They are (fresh seeds), but 300
+  games still leaves about ±0.25 points of uncertainty on a margin.

@@ -114,6 +114,12 @@ class PolicyStats:
     escape_rate: float = 0.0
     zero_gem_escape_rate: float = 0.0
     mean_gems_on_escape: float = 0.0
+    # Split of points by whether a rival banked loot. A policy that only scores
+    # when its opponents stay in the mine is farming their mistakes.
+    hauls: int = 0
+    rival_loot_hauls: int = 0
+    points_when_rivals_loot: float = 0.0
+    points_when_rivals_stay: float = 0.0
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -130,6 +136,11 @@ class PolicyStats:
             "escape_rate": self.escape_rate,
             "zero_gem_escape_rate": self.zero_gem_escape_rate,
             "mean_gems_on_escape": self.mean_gems_on_escape,
+            "rival_loot_haul_rate": (
+                self.rival_loot_hauls / self.hauls if self.hauls else 0.0
+            ),
+            "points_when_rivals_loot": self.points_when_rivals_loot,
+            "points_when_rivals_stay": self.points_when_rivals_stay,
         }
 
 
@@ -153,9 +164,27 @@ def summarise(series: Sequence[SeriesGame], name: str) -> PolicyStats:
     escapes = 0
     zero_gem_escapes = 0
     gems_on_escape: list[int] = []
+    rival_loot_hauls = 0
+    points_loot: list[float] = []
+    points_stay: list[float] = []
     for game in series:
         seat = game.policy_of_seat.index(0)
+        previous = 0
         for haul in game.result.hauls:
+            delta = haul.scores[seat] - previous
+            previous = haul.scores[seat]
+            rivals_looted = any(
+                index != seat
+                and index < len(haul.gems)
+                and index in haul.escaped
+                and haul.gems[index] > 0
+                for index in range(len(haul.gems))
+            )
+            if rivals_looted:
+                rival_loot_hauls += 1
+                points_loot.append(float(delta))
+            else:
+                points_stay.append(float(delta))
             if seat in haul.escaped:
                 escapes += 1
                 gems = haul.gems[seat] if seat < len(haul.gems) else 0
@@ -180,6 +209,14 @@ def summarise(series: Sequence[SeriesGame], name: str) -> PolicyStats:
         ),
         mean_gems_on_escape=(
             float(np.mean(gems_on_escape)) if gems_on_escape else 0.0
+        ),
+        hauls=hauls,
+        rival_loot_hauls=rival_loot_hauls,
+        points_when_rivals_loot=(
+            float(np.mean(points_loot)) if points_loot else 0.0
+        ),
+        points_when_rivals_stay=(
+            float(np.mean(points_stay)) if points_stay else 0.0
         ),
     )
 
@@ -403,6 +440,25 @@ def build_markdown(
                 f"{100 * right.top_scores / max(right.games, 1):.1f}% | "
                 f"{right.mean_margin:+.2f} {format_ci(*right.margin_ci)} |\n"
             )
+
+    lines.append("\n## Where the points come from\n")
+    lines.append(
+        "Per-haul points split by whether **a rival left the mine carrying "
+        "loot**. A policy that scores while its opponents stay is being paid "
+        "for their mistakes, not for its own play: head-to-head margins hide "
+        "this, because the benchmark opponents may simply never leave.\n"
+    )
+    lines.append(
+        "| policy | hauls with a rival banking loot | points/haul then | points/haul otherwise |\n"
+        "|:--|--:|--:|--:|\n"
+    )
+    for stat in sorted(leaderboard, key=lambda item: item.mean_margin, reverse=True):
+        lines.append(
+            f"| {stat.name} | "
+            f"{100 * stat.rival_loot_hauls / max(stat.hauls, 1):.1f}% | "
+            f"{stat.points_when_rivals_loot:+.2f} | "
+            f"{stat.points_when_rivals_stay:+.2f} |\n"
+        )
 
     lines.append("\n## Game dynamics\n")
     lines.append(

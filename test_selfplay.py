@@ -356,3 +356,57 @@ def test_rusher_loses_its_edge_without_the_solo_bonus():
 
     assert mean_score(True) > mean_score(False) + 1.0
     assert mean_score(False) < 1.0
+
+
+def test_leaver_passes_instead_of_walking_past_its_card():
+    """Re-planning every turn would move the figure past the card it wants."""
+    from agents import ActionChoice, LeaverAgent
+
+    env = MineEnv(opponents=2)
+    env.reset(seed=7)
+    agent = LeaverAgent(target_gems=1)
+    moved = 0
+    for _ in range(24):
+        if env.game_finished or env.haul > 1:
+            break
+        index = env.planning_player
+        ctx = env.player_action_context(index)
+        if not ctx.legal_actions:
+            break
+        choice = agent.decide(ctx) if index == 0 else ActionChoice(PASS)
+        if index == 0 and choice.action < PIT_CAGE:
+            moved += 1
+        env.step_one_player(
+            choice.action, announce_blast=choice.announce_blast, force_action=True
+        )
+    # One move per planning phase at most; the rest are passes.
+    assert moved <= 3
+
+
+def test_leaver_beats_two_rushers():
+    """Collecting and leaving is the counter to leaving empty-handed."""
+    from agents import LeaverAgent, RusherAgent
+
+    scores, wins, gems = [], 0, []
+    for seed in range(60):
+        result = play_game([LeaverAgent(1), RusherAgent(), RusherAgent()], seed=seed)
+        scores.append(result.scores[0])
+        wins += result.winner == 0
+        gems.extend(
+            haul.gems[0] for haul in result.hauls if 0 in haul.escaped
+        )
+    assert wins / 60 > 0.75
+    assert float(np.mean(scores)) > 5.0
+    assert float(np.mean(gems)) > 0.3
+
+
+def test_rusher_stops_winning_once_opponents_leave_with_loot():
+    """The 'dominant strategy' only pays while the others stay in the mine."""
+    from agents import LeaverAgent, RusherAgent
+
+    wins = 0
+    for seed in range(60):
+        result = play_game([RusherAgent(), LeaverAgent(1), LeaverAgent(1)], seed=seed)
+        wins += result.winner == 0
+    # Below the 1-in-3 chance rate of a three-player game.
+    assert wins / 60 < 0.40

@@ -4,11 +4,12 @@ This project turns **Plucky Pitmen** into a Gymnasium environment for testing st
 
 **Feel free to contribute!** I appreciate your feedback.
 
-**Is the game balanced?** No, not as printed: leaving the mine on turn one with
-zero gems is a dominant strategy under the current scoring. One rule change
-removes it. The measurements, the confidence intervals and the reproduction
-commands are in **[BALANCE.md](BALANCE.md)**; the agents that produced them are
-in this repository and can play any of the rule variants.
+**Is the game balanced?** Mostly yes, and the interesting part is *why* it is
+hard to measure: leaving the mine early looks dominant against fixed bots, but
+is worth exactly zero against a player who collects loot and then leaves. The
+measurements, the confidence intervals and the reproduction commands are in
+**[BALANCE.md](BALANCE.md)**; the agents that produced them are in this
+repository and can play any of the rule variants.
 
 ## Rules
 
@@ -140,7 +141,7 @@ uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
 | module | purpose |
 | :-- | :-- |
 | `features.py` | fixed-size, seat-invariant state + action features; no hidden information |
-| `agents.py` | `Agent` interface, scripted baselines, `NeuralAgent` |
+| `agents.py` | `Agent` interface, scripted baselines (incl. the `rusher` and `leaver` controls), `NeuralAgent` |
 | `learning.py` | masked-softmax MLP policy + value baseline, REINFORCE, Adam, save/load |
 | `selfplay.py` | full-game driver: every seat controlled, blasts, tie-breaks, per-player returns |
 | `train_selfplay.py` | league self-play trainer with checkpoints and a learning curve |
@@ -214,29 +215,34 @@ a hand-coded rule.
 The full write-up, with confidence intervals and reproduction commands, is in
 **[BALANCE.md](BALANCE.md)**. The short version:
 
-* **There is a dominant strategy: leave on turn one.** The printed rules pay the
-  full haul bonus (+3, +4 in the last haul) to a sole escapee even with zero
-  gems. A thirty-line `rusher` agent that walks to the nearest pit cage and
-  never looks at a card beats the hand-tuned rule policy **54% of the time**
-  (3 players, 300 games) with a **+2.69 point** score margin. A self-play agent
-  trained from scratch finds the same behaviour by itself and reaches **63%**
-  and **+3.67**.
-* **The fix is to stop paying for empty escapes.** With
-  `--no-solo-escape-bonus`, the rusher drops to 19% wins and **-1.62** points and
-  the trained agent to 24.7% and **-1.17**: nothing beats the rule policy any
-  more. Note that the learner then still refuses to mine - it takes the safe
-  zero - so this rule change alone creates a duller degenerate strategy.
+* **There is no dominant strategy — but there is a parasite.** An empty-handed
+  escape earns the full +3 haul bonus whenever the other players fail to leave.
+  A `rusher` that walks to the pit cage on turn one beats the scripted bots 54%
+  of the time for +2.69 points, and a self-play agent finds the same policy by
+  itself. But split those points by what the opponents did: **every point comes
+  from hauls where nobody else banked loot.** In the 50.7% of hauls where the
+  others left with gems, the rusher scores **0.00**.
+* **The counter is to collect and leave.** `leaver` takes one gem and walks out:
+  it beats the rusher **+8.72 points with a 100% top score**, and beats the
+  trained agent **+5.08** (the agent's own score goes to -3.00). A lone rusher
+  against two leavers tops the scoreboard only 41.7% of the time with a
+  *negative* margin.
+* **A leaderboard against fixed bots cannot tell these apart.** Against the
+  scripted bots the ranking is selfplay > rusher > leaver; against a leaver it
+  inverts. The report therefore always includes `rusher` and `leaver`, plus a
+  "where the points come from" split, so a policy that farms opponents' mistakes
+  is visible instead of looking skilful.
 * **Blasting is not too weak, but the engine was cheating.** The blast rule says
   to draw three cards face down and choose two before looking. `MineEnv` showed
   the chooser all three fronts, which makes blasting dominant (+1.65 points).
   With the printed rule (`--blind-blast-choice`) it is neutral (+0.62).
-* **`n-1` passes is better than `n`.** Halves game length (77 vs 143 decisions),
-  cuts stalled hauls from 27.6% to 4.8%, and halves the rusher's margin. This
-  also uncovered a real bug: `step_one_player()` ignored `--pass-rule`
-  entirely, so the variant only worked in the single-learner API.
+* **`n-1` passes is better than `n`.** Halves game length (77 vs 143 decisions)
+  and cuts stalled hauls from 27.6% to 4.8%. This also uncovered a real bug:
+  `step_one_player()` ignored `--pass-rule` entirely, so the variant only worked
+  in the single-learner API.
 * **Luck dominates a single game.** Identical agents playing each other spread
-  **4.9 points** within a game, more than the margin of any strategy found
-  here. Use the confidence intervals, and expect to need tens of games.
+  **4.9 points** within a game, more than most between-policy margins here. Use
+  the confidence intervals.
 
 ### Testing the rules variants
 
@@ -244,9 +250,9 @@ The full write-up, with confidence intervals and reproduction commands, is in
 # remove the free bonus for a sole, empty-handed escapee and retrain
 python train_selfplay.py --no-solo-escape-bonus --escape-shaping 0 --out checkpoints/selfplay_no_bonus.npz
 
-# the printed rules, and the fixed ones, with the hand-written rusher control
-python evaluate_balance.py --agents rule,greedy,random,cautious,rusher,checkpoints/selfplay.npz --games 300 --out reports/balance_default_rules.md
-python evaluate_balance.py --agents rule,greedy,random,cautious,rusher,checkpoints/selfplay_no_bonus.npz --no-solo-escape-bonus --games 300 --out reports/balance_fixed_rules.md
+# the printed rules, and the fixed ones, with both hand-written controls
+python evaluate_balance.py --agents rule,greedy,random,cautious,rusher,leaver,checkpoints/selfplay.npz --games 300 --out reports/balance_default_rules.md
+python evaluate_balance.py --agents rule,greedy,random,cautious,rusher,leaver,checkpoints/selfplay_no_bonus.npz --no-solo-escape-bonus --games 300 --out reports/balance_fixed_rules.md
 
 # blast: peek vs the printed face-down rule
 python evaluate_balance.py --agents rule,rule:rich,rule:always --games 200 --skip-mirror --out reports/balance_blast.md
@@ -276,7 +282,7 @@ The open questions map directly onto the tooling:
 | question | experiment |
 | :-- | :-- |
 | skill vs luck | mirror matches (always in the report) |
-| dominant strategy? | pairwise head-to-head + the `rusher` control |
+| dominant strategy? | pairwise head-to-head with the `rusher` **and** `leaver` controls |
 | is blasting too weak? | `rule:rich` / `rule:always`, with and without `--blind-blast-choice` |
 | n-1 vs n passes | `--pass-rule n` on otherwise identical runs |
 | victory-point tweaks | `--solo-escape-bonus` / `--no-solo-escape-bonus`, or edit `_score_haul` |
