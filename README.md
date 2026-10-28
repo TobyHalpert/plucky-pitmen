@@ -4,6 +4,12 @@ This project turns **Plucky Pitmen** into a Gymnasium environment for testing st
 
 **Feel free to contribute!** I appreciate your feedback.
 
+**Is the game balanced?** No, not as printed: leaving the mine on turn one with
+zero gems is a dominant strategy under the current scoring. One rule change
+removes it. The measurements, the confidence intervals and the reproduction
+commands are in **[BALANCE.md](BALANCE.md)**; the agents that produced them are
+in this repository and can play any of the rule variants.
+
 ## Rules
 
 The winner of a haul is the player who **leaves the mine with the most gems**.
@@ -87,6 +93,10 @@ In the event of a **tie**, the contenders for victory take turns - starting with
 * Is there a dominant strategy? Is blasting too weak? Should the victory points be tweaked?
 * Would the game be better with n-1 passes instead of n passes?
 
+These are not rhetorical any more: `train_selfplay.py` and
+`evaluate_balance.py` turn them into experiments (see
+[Self-improving AI players](#self-improving-ai-players-self-play)).
+
 ## Setup
 
 Use a Python 3.11+ interpreter in VS Code, then run:
@@ -113,3 +123,169 @@ python train_q_learning.py --policy greedy
 ```
 
 A strategy is evidence of dominance only if it remains strong across opponent policies, player counts, and random seeds. Compare the printed `mean_reward`, `escape_rate`, and `dragon_rate`; repeat with several `--seed` values.
+
+---
+
+## Self-improving AI players (self-play)
+
+`train_q_learning.py` learns **one seat** against a **fixed** opponent policy.
+That is a good smoke test, but it cannot answer the questions above: the
+opponents never improve, the observation is a coarse 65-number vector, and a
+single `mean_reward` has no confidence interval.
+
+This repository also ships a league-based self-play stack. It is numpy-only,
+uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
+**every seat**:
+
+| module | purpose |
+| :-- | :-- |
+| `features.py` | fixed-size, seat-invariant state + action features; no hidden information |
+| `agents.py` | `Agent` interface, scripted baselines, `NeuralAgent` |
+| `learning.py` | masked-softmax MLP policy + value baseline, REINFORCE, Adam, save/load |
+| `selfplay.py` | full-game driver: every seat controlled, blasts, tie-breaks, per-player returns |
+| `train_selfplay.py` | league self-play trainer with checkpoints and a learning curve |
+| `evaluate_balance.py` | benchmarks, pairwise dominance, luck analysis, markdown report |
+
+### Train
+
+```powershell
+python -m pip install -r requirements.txt
+python train_selfplay.py --generations 60 --games-per-generation 64
+```
+
+This writes `checkpoints/selfplay.npz`, older snapshots to
+`checkpoints/league/`, and the learning curve to
+`checkpoints/selfplay.history.json`.
+
+Useful flags:
+
+| flag | meaning |
+| :-- | :-- |
+| `--players 3\|4\|5` | number of seats |
+| `--hidden 0` / `--hidden 64` | linear policy / one hidden layer |
+| `--epochs`, `--batch-size`, `--lr` | optimisation budget |
+| `--mirror-prob` | fraction of games in which every seat is the current learner |
+| `--league-prob`, `--league-size` | how often opponents are older snapshots |
+| `--eval-opponent rule` | benchmark used during training |
+| `--no-solo-escape-bonus` | play the rules variant without the free bonus for a sole escapee with zero gems |
+| `--blind-blast-choice` | choose blast cards face down, as the printed rules say |
+| `--pass-rule {n-1,n}` | play the "n passes" variant instead of the printed "n-1" |
+| `--stall-rounds` | safety valve for the lorry-stall gap described in BALANCE.md |
+
+Each game gives the learner one rotating seat while the other seats are filled
+from a league of the hand-tuned rule policy, simple bots and older snapshots of
+the learner itself. A quarter of games are pure mirror self-play. Decisions are
+scored with REINFORCE against a learned value baseline, with the entropy bonus
+keeping some exploration alive.
+
+### Evaluate
+
+```powershell
+python evaluate_balance.py --agents rule,greedy,random,cautious,checkpoints/selfplay.npz --games 300
+```
+
+The report (`reports/balance.md`, plus a JSON file) contains:
+
+1. **Leaderboard** – each policy in one rotating seat against `n-1` benchmark
+   agents, with bootstrap confidence intervals for the score and the margin.
+2. **Pairwise head-to-head** – A alone against `n-1` copies of B and the mirror
+   image, which is what "dominance" actually requires.
+3. **Game dynamics** – dragon rate, stall rate, blast usage, game length.
+4. **Seat effects** – mean score per seat; column ownership is not symmetric.
+5. **Luck vs skill** – mirror matches where every seat runs the same policy, so
+   any spread is pure luck plus seat position.
+
+Seats are rotated every game on purpose: a policy that only wins from seat 0 is
+not a dominant strategy.
+
+### What the agents see
+
+The encoder reads only `PlayerActionContext`, which already hides opponent card
+fronts, opponent collections and private blast draws. The state block covers the
+public situation (scores, seats, deck size, visible own-column fronts, inferred
+dragon risk per backside, per-opponent public facts). Each of the 28 primitive
+actions gets an action block (row/column, backside, visible front, risk, whether
+the occupant can be displaced). Blast announcements are a separate half of the
+action space, so the learner also decides **when to blast** instead of receiving
+a hand-coded rule.
+
+### Findings
+
+The full write-up, with confidence intervals and reproduction commands, is in
+**[BALANCE.md](BALANCE.md)**. The short version:
+
+* **There is a dominant strategy: leave on turn one.** The printed rules pay the
+  full haul bonus (+3, +4 in the last haul) to a sole escapee even with zero
+  gems. A thirty-line `rusher` agent that walks to the nearest pit cage and
+  never looks at a card beats the hand-tuned rule policy **54% of the time**
+  (3 players, 300 games) with a **+2.69 point** score margin. A self-play agent
+  trained from scratch finds the same behaviour by itself and reaches **63%**
+  and **+3.67**.
+* **The fix is to stop paying for empty escapes.** With
+  `--no-solo-escape-bonus`, the rusher drops to 19% wins and **-1.62** points and
+  the trained agent to 24.7% and **-1.17**: nothing beats the rule policy any
+  more. Note that the learner then still refuses to mine - it takes the safe
+  zero - so this rule change alone creates a duller degenerate strategy.
+* **Blasting is not too weak, but the engine was cheating.** The blast rule says
+  to draw three cards face down and choose two before looking. `MineEnv` showed
+  the chooser all three fronts, which makes blasting dominant (+1.65 points).
+  With the printed rule (`--blind-blast-choice`) it is neutral (+0.62).
+* **`n-1` passes is better than `n`.** Halves game length (77 vs 143 decisions),
+  cuts stalled hauls from 27.6% to 4.8%, and halves the rusher's margin. This
+  also uncovered a real bug: `step_one_player()` ignored `--pass-rule`
+  entirely, so the variant only worked in the single-learner API.
+* **Luck dominates a single game.** Identical agents playing each other spread
+  **4.9 points** within a game, more than the margin of any strategy found
+  here. Use the confidence intervals, and expect to need tens of games.
+
+### Testing the rules variants
+
+```powershell
+# remove the free bonus for a sole, empty-handed escapee and retrain
+python train_selfplay.py --no-solo-escape-bonus --escape-shaping 0 --out checkpoints/selfplay_no_bonus.npz
+
+# the printed rules, and the fixed ones, with the hand-written rusher control
+python evaluate_balance.py --agents rule,greedy,random,cautious,rusher,checkpoints/selfplay.npz --games 300 --out reports/balance_default_rules.md
+python evaluate_balance.py --agents rule,greedy,random,cautious,rusher,checkpoints/selfplay_no_bonus.npz --no-solo-escape-bonus --games 300 --out reports/balance_fixed_rules.md
+
+# blast: peek vs the printed face-down rule
+python evaluate_balance.py --agents rule,rule:rich,rule:always --games 200 --skip-mirror --out reports/balance_blast.md
+python evaluate_balance.py --agents rule,rule:rich,rule:always --games 200 --skip-mirror --blind-blast-choice --out reports/balance_blast_blind.md
+
+# n-1 vs n passes on otherwise identical runs
+python evaluate_balance.py --agents rule,greedy,random,rusher --games 200 --pass-rule n --out reports/pass_n.md
+```
+
+Four rule gaps surfaced while building this. All four are switchable, so you
+can measure their effect instead of guessing:
+
+| gap | behaviour | switch |
+| :-- | :-- | :-- |
+| free solo-escape bonus | +3/+4 for leaving alone with zero gems | `--no-solo-escape-bonus` |
+| blast peek | the blaster sees all three draws before choosing | `--blind-blast-choice` (the printed rule) |
+| lorry stall | a haul can never end once everyone remaining is parked | `--stall-rounds` (default 8; 0 can deadlock) |
+| pass count | `step_one_player()` ignored `--pass-rule` and always used `n` | fixed; both variants now work |
+
+The defaults keep the historical environment behaviour, so old scripts
+reproduce. For balance work, pass `--blind-blast-choice` and decide explicitly
+what to do about the other two; [BALANCE.md](BALANCE.md) has the measured effect
+of each.
+
+The open questions map directly onto the tooling:
+
+| question | experiment |
+| :-- | :-- |
+| skill vs luck | mirror matches (always in the report) |
+| dominant strategy? | pairwise head-to-head + the `rusher` control |
+| is blasting too weak? | `rule:rich` / `rule:always`, with and without `--blind-blast-choice` |
+| n-1 vs n passes | `--pass-rule n` on otherwise identical runs |
+| victory-point tweaks | `--solo-escape-bonus` / `--no-solo-escape-bonus`, or edit `_score_haul` |
+
+### Development
+
+The original test suite still runs, plus tests for the self-play stack:
+
+```powershell
+python -m pip install pytest
+python -m pytest -q
+```

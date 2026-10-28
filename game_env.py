@@ -23,6 +23,7 @@ BACKSIDE_A = 0
 BACKSIDE_B = 1
 BACKSIDE_C = 2
 BACKSIDE_UNKNOWN = 3
+FRONT_UNKNOWN = -1
 
 # Deck composition per backside pool.
 DRAGONS_PER_BACKSIDE = 2
@@ -127,13 +128,43 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
 
     metadata = {"render_modes": []}
 
-    def __init__(self, opponents: int = 3, opponent_policy: str = "random") -> None:
+    def __init__(
+        self,
+        opponents: int = 3,
+        opponent_policy: str = "random",
+        stall_rounds: int = 8,
+        passes: str = "n-1",
+        solo_escape_bonus: bool = True,
+        blast_choice_sees_fronts: bool = True,
+    ) -> None:
         if opponents not in (2, 3, 4):
             raise ValueError("opponents must be 2, 3, or 4")
         if opponent_policy not in {"simple", "random", "cautious", "greedy"}:
             raise ValueError("unknown opponent policy")
+        if stall_rounds < 0:
+            raise ValueError("stall_rounds must be >= 0")
+        if passes not in ("n-1", "n"):
+            raise ValueError("passes must be 'n-1' or 'n'")
         self.n_players = opponents + 1
         self.opponent_policy = opponent_policy
+        # Safety valve for a real rules gap: once somebody has left the mine no
+        # new row is dealt, so players that keep camping on their lorry (or
+        # bouncing between lorry and pit cage) can stall the haul forever.
+        # After this many consecutive rounds without anyone collecting a card
+        # the haul ends as "stalled": campers keep their loot but score
+        # nothing. Set to 0 to disable and reproduce the raw rules.
+        self.stall_rounds = stall_rounds
+        self.passes = passes
+        # Rules variant: the printed rules award the haul bonus to a sole
+        # escapee even when they carry no gems. That makes "leave immediately"
+        # dominant, so the variant can turn it off for comparison.
+        self.solo_escape_bonus = bool(solo_escape_bonus)
+        # The printed rules draw three cards face down, choose two, and only
+        # then look at them. The historical environment let the chooser see all
+        # three fronts first, which makes blasting far safer. Keep that default
+        # for backwards compatibility; set False for the rules-correct gamble.
+        self.blast_choice_sees_fronts = bool(blast_choice_sees_fronts)
+        self.rounds_without_collection = 0
         self.action_space = spaces.Discrete(PASS + 1)
         max_rows = MAX_ROWS
         max_visible_cards = max_rows * MAX_COLUMNS
@@ -161,6 +192,12 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.used_blast_backsides: list[int] = []
         self.displacement_events: list[tuple[int, int]] = []
         self.game_finished = False
+        # Optional external agents, one per seat. A seat may be None, in which
+        # case the built-in opponent policy plays that seat. Agents only ever
+        # receive the cheat-safe PlayerActionContext.
+        self.agents: list[Any] | None = None
+        # One entry per finished haul; useful for balance reports and logs.
+        self.haul_history: list[dict[str, Any]] = []
 
     def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None):
         super().reset(seed=seed)
@@ -185,6 +222,8 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.planning_player = self.starting_player
         self.planned_players = [False] * self.n_players
         self.game_finished = False
+        self.haul_history = []
+        self.rounds_without_collection = 0
         return self._observation(), {"round": self.round, "haul": self.haul}
 
     # ------------------------------------------------------------------
@@ -252,8 +291,20 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         reward, terminated = self._finish_round(reward, info)
         return self._observation(), reward, terminated, False, info
 
-    def step_one_player(self, action: int | None = None, *, announce_blast: bool = False):
-        """Advance exactly one player's planning decision."""
+    def step_one_player(
+        self,
+        action: int | None = None,
+        *,
+        announce_blast: bool = False,
+        force_action: bool = False,
+    ):
+        """Advance exactly one player's planning decision.
+
+        Pass ``force_action=True`` to apply ``action`` for whichever seat is
+        currently planning.  This is what a multi-agent driver uses; the
+        default keeps the historical behaviour where ``action`` only belongs to
+        player 0 and every other seat plays its built-in policy.
+        """
         if self._game_over():
             return self._observation(), 0.0, True, False, {"game_over": True}
 
@@ -270,10 +321,19 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         player = self.players[player_index]
         if player_index == 0:
             if action is None:
-                action = PASS
+                agent_action = self._agent_action(0)
+                action = PASS if agent_action is None else agent_action
             action = int(action)
             if not self.action_space.contains(action) or not self._legal(action, player_index):
                 return self._observation(), 0.0, False, False, {"illegal_action": True}
+        elif force_action and action is not None:
+            action = int(action)
+            if not self.action_space.contains(action) or not self._legal(
+                action, player_index
+            ):
+                return self._observation(), 0.0, False, False, {
+                    "illegal_action": True
+                }
         else:
             action = self._opponent_action(player_index)
 
@@ -297,7 +357,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             if (index := (player_index + offset) % self.n_players) in active_players
         ]
         self.planning_player = next_players[0] if next_players else active_players[0]
-        if self.consecutive_passes < len(active_players):
+        if self.consecutive_passes < self._pass_threshold():
             reward = self.last_reward if action == PASS else planning_reward
             self.last_reward = reward
             return self._observation(), reward, False, False, {
@@ -344,7 +404,13 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
     def _finish_round(self, reward: float, info: dict[str, Any]) -> tuple[float, bool]:
         """Shared post-resolution bookkeeping for both stepping APIs."""
         mine_empty = not self._mine_has_cards()
-        haul_over = self._haul_over()
+        stalled = (
+            self.stall_rounds > 0
+            and self.rounds_without_collection >= self.stall_rounds
+        )
+        if stalled:
+            info["outcome"] = "stalled"
+        haul_over = self._haul_over() or stalled
 
         if not self._can_deal_row() or mine_empty:
             info["mine_empty"] = True
@@ -367,6 +433,24 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         info["haul"] = self.haul
         info["game"] = f"{self.haul}/{HAULS_PER_GAME}"
         info["scores"] = [player.score for player in self.players]
+        self.haul_history.append(
+            {
+                "haul": self.haul,
+                "outcome": info.get("outcome", "unknown"),
+                "dragon_player": info.get("dragon_player"),
+                "scores": [player.score for player in self.players],
+                "gems": [player.gems for player in self.players],
+                "cards": [len(player.collected_cards) for player in self.players],
+                "escaped": [
+                    index for index, player in enumerate(self.players)
+                    if player.escaped
+                ],
+                "dead": [
+                    index for index, player in enumerate(self.players)
+                    if player.dead
+                ],
+            }
+        )
 
         if self.haul < HAULS_PER_GAME:
             self._start_next_haul()
@@ -453,6 +537,9 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         # victim is already flagged dead, so there is nothing left to assign.
         if info.get("outcome") in ("dragon", "blast_dragon"):
             return
+        # A stalled haul ends without anyone leaving; campers score nothing.
+        if info.get("outcome") == "stalled":
+            return
         active = [player for player in self.players if not player.escaped and not player.dead]
         if info.get("mine_empty") or len(active) <= 1:
             for player in active:
@@ -464,7 +551,10 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             highest_gems = max(player.gems for player in escaped)
             gem_winners = [player for player in escaped if player.gems == highest_gems]
             if len(escaped) == 1 or len(gem_winners) == 1:
-                gem_winners[0].score += 3 if self.haul < HAULS_PER_GAME else 4
+                bonus = 3 if self.haul < HAULS_PER_GAME else 4
+                if len(escaped) == 1 and highest_gems == 0 and not self.solo_escape_bonus:
+                    bonus = 0
+                gem_winners[0].score += bonus
             else:
                 for player in gem_winners:
                     player.score += 1
@@ -518,6 +608,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.tie_breaker_turn = 0
         self.used_blast_backsides = []
         self.displacement_events = []
+        self.rounds_without_collection = 0
 
     # ------------------------------------------------------------------
     # Deck & mine
@@ -533,6 +624,16 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                 + [DYNAMITE] * DYNAMITES_PER_BACKSIDE
             )
         ]
+
+    def _deal_rows(self, depth: int) -> list[list[tuple[int, int]]]:
+        """Backwards-compatible name for :meth:`_deal_next_rows`.
+
+        Deals from a fresh deck when the environment has not been reset yet,
+        which keeps the deck-composition helper usable on a bare instance.
+        """
+        if not self.cards_remaining:
+            self.cards_remaining = self._new_deck()
+        return self._deal_next_rows(depth)
 
     def _deal_next_rows(self, depth: int) -> list[list[tuple[int, int]]]:
         cards = self.cards_remaining[:depth * self.n_players]
@@ -557,9 +658,12 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         return any(card is not None for row in self.rows for card in row)
 
     def _pass_threshold(self) -> int:
-        return max(
-            1, sum(not player.escaped and not player.dead for player in self.players) - 1
+        active = sum(
+            not player.escaped and not player.dead for player in self.players
         )
+        # The rules use n-1 consecutive passes; the README's open question is
+        # whether n passes would be better, hence the configurable variant.
+        return max(1, active - (1 if self.passes == "n-1" else 0))
 
     # ------------------------------------------------------------------
     # Legality
@@ -644,10 +748,65 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             self.displacement_events.append((occupant, player_index))
 
     # ------------------------------------------------------------------
+    # Agents
+    # ------------------------------------------------------------------
+    def set_agents(self, agents: list[Any] | None) -> None:
+        """Attach one agent per seat (``None`` keeps the built-in policy).
+
+        Agents only ever see the cheat-safe :class:`PlayerActionContext`.
+        Blast announcements and blast-card choices are driven by
+        ``selfplay.py`` because they are not planning actions.
+        """
+        if agents is None:
+            self.agents = None
+            return
+        agents = list(agents)
+        if len(agents) != self.n_players:
+            raise ValueError("need exactly one agent per seat")
+        for agent in agents:
+            if agent is not None and not hasattr(agent, "act"):
+                raise TypeError("an agent must provide .act(context)")
+        self.agents = agents
+
+    def active_player_indices(self) -> list[int]:
+        return [
+            index for index, player in enumerate(self.players)
+            if not player.escaped and not player.dead
+        ]
+
+    def legal_actions(self, player_index: int = 0) -> tuple[int, ...]:
+        return tuple(
+            action
+            for action in range(self.action_space.n)
+            if self._legal(action, player_index)
+        )
+
+    def _agent_for(self, player_index: int):
+        if self.agents is None:
+            return None
+        return self.agents[player_index]
+
+    def _agent_action(self, player_index: int) -> int | None:
+        agent = self._agent_for(player_index)
+        if agent is None:
+            return None
+        context = self.player_action_context(player_index)
+        action = int(agent.act(context))
+        if self._legal(action, player_index):
+            return action
+        # Never let a buggy agent stall the game: fall back to a legal action.
+        legal = self.legal_actions(player_index)
+        return int(self.rng.choice(legal)) if legal else None
+
+    # ------------------------------------------------------------------
     # Opponents
     # ------------------------------------------------------------------
 
     def _opponent_action(self, player_index: int) -> int:
+        agent_action = self._agent_action(player_index)
+        if agent_action is not None:
+            return agent_action
+
         player = self.players[player_index]
 
         if self.opponent_policy == "simple":
@@ -696,6 +855,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         reward = 0.0
         info: dict[str, Any] = {"round": self.round, "action": self.last_action}
         learner_was_escaped = self.players[0].escaped
+        collected_this_round = 0
         player_order = [
             (self.starting_player + offset) % self.n_players
             for offset in range(self.n_players)
@@ -727,6 +887,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             card, backside = card_entry
             self.rows[player.position][player.column] = None
             player.collected_cards.append((card, backside))
+            collected_this_round += 1
 
             if card == DRAGON:
                 for remaining_player in self.players:
@@ -755,6 +916,11 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         elif not info.get("outcome"):
             info["outcome"] = "continued"
 
+        if collected_this_round:
+            self.rounds_without_collection = 0
+        else:
+            self.rounds_without_collection += 1
+
         if info["outcome"] != "dragon":
             self._prepare_blasts()
         return reward, info
@@ -765,7 +931,9 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         if any(player.dead for player in self.players):
             return True
         active = [p for p in self.players if not p.escaped and not p.dead]
-        if not active:
+        if len(active) <= 1:
+            # "if only one player remains in the mine after the execution
+            # phase, this player leaves the mine automatically."
             return True
         if not self._mine_has_cards():
             return True
@@ -936,6 +1104,12 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
     # Views (cheat-safe)
     # ------------------------------------------------------------------
 
+    def _blast_choice_view(self, player: Player) -> list[tuple[int, int]]:
+        """Cards the blaster may inspect while choosing what to keep."""
+        if self.blast_choice_sees_fronts:
+            return list(player.blast_cards)
+        return [(FRONT_UNKNOWN, backside) for _front, backside in player.blast_cards]
+
     def player_view(self, player_index: int) -> dict[str, Any]:
         """Return the information a specific player is allowed to inspect.
 
@@ -983,7 +1157,8 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             "rows": public_rows,
             "private_cards": list(player.collected_cards),
             "own_blast_cards": (
-                list(player.blast_cards) if player.blast_pending else []
+                self._blast_choice_view(player)
+                if player.blast_pending else []
             ),
             "own_score": player.score,
             "own_position": player.position,
@@ -1052,7 +1227,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             if allowed
         )
         own_blast_cards = (
-            tuple(tuple(card) for card in me.blast_cards)
+            tuple(tuple(card) for card in self._blast_choice_view(me))
             if me.blast_pending else ()
         )
 

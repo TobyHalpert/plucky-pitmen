@@ -669,9 +669,12 @@ def test_pit_cage_player_does_not_end_haul_while_lorry_players_remain():
     env.planning_turns = 2
     env.planned_players = [True] * env.n_players
 
-    _observation, _reward, terminated, _truncated, info = env.step_one_player()
-    if not terminated:
+    info = {"outcome": "planning"}
+    terminated = False
+    for _ in range(10):
         _observation, _reward, terminated, _truncated, info = env.step_one_player()
+        if terminated or info["outcome"] != "planning":
+            break
 
     assert not terminated
     assert env.haul == 1

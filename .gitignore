@@ -216,3 +216,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Plucky Pitmen generated artifacts
+checkpoints/
+reports/

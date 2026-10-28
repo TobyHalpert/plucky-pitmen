@@ -6,7 +6,7 @@ import argparse
 import pickle
 import sys
 import tkinter as tk
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from tkinter import ttk
 from typing import Callable
@@ -288,6 +288,10 @@ class GameController:
             return StepResult(str(error))
 
         while not terminated and self.env.planning_player != 0:
+            # P1 may have left the mine or died with this action; in that case
+            # its turn never comes again and the loop would spin forever.
+            if p.escaped or p.dead:
+                break
             _obs, reward, terminated, _trunc, info = self.env.step_one_player()
 
         return StepResult(self._format_outcome(info, reward), game_over=terminated)
