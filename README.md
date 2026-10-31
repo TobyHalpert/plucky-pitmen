@@ -141,7 +141,7 @@ traced back to the distribution that produced it. It is empty for scripted
 policies, during a tie-break, and while a blast is waiting on a card.
 
 What to look for, given the measurements in [BALANCE.md](BALANCE.md): it should
-rarely blast (0.02-0.03 per game), it should walk to a pit cage as soon as it
+rarely blast (0.03-0.05 per game), it should walk to a pit cage as soon as it
 holds loot, and it should *not* visibly change its mind when an opponent
 announces a blast (§6) — that missing reaction is the finding, not a bug in the
 viewer.
@@ -237,9 +237,12 @@ not a dominant strategy.
 The encoder reads only `PlayerActionContext`, which already hides opponent card
 fronts, opponent collections and private blast draws. The state block covers the
 public situation (scores, seats, deck size, visible own-column fronts, inferred
-dragon risk per backside, per-opponent public facts). Each of the 28 primitive
+dragon risk per backside, per-opponent public facts). Each of the 53 primitive
 actions gets an action block (row/column, backside, visible front, risk, whether
-the occupant can be displaced). Blast announcements are a separate half of the
+the occupant can be displaced). The grid covers every row a deck can produce —
+ten at three players, seven at four — because the mine keeps growing rows and
+an action space sized by the opening board cannot name the front of a deep
+mine. Blast announcements are a separate half of the
 action space, so the learner also decides **when to blast** instead of receiving
 a hand-coded rule.
 
@@ -259,14 +262,15 @@ The full write-up, with confidence intervals and reproduction commands, is in
   gem and walks out: it is the best row on the leaderboard (**+1.19 [+0.68,
   +1.75]** at three players, **+1.30 [+0.84, +1.78]** at four), it beats the
   rusher **+8.37 points with a 100% top score**, and it beats the trained agent
-  **+3.29** (whose own score drops to -1.85). A lone rusher against two leavers
+  **+3.10** (whose own score drops to -1.68). A lone rusher against two leavers
   tops the scoreboard only 35.0% of the time with a *negative* margin.
 * **Four players is more mine, not more coin-flip.** The same benchmark with
-  four seats makes the mine more lethal (63% of hauls end on a dragon, against
-  55% at three) while the luck band stays put (mirror spread 4.80 points, 13%
+  four seats makes the mine more lethal (62% of hauls end on a dragon, against
+  53% at three) while the luck band stays put (mirror spread 4.63 points, 15%
   tied top scores). The leaver is still the best seat, the rusher still a
   parasite, and the learner **trained on four players is genuinely better**
-  (+0.92 [+0.56, +1.27]) than the same learner trained on three (-0.20).
+  (+1.11 [+0.73, +1.49], second row of the four-player table) than the same
+  learner trained on three (-0.31).
 * **A leaderboard against fixed bots cannot tell these apart.** Against the
   scripted bots the ranking is selfplay > rusher > leaver; against a leaver it
   inverts. The report therefore always includes `rusher` and `leaver`, plus a
@@ -274,20 +278,20 @@ The full write-up, with confidence intervals and reproduction commands, is in
   is visible instead of looking skilful.
 * **Blasting is not too weak, but the engine was cheating.** The blast rule says
   to draw three cards face down and choose two before looking. `MineEnv` showed
-  the chooser all three fronts, which makes blasting dominant (+1.43 points at
-  three players, +1.16 at four). With the printed rule (`--blind-blast-choice`)
-  it is neutral (+0.38 at both counts), a blast haul is worth the same as a
-  normal one (+0.40 vs +0.39 points), and against a field that banks loot it is
-  a losing move (-0.52).
+  the chooser all three fronts, which makes blasting dominant (+1.71 points at
+  three players, +1.00 at four). With the printed rule (`--blind-blast-choice`)
+  it is neutral (+0.39 at three players, +0.38 at four), a blast haul is worth
+  the same as a normal one (+0.41 vs +0.40 points), and against a field that
+  banks loot it is a losing move (-0.52).
 * **The blast threat is real; the AI ignores it.** A pending blast costs the
-  blaster's rivals **-0.41 points [-0.76, -0.03]** and 6 points of win rate, and
+  blaster's rivals **-0.43 points [-0.81, -0.06]** and 11 points of win rate, and
   the cheapest counter — walk to the pit cage while the blast is pending —
-  recovers **+0.29 [+0.02, +0.55]** of it. The trained network moves its action
-  distribution by **0.6%** when a blast is pending and never learns to blast
-  itself (0.02–0.03 per game), even after 60 generations against a league in
+  recovers **+0.37 [+0.12, +0.63]** of it. The trained network moves its action
+  distribution by **0.65%** when a blast is pending and never learns to blast
+  itself (0.03–0.05 per game), even after 60 generations against a league in
   which 60% of opponents blast on sight. That is a training-budget finding, not
   a rules finding.
-* **`n-1` passes is better than `n`.** Shortens games (67 vs 80 decisions per
+* **`n-1` passes is better than `n`.** Shortens games (65 vs 79 decisions per
   game) and punishes the early leaver harder under `n` than `n-1` once the lorry
   rule is in place (-3.15 vs -0.39 points for the rusher). This also uncovered a
   real bug:
@@ -297,12 +301,18 @@ The full write-up, with confidence intervals and reproduction commands, is in
   "no collection for 8 rounds" valve with "everyone still inside leaves when the
   haul ends" does two things: it stops paying the escapee while voiding the
   campers' loot, and it hands the campers' gems into the scoring. The trained
-  agent's margin against the scripted bots fell from +4.14 to -0.20 (parity),
+  agent's margin against the scripted bots fell from +4.14 to -0.31 (parity),
   the rusher's from +2.69 to +0.26, and the games that used to be farmed now
   end with the campers banking what they collected.
 * **Luck dominates a single game.** Identical agents playing each other spread
-  **4.6–4.8 points** within a game, far more than any between-policy margin here.
+  **4.5–5.0 points** within a game, far more than any between-policy margin here.
   Use the confidence intervals.
+* **Two engine bugs were found by watching the agents, not by testing the
+  rules.** A dead blaster could hold a haul open until the game was abandoned
+  and scored all-zero, and the action grid was sized by the opening board, so
+  rows 5 and deeper of a grown mine could neither be seen nor played (10-13% of
+  dealt cards). Both are fixed, both have regression tests, every checkpoint was
+  retrained, and every report now prints its abandoned-game count.
 * **An engine bug was silently scoring whole games as zero.** A player killed by
   a dragon while a blast was pending left the haul unable to finish, so the game
   was recorded `aborted` with every score at 0 (36 of 60 always-blaster games).

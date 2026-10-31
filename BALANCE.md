@@ -18,36 +18,44 @@ The supportable conclusions are:
   simply takes a gem and walks out.
 * The best policy in this repository is the opposite of rushing: **collect loot,
   then leave**. It beats the rusher **+8.37 points, 100% top score** and beats
-  the trained self-play agent **+3.29 points**.
+  the trained self-play agent **+3.10 points**.
 * A leaderboard against fixed bots cannot detect this on its own, because the
   ranking depends on what the bots do. Head-to-head against a leaver is the test
   that matters.
 * **Blasting is not too weak, but it is not a free win either.** It is a strong
-  move on the old peeking engine and a coin-flip under the printed face-down
-  rule; against a field that banks loot it *loses* points. That is a coherent
+  move on the old peeking engine (**+1.00** at four players) and a coin-flip
+  under the printed face-down rule (**+0.38**, interval touching zero); against
+  a field that banks loot it *loses* points (**-0.52**). That is a coherent
   design, and it is why the self-play learners choose to barely blast (§5).
 * **The threat of a blast is real — worth about 0.4 points to a non-blaster —
   and the AI never learns to react to it.** A one-line "walk to the pit cage
   when someone's blast is pending" policy recovers the whole loss; the trained
-  network moves its action distribution by 0.6% (§6).
+  network moves its action distribution by 0.65% (§6).
 * Answering the 4-player question: the game does **not** get more random or
   less skill-driven at four players, the leaver is still the best single seat,
-  and the learner trained on four players is genuinely better than the same
-  learner trained on three (§4).
-* One engine bug was found because the AI was finally asked to blast: a player
-  killed by a dragon while its blast was pending left the haul unable to
-  finish, so the game was scored all-zero (36 of 60 always-blaster games).
-  Fixed, and every report now prints its abandoned-game count (§7). A second
-  "bug" I initially reported in the same area — an unwinnable tie-breaker —
-  does not exist: a haul spends one dragon and the deck is rebuilt every haul,
-  so five remain against the four a tie-break can need. §7 records the
-  withdrawal, including the bad arithmetic in my first correction.
+  and the learner trained on four players (**+1.11**, 40.7% wins) is genuinely
+  better than the same learner trained on three (**-0.31**) (§4).
+* **Two engine bugs** were found, and both charged the agents for them. A
+  player killed by a dragon while its blast was pending left the haul unable to
+  finish, so the game was scored all-zero (36 of 60 always-blaster games). And
+  the action grid was sized by the *opening* board — five rows — while the mine
+  keeps growing a row every round: rows 5 and deeper could not be named as an
+  action and were cut out of the observation, so the agents could not dig the
+  front of a deep mine (10-13% of dealt cards were stranded there). Both fixed,
+  every checkpoint retrained, every number in this document regenerated, and
+  every report now prints its abandoned-game count (§7).
+* A third "bug" I initially reported in the same area — an unwinnable
+  tie-breaker — does not exist: a haul spends one dragon and the deck is
+  rebuilt every haul, so five remain against the four a tie-break can need. §7
+  records the withdrawal, including the bad arithmetic in my first correction.
 
-All numbers: 4-player results are labelled as such; everything else is 3
-players. Seats rotated every game, 300 games per leaderboard row, 60 games per
-head-to-head direction, 240 games per blast measurement, 95% bootstrap CIs
-(2000 resamples). Every report states how many games the engine had to abandon
-(always zero now — see §7, because it used to be a silent source of fake data).
+All numbers were regenerated after the action-grid fix and a full retrain of
+every checkpoint (§7), because the grid changed what the agents could do.
+4-player results are labelled as such; everything else is 3 players. Seats
+rotated every game, 300 games per leaderboard row, 60 games per head-to-head
+direction, 240 games per blast measurement, 95% bootstrap CIs (2000 resamples).
+Every report states how many games the engine had to abandon (always zero now —
+see §7, because it used to be a silent source of fake data).
 
 ---
 
@@ -59,21 +67,20 @@ Against the shipped benchmarks it looks strong:
 | policy | win % | mean score | margin vs 2 × rule [95% CI] | escapes (0 gems) |
 | :-- | --: | --: | :-- | --: |
 | **leaver (collect + leave)** | 46.7% | +3.26 | **+1.19 [+0.68, +1.75]** | 99% (94%) |
-| random | 37.3% | +1.66 | +0.33 [-0.15, +0.77] | 57% (69%) |
+| random | 37.3% | +1.70 | +0.35 [-0.14, +0.80] | 58% (67%) |
 | rusher | 35.7% | +2.79 | +0.26 [-0.23, +0.77] | 100% (100%) |
-| rule | 33.0% | +1.87 | -0.14 [-0.53, +0.24] | 71% (22%) |
-| selfplay (60 gens) | 35.7% | +1.51 | -0.20 [-0.62, +0.25] | 72% (81%) |
-| cautious | 29.7% | +0.72 | -0.57 [-0.93, -0.23] | 47% (55%) |
-| greedy | 20.0% | +0.00 | -1.20 [-1.51, -0.90] | 30% (54%) |
+| rule | 31.3% | +2.33 | +0.08 [-0.36, +0.48] | 82% (24%) |
+| selfplay (60 gens) | 35.3% | +1.32 | -0.31 [-0.75, +0.10] | 67% (79%) |
+| cautious | 30.7% | +0.76 | -0.56 [-0.91, -0.18] | 48% (52%) |
+| greedy | 24.3% | +0.18 | -1.00 [-1.30, -0.66] | 31% (51%) |
 
-Now split the rusher's points by what its opponents did (200 games, rusher vs
+Now split the rusher's points by what its opponents did (300 games, rusher vs
 2 × rule, per haul):
 
 | what the other two did | share of hauls | rusher points/haul |
 | :-- | --: | --: |
-| left the mine **with gems** | **50.7%** | **0.00** |
-| woke the dragon, still inside | 29.0% | +3.29 |
-| parked on their lorries, still inside | 13.2% | +3.24 |
+| at least one left the mine **with gems** | **65.9%** | **0.00** |
+| nobody banked loot (dragon or lorry stand-off) | 34.1% | +2.72 |
 
 (The mechanism is unchanged by the lorry rule and is still visible in every
 report: the rusher scores **0.00** in every haul where a rival banks loot. What
@@ -113,9 +120,9 @@ That second half is what closes the exploit. Measured over the same benchmark:
 | metric | old valve (campers voided) | lorry rule (campers scored) |
 | :-- | --: | --: |
 | rusher margin vs 2 × rule | **+2.69 [+2.13, +3.27]** | **+0.26 [-0.23, +0.77]** |
-| trained agent margin vs 2 × rule | +4.14 [+3.54, +4.70] | -0.20 [-0.62, +0.25] |
-| trained agent's escape rate | 99% | 72% |
-| hauls ended by a lorry stand-off | 20.8% | 20.5% |
+| trained agent margin vs 2 × rule | +4.14 [+3.54, +4.70] | -0.31 [-0.75, +0.10] |
+| trained agent's escape rate | 99% | 67% |
+| hauls ended by a lorry stand-off | 20.8% | 19.2% |
 
 The escapee's empty +3 now competes with campers who hold two or three gems, so
 the free ride disappears. Self-play notices immediately: the retrained agent is
@@ -130,9 +137,10 @@ and leaves once it holds loot.
 | A | B | A top-score % | A margin [95% CI] | B top-score % | B margin [95% CI] |
 | :-- | :-- | --: | :-- | --: | :-- |
 | **leaver** | **rusher** | **100.0%** | **+8.37 [+7.92, +8.79]** | 35.0% | -0.92 [-1.54, -0.30] |
-| **leaver** | **selfplay** | 72.0% | **+3.29 [+2.52, +4.03]** | 19.0% | -1.85 [-2.35, -1.35] |
-| selfplay | rusher | 84.0% | +2.05 [+1.41, +2.64] | 59.0% | +0.75 [+0.21, +1.30] |
+| **leaver** | **selfplay** | 71.0% | **+3.10 [+2.38, +3.83]** | 21.0% | -1.68 [-2.17, -1.17] |
+| rule | selfplay | 57.0% | +1.68 [+0.89, +2.46] | 43.0% | +0.24 [-0.42, +0.95] |
 | rusher | rule | 49.0% | +0.67 [-0.25, +1.53] | 100.0% | +1.30 [+0.99, +1.65] |
+| rule | leaver | 43.0% | +0.75 [+0.06, +1.49] | 52.0% | +1.20 [+0.17, +2.22] |
 
 * A single rusher against two leavers tops the scoreboard 35.0% of the time
   with a **negative** margin: it is a losing seat.
@@ -141,14 +149,17 @@ and leaves once it holds loot.
   dealt, and the leaver then picks up loot unopposed before walking out with
   more gems than the empty-handed pair. At four players it is the same story:
   one leaver against three rushers wins **99.5%** with **+7.94**.
-* The trained self-play agent loses to the leaver as well (−1.85 as the lone
-  seat, +3.29 for the leaver). Self-play converged on an empty-handed escape
+* The trained self-play agent loses to the leaver as well (−1.68 as the lone
+  seat, +3.10 for the leaver). Self-play converged on an empty-handed escape
   because its opponent pool — scripted bots and its own snapshots — kept giving
   it away.
 
-Under the fixed scoring (`--no-solo-escape-bonus`) the ordering is the same
-where it matters: leaver vs rusher **+8.37**, leaver vs the retrained agent
-**+3.00** at 76.0% top score, and every policy loses to `rule`.
+Under the fixed scoring (`--no-solo-escape-bonus`) the ordering flips exactly
+where the bonus is doing the work: leaver vs rusher is still **+8.37**, leaver
+vs the retrained agent **+2.19** at 69.0% top score, and **every** policy now
+loses to `rule` (leaver **-1.79**, rusher **-2.30**, the retrained agent
+**-1.23**, `rule` itself **-0.01**). The empty-escape bonus is what makes the
+parasite pay; without it, collecting and leaving is the only thing that works.
 
 ## 3. Why the leaderboard lied
 
@@ -162,7 +173,7 @@ quality:
 2. **The old stall valve paid the parasite** — see above. It voided the
    campers' loot while the escapee kept the bonus, so a policy that made other
    players park was rewarded twice over. With campers scored instead, the rusher
-   falls from +2.69 to +0.26 and the trained agent from +4.14 to -0.20.
+   falls from +2.69 to +0.26 and the trained agent from +4.14 to -0.31.
 
 The methodological fix that is now built in: always include a `rusher` **and** a
 `leaver` in `--agents`, and read the "Where the points come from" table. A
@@ -180,20 +191,20 @@ trained on four players (`checkpoints/selfplay4.npz`).
 | policy | win % | top-score % | margin vs 3 × rule [95% CI] | escapes (0 gems) |
 | :-- | --: | --: | :-- | --: |
 | **leaver (collect + leave)** | 39.0% | 46.3% | **+1.30 [+0.84, +1.78]** | 99% (99%) |
-| **selfplay4 (4-player learner)** | 37.7% | 43.7% | **+0.92 [+0.56, +1.27]** | 72% (82%) |
-| random | 30.0% | 35.0% | +0.31 [-0.04, +0.68] | 47% (65%) |
-| rule | 28.0% | 32.3% | +0.11 [-0.20, +0.44] | 59% (19%) |
+| **selfplay4 (4-player learner)** | 40.7% | 45.7% | **+1.11 [+0.73, +1.49]** | 75% (82%) |
+| random | 27.7% | 33.7% | +0.22 [-0.10, +0.58] | 46% (64%) |
+| rule | 23.3% | 28.0% | +0.03 [-0.29, +0.37] | 64% (21%) |
 | rusher | 28.3% | 32.3% | -0.11 [-0.46, +0.26] | 100% (100%) |
-| cautious | 20.7% | 28.7% | -0.34 [-0.60, -0.07] | 37% (57%) |
-| greedy | 18.3% | 25.0% | -0.67 [-0.89, -0.44] | 25% (64%) |
+| cautious | 23.3% | 31.7% | -0.30 [-0.56, -0.03] | 39% (59%) |
+| greedy | 18.3% | 26.3% | -0.63 [-0.85, -0.41] | 24% (65%) |
 
 What changes with a fourth player:
 
-* **The mine is more lethal, not more random.** Hauls end on a dragon 63.2% of
-  the time (55.0% at three players), lorry stand-offs rise to 26.8% (20.5%),
-  and a game takes 102 planning decisions instead of 65. The luck band barely
-  moves: mirror-match spread 4.80 points and 13% tied top scores, against 4.63
-  and 15% at three players. Four players is *more* mine, not more coin-flip.
+* **The mine is more lethal, not more random.** Hauls end on a dragon 62.1% of
+  the time (52.8% at three players), lorry stand-offs rise to 25.8% (19.2%),
+  and a game takes 101 planning decisions instead of 64. The luck band barely
+  moves: mirror-match spread 4.63 points and 15% tied top scores, against 5.01
+  and 13% at three players. Four players is *more* mine, not more coin-flip.
 * **The cheap escapes get worse, playing gets better.** The rusher's margin goes
   from +0.26 to -0.11 and a lone rusher tops the board only 7% of the time
   against three leavers (+8.05 for the leaver and -2.02 for the rusher, both
@@ -201,11 +212,12 @@ What changes with a fourth player:
   there is one more player to out-collect, and an empty-handed escape competes
   with three loot bags instead of two.
 * **The learner is genuinely better at four players.** The 4-player network has
-  a **+0.92** margin and 37.7% wins while the 3-player network managed -0.20 in
-  its own setting. It is not a different algorithm; it is the same REINFORCE
+  a **+1.11** margin and 40.7% wins while the 3-player network managed -0.31 in
+  its own setting — and it is now the second row of the table, ahead of every
+  scripted policy. It is not a different algorithm; it is the same REINFORCE
   net over 60 generations, and the 4-player league gave it opponents worth
-  copying. Head-to-head it still loses to the leaver: **+2.90** for the leaver,
-  **-1.00** for the learner.
+  copying. Head-to-head it still loses to the leaver: **+2.99** for the leaver,
+  **-1.04** for the learner.
 * **The leaver survives the extra seat.** Its margin is +1.30 against +1.19 at
   three players, it still beats every scripted policy in both directions
   (+1.82 head-to-head against `rule`), and it is still the top row.
@@ -229,15 +241,15 @@ decision, so the margin is the price of blasting and nothing else.
 
 | engine | leaderboard margin [95% CI] | always alone vs 2 × rule | rule alone vs 2 × always |
 | :-- | :-- | :-- | :-- |
-| peek (old default) | **+1.43 [+0.89, +2.00]** | +1.37 [+0.65, +2.08] | **-1.32 [-1.91, -0.70]** |
-| blind (printed) | +0.38 [-0.14, +0.91] | +0.41 [-0.29, +1.10] | -0.18 [-0.83, +0.52] |
+| peek (old default) | **+1.71 [+1.17, +2.20]** | +1.25 [+0.53, +1.95] | **-1.53 [-2.12, -0.95]** |
+| blind (printed) | +0.39 [-0.14, +0.90] | +0.10 [-0.57, +0.84] | -0.12 [-0.81, +0.57] |
 
 **Four players** (240 games per row, `analyze_blasts.py`):
 
 | engine | blaster win % | blaster margin vs 3 × rule [95% CI] | blasts / game | hauls ending on a dragon | points per blast haul | points otherwise |
 | :-- | --: | :-- | --: | --: | --: | --: |
-| peek | 37.9% | **+1.16 [+0.73, +1.56]** | 0.78 | 63% | +1.48 | +0.35 |
-| blind | 29.2% | +0.38 [-0.01, +0.77] | 0.80 | 69% | +0.40 | +0.39 |
+| peek | 37.5% | **+1.00 [+0.59, +1.43]** | 0.78 | 65% | +1.42 | +0.34 |
+| blind | 30.0% | +0.38 [-0.00, +0.76] | 0.77 | 71% | +0.41 | +0.40 |
 
 Against a field that collects and leaves instead of parking (4 players, same
 seats and seeds):
@@ -250,19 +262,19 @@ seats and seeds):
 Read the three tables together:
 
 1. **On the peeking engine blasting is one of the strongest things you can do.**
-   That engine was wrong, and the leak is worth +1.4 points at three players.
+   That engine was wrong, and the leak is worth +1.7 points at three players.
 2. **Under the printed rule it is a coin-flip against other miners** (+0.38,
-   interval touching zero, and `points per blast haul` +0.40 versus +0.39
+   interval touching zero, and `points per blast haul` +0.41 versus +0.40
    otherwise — a blast haul is worth the same as a normal one), and a
    **losing** move against a field that banks loot (-0.52).
-3. Its risk is real and measurable: across 437 hauls with a fired blast, **58%
+3. Its risk is real and measurable: across 443 hauls with a fired blast, **58%
    ended on a dragon**, killing everyone still inside, and the blaster was
-   holding 2.13 gems when it happened.
+   holding 2.14 gems when it happened.
 
 So "blasting is too weak" is **not supported**: under the printed rule it is
 roughly neutral in a passive field and negative in a competent one, which is a
 normal risk-reward trade rather than a dead rule. And the near-zero blast rate
-of the trained agents (0.02–0.03 per game) is *not* an artefact: given a choice
+of the trained agents (0.03–0.05 per game) is *not* an artefact: given a choice
 between a coin-flip and collecting loot next to players who keep dying, the
 learner picks the coin-free option. §6 is about what it leaves on the table by
 doing so.
@@ -278,19 +290,19 @@ player should react to it.
 The trained agents do not, and asking the network directly shows it is not a
 measurement artefact. Each real decision is scored twice — once with a credible
 opponent blast pending, once without, every other feature identical — and the
-action distributions are compared by total variation distance over the 28
+action distributions are compared by total variation distance over the 53
 primitive actions:
 
 | checkpoint | blasts fired / game | paired decisions | TV distance [95% CI] | shift towards leaving | shift towards the cage |
 | :-- | --: | --: | :-- | --: | --: |
-| `selfplay4.npz` (vs rule league) | 0.03 | 297 | **0.0058 [0.0055, 0.0061]** | -0.0020 | -0.0019 |
-| `selfplay4_blast.npz` (60% of the league blasts) | 0.02 | 330 | **0.0068 [0.0064, 0.0071]** | -0.0037 | -0.0029 |
+| `selfplay4.npz` (vs rule league) | 0.03 | 309 | **0.0065 [0.0061, 0.0068]** | -0.0015 | -0.0024 |
+| `selfplay4_blast.npz` (60% of the league blasts) | 0.05 | 296 | **0.0062 [0.0060, 0.0065]** | -0.0024 | -0.0026 |
 
-A 0.6% probability shift is nothing. Training the learner for 60 generations
+A 0.65% probability shift is nothing. Training the learner for 60 generations
 against a league in which 60% of the scripted opponents blast *on sight* does
-not make it threaten (0.02 blasts/game) or flinch (same 0.7% shift). Facing
-blasters costs it margin — **-0.29 [-0.71, +0.12]** paired, `selfplay4.npz`, and
-**-0.31 [-0.77, +0.14]**, `selfplay4_blast.npz` — and it never adapts.
+not make it threaten (0.05 blasts/game) or flinch (same 0.6% shift). Facing
+blasters costs it margin — **-0.34 [-0.73, +0.06]** paired, `selfplay4.npz`, and
+**-0.66 [-1.03, -0.31]**, `selfplay4_blast.npz` — and it never adapts.
 
 That on its own does not prove the threat is *worth* reacting to, so the threat
 was measured directly with scripted players. Four conditions, all on the same
@@ -305,15 +317,15 @@ seeds (so the intervals are on paired per-game differences):
 
 | seat | win % | margin | points | threatened decisions / game | answered with a cage move |
 | :-- | --: | --: | --: | --: | --: |
-| rule, calm field | 24.2% | +0.12 | +1.23 | 0.0 | 0% |
-| **rule, blasting field** | **17.9%** | **-0.28** | **+0.90** | 0.0 | 0% |
-| **threat, blasting field** | **22.5%** | **+0.01** | **+1.12** | 3.0 | 75% |
-| threat, calm field | 24.2% | +0.12 | +1.23 | 0.0 | 0% |
+| rule, calm field | 25.8% | -0.15 | +1.11 | 0.0 | 0% |
+| **rule, blasting field** | **15.0%** | **-0.58** | **+0.69** | 0.0 | 0% |
+| **threat, blasting field** | **21.2%** | **-0.22** | **+0.95** | 3.3 | 77% |
+| threat, calm field | 25.8% | -0.15 | +1.11 | 0.0 | 0% |
 
-* Cost of the threat to a non-blaster: **-0.41 points [-0.76, -0.03]** and 6.2
+* Cost of the threat to a non-blaster: **-0.43 points [-0.81, -0.06]** and 10.8
   points of win rate. The threat is real, and it is not small.
-* Value of reacting: **+0.29 points [+0.02, +0.55]**, 4.6 points of win rate.
-* What is left once you react: **-0.11 [-0.50, +0.28]** — statistically
+* Value of reacting: **+0.37 points [+0.12, +0.63]**, 6.2 points of win rate.
+* What is left once you react: **-0.06 [-0.51, +0.37]** — statistically
   indistinguishable from a calm field. The one-line reaction neutralises the
   threat.
 * Control: the threat agent against a calm field is **+0.00** different from
@@ -323,13 +335,13 @@ seeds (so the intervals are on paired per-game differences):
 So the design question has a clean answer: **a pending blast is worth about 0.4
 points/game to the blaster's rivals, and roughly that much is recoverable by the
 cheapest possible counter.** The trained agent captures none of it — the
-reaction is 0.6%, and the cost it pays for ignoring the threat (-0.3) is the
-same order as the value on the table (+0.29). The threat is a genuine part of
+reaction is 0.65%, and the cost it pays for ignoring the threat (-0.34) is the
+same order as the value on the table (+0.37). The threat is a genuine part of
 the game that self-play at this budget simply does not discover, because it is
 rare (0.8 blasts/game), announced early, and punishes the blaster's own haul 58%
 of the time — so it never earns enough games to show up in the gradient.
 
-## 7. The bug behind the aborted games — and one bug I had to withdraw
+## 7. Two engine bugs — and one bug I had to withdraw
 
 Asking the AI to blast surfaced a real engine bug. It produced a silent failure:
 the game could not finish, so `play_game` returned `aborted=True` with **every
@@ -343,6 +355,34 @@ haul was abandoned. With four always-blasting `rule` players this hit **36 of
 60 games**; every one of them was being scored 0-0-0-0 and averaged in as a
 draw. Fixed twice over: the dragon cancels a dead player's blast, and only a
 player who can still act is allowed to defer the end of the round.
+
+**The bug in the action grid: a five-row mine that keeps growing.** The rules
+deal a new row at the bottom of the mine every round, so a haul can reach ten
+rows at three players, seven at four and six at five. `MAX_ROWS` was pinned at
+5 — the three-row opening board plus two — and a card action is
+`row * MAX_COLUMNS + column`, so every card in row 5 or deeper simply had no
+action of its own. Worse, `PIT_CAGE` sat exactly where row 5 would have
+started, so the deepest row an agent could *name* was row 4. The observations
+had the same ceiling (`rows[:MAX_ROWS]`), so those rows were not even visible.
+
+Measured over 60 rule-bot games: **23% of three-player hauls and 19% of
+four-player hauls grew past five rows**, and **13% / 10% of all dealt cards**
+ended up in rows that could not be played. The visible symptom was an agent
+that walked *backwards*: standing at the front of a six-row mine, its only
+legal card actions pointed at rows 0-4. That is the report that started this
+fix — a reviewer watching the GUI saw the AI "give up space" and refuse to dig
+in row 5. It was not a policy failure; the action space could not express it.
+
+Fixed by sizing the grid to the deck instead of the opening board:
+`MAX_ROWS = DECK_SIZE // MIN_PLAYERS = 10`, giving 50 card actions plus pit
+cage, lorry and pass. Tests assert that every row of a grown mine has a
+reachable card action, that the front row is visible through both the
+observation and `player_view`, and that no card action can collide with the
+pit cage. Every checkpoint was retrained and every number in this document
+regenerated. The front row is now chosen in **27%** of the decisions where a
+free card sits there, against **64%** for the scripted `rule` seat — the
+learner is more reluctant to be deepest in the mine, but it is no longer
+impossible.
 
 **The bug I withdrew: an "unwinnable tie-breaker".** An earlier draft of this
 document claimed the tie-break could run out of dragons — that after three hauls
@@ -374,15 +414,16 @@ asserts the invariant on real games so that a future rules change (more players,
 fewer dragons per backside, a new way to lose cards) fails loudly instead of
 silently.
 
-What both episodes did change is the reporting: every report now prints `games
+What both fixes did change is the reporting: every report now prints `games
 the engine abandoned` in its header and every measurement counts it, so an
-aborted game can never be invisible again. Re-running the old reports with the
-dead-blast fix moves numbers that involved blasting: the 3-player peek
-leaderboard for `rule:always` drops from **+1.68 to +1.43**, the blind one from
-**+0.62 to +0.38**, and the peek/never contrast in §5 from +0.70 to +1.37
-against two `rule` seats. An earlier draft also claimed that a blasting field
-compressed the 4-player field into 22% tied top scores; that was aborted games
-being scored as ties. The real effect is 10% → 12%. Withdrawn.
+aborted game can never be invisible again. Every number in this document was
+regenerated afterwards, and the ones that moved most were the scripted
+blast rows: the 3-player `rule:always` seat reads **+1.71** on the peeking
+engine and **+0.39** under the printed rule, where the version of this document
+written before the fixes had +1.43 and +0.38. An earlier draft also claimed
+that a blasting field compressed the 4-player field into 22% tied top scores;
+that was aborted games being scored as ties. The real effect is 9% either way.
+Withdrawn.
 
 ## 8. n-1 passes or n passes?
 
@@ -391,10 +432,10 @@ mine, minus one". `--pass-rule n` plays the alternative.
 
 | players | rule | rusher win % | rusher margin [95% CI] | lorry endings | decisions / game | mirror spread |
 | --: | :-- | --: | :-- | --: | --: | --: |
-| 3 | **n-1 (printed)** | 29.0% | -0.39 [-1.05, +0.26] | 23.4% | **67.1** | 4.63 |
-| 3 | n | 4.0% | **-3.15 [-3.36, -2.92]** | 47.9% | 80.4 | 4.45 |
-| 4 | **n-1 (printed)** | 34.0% | +0.33 [-0.12, +0.82] | 26.2% | **104.4** | 4.80 |
-| 4 | n | 4.0% | **-2.15 [-2.35, -1.94]** | 43.3% | 117.7 | 4.68 |
+| 3 | **n-1 (printed)** | 29.0% | -0.39 [-1.05, +0.26] | 20.5% | **64.9** | 5.01 |
+| 3 | n | 4.0% | **-3.15 [-3.36, -2.92]** | 44.1% | 79.0 | 4.83 |
+| 4 | **n-1 (printed)** | 34.0% | +0.33 [-0.12, +0.82] | 24.4% | **102.8** | 4.63 |
+| 4 | n | 4.0% | **-2.15 [-2.35, -1.94]** | 41.6% | 115.9 | 4.53 |
 
 `n-1` is the better rule at both counts: fewer decisions per game, roughly half
 as many lorry stand-offs, and a dragon ending rather than a stalemate. It is
@@ -410,9 +451,9 @@ everywhere except the single-learner `step()` API. Fixed, with a test.
 ### The lorry stand-off
 
 There is no stall valve any more. In rule-only games a haul ends in a lorry
-stand-off **2.0% of the time**; across the mixed benchmark it is 20.5%
-(three players) and 26.8% (four), because several of the scripted baselines
-genuinely park. Raising a round limit never changed those rates, which is why
+stand-off **12.1% of the time** at three players and 14.8% at four; across the
+mixed benchmark it is 19.2% and 25.8%, because several of the scripted
+baselines genuinely park. Raising a round limit never changed those rates, which is why
 the limit was the wrong instrument: the state was absorbing, and the fix is to
 end the haul, not to wait longer.
 
@@ -423,21 +464,22 @@ seat position only.
 
 | rules | players | mean within-game spread | games with a tied top score |
 | :-- | --: | --: | --: |
-| printed | 3 | **4.63 points** | 15% |
-| printed | 4 | 4.80 points | 13% |
-| fixed | 3 | 3.99 points | 20% |
-| `n` passes | 3 | 4.45 points | 19% |
+| printed | 3 | **5.01 points** | 13% |
+| printed | 4 | 4.63 points | 15% |
+| fixed | 3 | 4.59 points | 15% |
+| `n` passes | 3 | 4.83 points | 18% |
+| `n` passes | 4 | 4.53 points | 20% |
 
 The largest skill margin measured here is the leaver's +8.37 head-to-head, which
-dwarfs the luck band. But the leaderboard margins (+1.30 down to -1.20) are the
+dwarfs the luck band. But the leaderboard margins (+1.30 down to -1.00) are the
 same order as pure luck between identical agents, so `win %` alone is not
 evidence of anything. Seat position is not a big factor (3-player seats score
-+1.79 / +1.74 / +1.63; 4-player +0.92 / +0.98 / +0.94 / +1.03).
++1.78 / +1.81 / +1.69; 4-player +0.91 / +1.01 / +0.99 / +0.98).
 
 Which leaderboard margins are actually distinguishable from noise? At three
-players: the **leaver** (+1.19), and the two worst seats, `cautious` (-0.57) and
-`greedy` (-1.20). At four: the **leaver** (+1.30), the **4-player learner**
-(+0.92), `cautious` (-0.34) and `greedy` (-0.67). Everything else — `random`,
+players: the **leaver** (+1.19), and the two worst seats, `cautious` (-0.56) and
+`greedy` (-1.00). At four: the **leaver** (+1.30), the **4-player learner**
+(+1.11), `cautious` (-0.30) and `greedy` (-0.63). Everything else — `random`,
 `rule`, `rusher`, and the 3-player learner — is inside the noise, which is the
 honest way to read a table like this.
 
@@ -461,10 +503,10 @@ honest way to read a table like this.
 5. **Retrain against a pool that includes leavers.** Self-play found a
    best response to a weak population, which is exactly what it is supposed to
    do — the population, not the learner, was the problem. The 4-player run
-   (+0.92 instead of -0.20) is the same lesson again: the league decides what
+   (+1.11 instead of -0.31) is the same lesson again: the league decides what
    the learner becomes.
 6. **Do not nerf or buff the blast.** Under the printed rule a blast is worth
-   about the same as a normal haul (+0.40 vs +0.39 points) and costs the
+   about the same as a normal haul (+0.41 vs +0.40 points) and costs the
    blaster's rivals ~0.4 points when it is pending. If anything is worth
    touching it is *visibility*: the engine already exposes a pending blast in
    the feature vector and the network ignores it (§6), which is a training
@@ -489,8 +531,10 @@ python evaluate_balance.py --agents rule,greedy,random,cautious,rusher,leaver,ch
 python evaluate_balance.py --agents rule,rule:rich,rule:always --games 200 --skip-mirror --out reports/balance_blast.md
 python evaluate_balance.py --agents rule,rule:rich,rule:always --games 200 --skip-mirror --blind-blast-choice --out reports/balance_blast_blind.md
 
-# pass rule, both player counts
+# pass rule, both player counts, both variants
+python evaluate_balance.py --agents rule,greedy,random,rusher --games 200 --out reports/pass_n-1.md
 python evaluate_balance.py --agents rule,greedy,random,rusher --games 200 --pass-rule n --out reports/pass_n.md
+python evaluate_balance.py --players 4 --agents rule,greedy,random,rusher --games 200 --out reports/pass4_n-1.md
 python evaluate_balance.py --players 4 --agents rule,greedy,random,rusher --games 200 --pass-rule n --out reports/pass4_n.md
 
 # four players: the leaderboard, and the learner trained on four players
@@ -507,8 +551,12 @@ python train_selfplay.py --players 4 --generations 60 --games-per-generation 64 
 python train_selfplay.py --players 4 --generations 60 --games-per-generation 64 --league-blast-mode always --league-blast-prob 0.6 --out checkpoints/selfplay4_blast.npz
 ```
 
-`reports/` is git-ignored and holds the generated leaderboards plus the JSON
-behind every table.
+**A checkpoint is only valid for the action grid it was trained on.** The row
+features are normalised by `MAX_ROWS` and the observation carries one cell per
+row, so any change to the board geometry means retraining every checkpoint
+before re-running the measurements — the numbers above were all produced after
+the §7 grid fix, on nets retrained from scratch. `reports/` is git-ignored and
+holds the generated leaderboards plus the JSON behind every table.
 
 ## 12. Caveats
 
@@ -528,3 +576,10 @@ behind every table.
   a better policy" only means "at this budget".
 * Bootstrap intervals assume independent games. They are (fresh seeds), but 300
   games still leaves about ±0.25 points of uncertainty on a margin.
+* The action grid is sized for the deepest board any deck can build at the
+  smallest supported table (10 rows at three players). At four or five players
+  the bottom rows of that grid are simply never legal; the mask costs a little
+  compute and nothing else. Anything that changes the deck (card count, dragons
+  per backside) or the minimum table size must change `MAX_ROWS` with it, and a
+  test (`test_action_grid_covers_the_deepest_board_any_deck_can_produce`) fails
+  if it does not.

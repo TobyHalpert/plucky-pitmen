@@ -29,12 +29,15 @@ from typing import Any, Sequence
 import numpy as np
 
 from agents import Agent, NeuralAgent, ThreatAgent, make_scripted_agent
-from features import action_mask, split_action, state_action_matrix
+from features import (
+    N_BASE_ACTIONS,
+    action_mask,
+    split_action,
+    state_action_matrix,
+)
 from game_env import PIT_CAGE, PlayerActionContext
 from learning import PolicyNet
 from selfplay import play_game, play_series
-
-N_BASE_ACTIONS = 28
 
 
 # ----------------------------------------------------------------------
