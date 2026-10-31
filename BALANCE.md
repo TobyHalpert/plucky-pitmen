@@ -1053,6 +1053,15 @@ python profile_agent.py --checkpoints checkpoints/selfplay4_g060.npz,checkpoints
 python train_selfplay.py --players 4 --generations 60 --games-per-generation 64 --league-blast-mode always --league-blast-prob 0.6 --out checkpoints/selfplay4_blast.npz
 ```
 
+**Which network is in the repository.** `checkpoints/selfplay4.npz` is tracked
+(everything else under `checkpoints/` is ignored) so the viewer has something to
+play out of the box. It is a fresh 60-generation run of the command above on the
+current code — 48.1% wins against three `rule` bots (800 games), 38.0% against
+three `reader` bots and 19.5% against three `leaver` bots (400 each, seat 0, 0.7
+temperature) — and therefore *not* the tuned snapshot the tables above were
+measured on, which is not distributed. Retrain or fine-tune it
+(`--resume checkpoints/selfplay4.npz --generations 30`) for the stronger one.
+
 **A checkpoint is only valid for the feature layout it was trained on.** The row
 features are normalised by `MAX_ROWS` and the observation carries one cell per
 row, so any change to the board geometry means retraining every checkpoint; a

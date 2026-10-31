@@ -18,6 +18,7 @@ from gui_controller import (
     StepResult,
     agent_policies,
     checkpoint_hint,
+    parse_policy,
     stale_checkpoints,
 )
 
@@ -699,9 +700,10 @@ def main() -> None:
     parser.add_argument("--opponents", type=int, choices=(2, 3, 4), default=3)
     parser.add_argument(
         "--policy",
-        choices=POLICIES,
+        type=parse_policy,
         default="simple",
-        help="scripted policy, or neural:<checkpoint> from checkpoints/",
+        help="scripted policy, or neural:<checkpoint> from checkpoints/ "
+        f"(available now: {', '.join(POLICIES)})",
     )
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument(

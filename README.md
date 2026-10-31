@@ -123,16 +123,27 @@ Any checkpoint in `checkpoints/` shows up in the **Policy** dropdown as
 network — including whether to announce a blast and which of the three blast
 cards to keep.
 
-**`checkpoints/` is git-ignored, so a fresh clone has no `neural:` entry in the
-dropdown.** That is the whole reason `neural:selfplay4` is "missing": nothing
-has been trained in that checkout yet. Train one (about four minutes on a
-laptop CPU) and press **New game** — the dropdown is rebuilt every time a game
-starts, so no restart is needed:
+`checkpoints/selfplay4.npz` (40 KB) is the one exception to the git-ignore rule
+and ships with the repository, so `neural:selfplay4` is in the dropdown of a
+fresh clone. It is a fresh 60-generation league run on this commit — 48.1% wins
+against three `rule` bots and 38.0% against three `reader` bots over 800 and 400
+games — i.e. a playable network and not the tuned snapshot behind the tables in
+BALANCE.md, which is not distributed.
+
+Every other checkpoint is local to whichever machine trained it, which is why
+the dropdown can be empty. Then the window says so in its message pane, and
+training one (about four minutes on a laptop CPU) adds it on the next **New
+game** — the list is rebuilt every time a game starts, so no restart is needed:
 
 ```powershell
 python train_selfplay.py --players 4 --generations 60 --games-per-generation 64 --out checkpoints/selfplay4.npz
 python mine_gui.py --opponents 3 --policy neural:selfplay4 --all-seats
 ```
+
+`--policy` also takes a path (`--policy checkpoints/selfplay4.npz`) and a
+checkpoint that was trained **after** the viewer was installed, and it names the
+training command instead of dying on `invalid choice` when the network is not
+there.
 
 A checkpoint saved before a feature was added is refused rather than listed
 (it has no place in today's encoder); the message pane names it and

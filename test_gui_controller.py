@@ -8,6 +8,7 @@ actually finish?
 
 from __future__ import annotations
 
+import argparse
 import json
 
 import numpy as np
@@ -20,6 +21,7 @@ from gui_controller import (
     available_checkpoints,
     checkpoint_hint,
     checkpoint_problem,
+    parse_policy,
     resolve_checkpoint,
     stale_checkpoints,
 )
@@ -211,6 +213,27 @@ def test_a_checkpoint_from_an_older_feature_layout_is_named_with_its_fix(tmp_pat
     assert "migrate_checkpoint.py" in problem and "selfplay4_legacy.npz" in problem
     assert "neural:selfplay4_legacy" not in agent_policies(tmp_path)
     assert stale_checkpoints(tmp_path) == [problem]
+
+
+def test_the_command_line_accepts_a_checkpoint_that_exists(tiny_net):
+    assert parse_policy("neural:tiny", tiny_net.parent) == "neural:tiny"
+    # A bare path is the same request, and is normalised to the viewer's form.
+    assert parse_policy(str(tiny_net)) == f"neural:{tiny_net}"
+    assert parse_policy("simple") == "simple"
+
+
+def test_the_command_line_explains_a_missing_checkpoint_instead_of_listing_names(tmp_path):
+    """"invalid choice: neural:selfplay4" is the message this replaces."""
+    with pytest.raises(argparse.ArgumentTypeError) as caught:
+        parse_policy("neural:selfplay4", tmp_path)
+    message = str(caught.value)
+    assert "no checkpoint named 'selfplay4'" in message
+    assert "train_selfplay.py" in message, "it has to say how to get one"
+
+    with pytest.raises(argparse.ArgumentTypeError) as caught:
+        parse_policy("nonsense")
+    assert "unknown policy 'nonsense'" in caught.value.args[0]
+    assert "neural:<name>" in caught.value.args[0]
 
 
 def test_neural_seats_agree_bit_for_bit_on_the_same_seed(tiny_net):

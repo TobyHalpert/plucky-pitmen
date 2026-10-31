@@ -15,6 +15,7 @@ is the cheapest way to watch what the learner actually does.
 
 from __future__ import annotations
 
+import argparse
 import pickle
 from dataclasses import dataclass
 from pathlib import Path
@@ -114,13 +115,51 @@ def stale_checkpoints(directory: Path | None = None) -> list[str]:
     ]
 
 
+def agent_policies_scripted() -> list[str]:
+    """Every policy the viewer can offer without a checkpoint file."""
+    return list(SCRIPTED_STRATEGIES) + list(BLAST_STRATEGIES)
+
+
 def agent_policies(directory: Path | None = None) -> list[str]:
     """Policy names for the viewer's dropdown: scripted ones plus checkpoints."""
-    return (
-        list(SCRIPTED_STRATEGIES)
-        + list(BLAST_STRATEGIES)
-        + [f"{NEURAL_PREFIX}{path.stem}" for path in usable_checkpoints(directory)]
-    )
+    return agent_policies_scripted() + [
+        f"{NEURAL_PREFIX}{path.stem}" for path in usable_checkpoints(directory)
+    ]
+
+
+def parse_policy(value: str, directory: Path | None = None) -> str:
+    """Validate a policy name for the command line, or explain what is missing.
+
+    ``argparse``'s ``choices=`` cannot express this: the valid values include
+    every checkpoint on disk, and a checkpoint can be trained after the viewer
+    was installed (or named by path). Listing the built-in names and then dying
+    with "invalid choice: neural:selfplay4" hides the only thing the user needs
+    to know — that ``checkpoints/`` does not hold that network, or is empty.
+    """
+    if value.endswith(".npz"):
+        # ``--policy checkpoints/selfplay4.npz`` is the same request as
+        # ``--policy neural:selfplay4``; the viewer only speaks the second form.
+        value = f"{NEURAL_PREFIX}{value}"
+    if not value.startswith(NEURAL_PREFIX):
+        if value not in agent_policies_scripted():
+            raise argparse.ArgumentTypeError(
+                f"unknown policy {value!r}; choose from "
+                f"{', '.join(agent_policies_scripted())}, or {NEURAL_PREFIX}<name> "
+                "for a checkpoint"
+            )
+        return value
+    try:
+        path = resolve_checkpoint(value, directory)
+    except FileNotFoundError as error:
+        hint = checkpoint_hint(directory)
+        raise argparse.ArgumentTypeError(
+            f"{error}" + (f"\n\n{hint}" if hint else "")
+        ) from None
+    if path is not None:
+        problem = checkpoint_problem(path)
+        if problem:
+            raise argparse.ArgumentTypeError(problem)
+    return value
 
 
 def checkpoint_hint(directory: Path | None = None) -> str | None:
