@@ -160,6 +160,24 @@ learner fires a blast about once every thirty games.
 | `blaster:trap` | it can see a dragon in its own column, still ahead of it |
 | `blaster:behind` | another player is ahead on gems |
 
+With `--all-seats`, **Autoplay** hands every decision to the network at
+temperature 0.7, so roughly half of the moves on screen are *not* the network's
+first choice — it drew them, and some of those draws are the interesting ones. `analyze_game.py`
+prints the same game with the probability behind every decision, and
+`--greedy` replays the seed with the sampler off so you can see the move the
+network actually preferred:
+
+```powershell
+python analyze_game.py --seed 7              # every decision of the game you just watched
+python analyze_game.py --seed 7 --forks      # what each flagged move was worth, re-rolled
+python analyze_game.py --seed 7 --greedy     # the same seed, argmax only
+```
+
+One such game — seed 7, four neural seats, scored 3–4–0–−1 — is read in full in
+**[SEED7.md](SEED7.md)**: which moves were the policy's own first choice, which
+were 10% samples, where the network is genuinely blind (displacement), and what
+the argmax game of the same seed looks like instead.
+
 ```powershell
 # the 4-player self-play learner against three rule bots
 python mine_gui.py --opponents 3 --policy neural:selfplay4
@@ -234,6 +252,7 @@ uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
 | `probe_backside_reading.py` | does the learner read a backside? risk of the card it takes, against the risk it was offered |
 | `probe_lorry.py` | how often a seat parks on its lorry, and how often a haul is lost to a stand-off because every seat did |
 | `probe_escape.py` | escape rules side by side: how often a haul is thrown away by a herd of empty-handed cage moves, and what each variant is worth |
+| `analyze_game.py` | one game move by move: what each seat knew, the probability the network put on the move, and what the move was worth from there |
 | `migrate_checkpoint.py` | widen a checkpoint saved before a feature was added (zero columns, behaviour unchanged) |
 | `profile_agent.py` | what a checkpoint actually does: digs, front-row digs, passes, retreats, blasts, escapes — side by side for two checkpoints |
 | `gui_controller.py` | Tk-free viewer logic: moves, blasts, tie-breaks, the AI POLICY snapshot |

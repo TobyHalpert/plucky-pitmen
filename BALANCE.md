@@ -637,9 +637,10 @@ instead, which is the subject of the next subsection.
 
 The lorry rule closes one way of throwing a round away, and the viewer found the
 next one immediately: **seed 7, network in every seat, every figure in a pit cage
-at the end of the first planning phase, not one gem collected**, and the game
-scored 3–3–3–3 — one haul (the dragon in haul 2) decided the whole thing, which
-is exactly the "skill becomes luck" outcome the design is supposed to avoid.
+at the end of the first planning phase, not one gem collected** — and the same
+thing in the next haul, so two of the three hauls banked nothing at all and the
+game (5–4–1–1) was decided by the last haul alone, which is exactly the "skill
+becomes luck" outcome the design is supposed to avoid.
 
 The chain is worth reading in the log. Seat 3 was **displaced** into a cage by a
 raid in the first planning phase — ordinary, aggressive play — and the escape
@@ -663,10 +664,10 @@ neural seats, temperature 0.7, 150 games = 450 hauls; `probe_escape.py`):
 
 | escape rule | hauls thrown away | games with one | gems collected per haul | seed 7 |
 | :-- | --: | --: | --: | :-- |
-| as first written (a cage is a reason to flee) | **40.0%** | 76.0% | 0.89 | 0 gems, all four out, 3–3–3–3 |
-| without the cage/herd clause | 4.9% | 13.3% | **1.91** | haul 1 collects 7 gems |
-| only a rival who has *left* counts | 5.8% | 16.7% | 1.52 | 5 gems, real play |
-| **an escape must bank a gem (shipped)** | **2.9%** | **8.0%** | 1.63 | 5 gems, real play |
+| as first written (a cage is a reason to flee) | **40.0%** | 76.0% | 0.89 | two hauls in cages with nothing banked, 5–4–1–1 |
+| without the cage/herd clause | 4.9% | 13.3% | **1.91** | haul 1 collects 7 gems, 4–6–0–0 |
+| only a rival who has *left* counts | 5.8% | 16.7% | 1.52 | 7 gems over two hauls, 0–2–−1–−1 |
+| **an escape must bank a gem (shipped)** | **2.9%** | **8.0%** | 1.63 | 7 gems over two hauls, 3–4–0–−1 |
 
 "Thrown away" is a haul where at least three seats escaped and the table
 collected no gems at all. A third of all hauls were being thrown away before
@@ -687,8 +688,14 @@ escapee +3 even with no gems, and a tie for most gems +1 each, so being the
 fourth seat into a cage is cheap insurance against a haul other seats were going
 to end anyway. That is not skill and it is not what the game is about — it is a
 way to skip a third of the hauls — so the points are the cost of the fix, and
-they are small. In exchange, seed 7 plays a real haul 1 (2, 1, 2, 0 gems) and the
-last two hauls decide the game instead of deciding it by default.
+they are small. In exchange, seed 7 plays a real haul 1 (2, 1, 0, 1 gems), loses
+haul 2 to a dragon in round 0, and lets haul 3 finish 1–1–1–0: every haul is
+played rather than skipped.
+
+That game is read move by move — what each seat knew, the probability the network
+put on the move, and what one move was worth from that position — in
+**[SEED7.md](SEED7.md)**, which is also where the sample noise behind the viewer
+(47% of moves are not the network's first choice) is quantified.
 
 ## 5. Is blasting too weak? No — but it is not a free win either
 

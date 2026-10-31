@@ -215,6 +215,28 @@ def test_a_checkpoint_from_an_older_feature_layout_is_named_with_its_fix(tmp_pat
     assert stale_checkpoints(tmp_path) == [problem]
 
 
+def test_every_seat_ahead_of_p1_answers_through_its_own_agent(tiny_net):
+    """The starting seat used to be played by the environment's built-in policy.
+
+    ``reset`` steps the seats ahead of P1 so the viewer opens on P1's decision.
+    That loop used ``env.step_one_player()`` with no action, which hands the turn
+    to the environment's ``simple`` bot — so in "AI in every seat" mode the first
+    move of a game came from a bot while every other move came from the network.
+    Any call into the built-in policy from that loop is now an error.
+    """
+    policy = f"neural:{tiny_net}"
+    for seed in range(6):
+        controller = GameController(3, policy, seed)
+        controller.reset(3, policy, seed, all_seats=True)  # loads the four seats
+
+        def refuse(*_args, **_kwargs):
+            raise AssertionError("the environment played a seat the controller owns")
+
+        controller.env._opponent_action = refuse
+        controller.env._agent_action = refuse
+        controller.reset(3, policy, seed, all_seats=True)
+
+
 def test_the_command_line_accepts_a_checkpoint_that_exists(tiny_net):
     assert parse_policy("neural:tiny", tiny_net.parent) == "neural:tiny"
     # A bare path is the same request, and is normalised to the viewer's form.

@@ -247,6 +247,7 @@ class GameController:
         *,
         all_seats: bool | None = None,
         deterministic: bool | None = None,
+        advance: bool = True,
     ) -> None:
         self.opponents = opponents
         self.policy = policy
@@ -263,7 +264,10 @@ class GameController:
         self.env = MineEnv(opponents=opponents, opponent_policy=self._environment_policy())
         self.env.reset(seed=seed)
         self._build_agents()
-        self._advance_opponents_to_p1()
+        if advance:
+            # The viewer opens on P1's decision; a tool that wants to see the
+            # starting seat's own first move passes advance=False and steps it.
+            self._advance_opponents_to_p1()
 
     # -- policies ----------------------------------------------------------
 
@@ -348,10 +352,32 @@ class GameController:
         return "simple"
 
     def _advance_opponents_to_p1(self) -> None:
-        while self.env.planning_player != 0:
-            _obs, _reward, terminated, _trunc, _info = self.env.step_one_player()
-            if terminated or self.env.players[0].escaped or self.env.players[0].dead:
+        """Play the seats ahead of P1 up to P1's first decision.
+
+        This has to go through the controller's own agents: ``env.step_one_player()``
+        with no action hands the seat to the environment's built-in ``simple``
+        policy, which is how the seats that open a haul ahead of P1 (P2 opening
+        haul 2, for instance) used to be played by a bot in ``--all-seats`` mode
+        while every other move came from the network. Blasts and tie-breaks are
+        resolved the same way here, so a neural seat never loses its own
+        decision.
+        """
+        guard = 0
+        while guard < 200:
+            guard += 1
+            if self.env.game_finished:
                 return
+            pending_blast = self.pending_blast_seat() is not None
+            if (
+                not pending_blast
+                and not self.env.tie_breaker_contenders
+                and self.env.planning_player == 0
+            ):
+                return
+            self.step_one_player_auto()
+            if self.env.players[0].escaped or self.env.players[0].dead:
+                if self.env.planning_player != 0:
+                    return
 
     # -- state queries -----------------------------------------------------
 
