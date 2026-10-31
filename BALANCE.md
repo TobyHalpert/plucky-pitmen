@@ -192,8 +192,8 @@ trained on four players (`checkpoints/selfplay4.npz`).
 
 | policy | win % | top-score % | margin vs 3 × rule [95% CI] | escapes (0 gems) |
 | :-- | --: | --: | :-- | --: |
+| **selfplay4 (4-player learner)** | **44.3%** | 50.7% | **+1.65 [+1.24, +2.07]** | 85% (88%) |
 | **leaver (collect + leave)** | 39.0% | 46.3% | **+1.30 [+0.84, +1.78]** | 99% (99%) |
-| **selfplay4 (4-player learner)** | 40.7% | 45.7% | **+1.11 [+0.73, +1.49]** | 75% (82%) |
 | random | 27.7% | 33.7% | +0.22 [-0.10, +0.58] | 46% (64%) |
 | rule | 23.3% | 28.0% | +0.03 [-0.29, +0.37] | 64% (21%) |
 | rusher | 28.3% | 32.3% | -0.11 [-0.46, +0.26] | 100% (100%) |
@@ -202,8 +202,8 @@ trained on four players (`checkpoints/selfplay4.npz`).
 
 What changes with a fourth player:
 
-* **The mine is more lethal, not more random.** Hauls end on a dragon 62.1% of
-  the time (52.8% at three players), lorry stand-offs rise to 25.8% (19.2%),
+* **The mine is more lethal, not more random.** Hauls end on a dragon 61.3% of
+  the time (52.8% at three players), lorry stand-offs rise to 26.8% (19.2%),
   and a game takes 101 planning decisions instead of 64. The luck band barely
   moves: mirror-match spread 4.63 points and 15% tied top scores, against 5.01
   and 13% at three players. Four players is *more* mine, not more coin-flip.
@@ -214,20 +214,89 @@ What changes with a fourth player:
   there is one more player to out-collect, and an empty-handed escape competes
   with three loot bags instead of two.
 * **The learner is genuinely better at four players.** The 4-player network has
-  a **+1.11** margin and 40.7% wins while the 3-player network managed -0.31 in
-  its own setting — and it is now the second row of the table, ahead of every
-  scripted policy. It is not a different algorithm; it is the same REINFORCE
-  net over 60 generations, and the 4-player league gave it opponents worth
-  copying. Head-to-head it still loses to the leaver: **+2.99** for the leaver,
-  **-1.04** for the learner.
+  a **+1.65** margin and 44.3% wins while the 3-player network managed -0.31 in
+  its own setting — and it is now the top row of the table, ahead of every
+  scripted policy including the leaver. It is not a different algorithm; it is
+  the same REINFORCE net, and the 4-player league gave it opponents worth
+  copying. Head-to-head it still loses to the leaver: **+2.63** for the leaver,
+  **-1.57** for the learner — the leaderboard is one seat against three `rule`
+  bots, and against a field that banks loot the leaver is still king.
 * **The leaver survives the extra seat.** Its margin is +1.30 against +1.19 at
-  three players, it still beats every scripted policy in both directions
-  (+1.82 head-to-head against `rule`), and it is still the top row.
+  three players, and it still beats every scripted policy in both directions
+  (+1.82 head-to-head against `rule`). It is now the second row, because the
+  learner passed it on this benchmark — but not in a direct duel, below.
 
 So the answer to "is this balanced" does not flip with player count: collect and
-leave is the best single-seat policy at both counts, rushing is a parasite at
-both counts, and no policy is dominant. What player count changes is how much
-the *trained* agent gets out of self-play.
+leave is the best *scripted* policy at both counts, rushing is a parasite at
+both counts, and no scripted policy is dominant. What player count changes is
+how much the trained agent gets out of self-play.
+
+### Training on: 120 more generations
+
+The 4-player learner was resumed from its 60-generation checkpoint and trained
+for **120 more generations** (7,680 more games, 11,520 in total), saved as
+`checkpoints/selfplay4_long.npz` and promoted to `selfplay4.npz` (the checkpoint
+this section benchmarks; the old one is kept as `selfplay4_g060.npz`).
+
+Head-to-head, both networks in the same games (200 games, seats rotated, two
+`rule` bots filling), the new network is **+1.13 points per game** better
+(se 0.25) and ahead in 76% of games. The benchmark win rate against three `rule`
+bots went from 35% to **45%**, the margin from +0.72 to **+1.52**. So the extra
+training helped — but *how* it helped is the interesting part
+(`profile_agent.py`, 600 games each, one seat, seats rotated):
+
+| habit | 60 generations | 180 generations |
+| :-- | --: | --: |
+| win % / margin / score vs 3 × rule | 35% / +0.72 / +1.56 | **45% / +1.52 / +2.44** |
+| planning decisions per game | 14 | 12 |
+| digs per game | 7.1 | **5.3** |
+| ...in its own column (fronts visible) | 42% | **50%** |
+| ...in the front row | 14% | 12% |
+| ...mean row dug (0 = nearest the lorry) | 0.89 | 0.72 |
+| ...into a face-up dragon in its own column | 0.54 | 0.46 |
+| passes per game | 2.61 | 2.92 |
+| **pit-cage retreats per game** | 2.32 | **2.96** |
+| **lorry exits per game** | 1.97 | **0.75** |
+| decisions with a dynamite pair in hand | 0.32 | 0.22 |
+| blasts announced / fired per game | 0.12 / 0.03 | 0.07 / 0.02 |
+| hauls ending on a dragon | 56% | 51% |
+| counted as escaped (with 0 gems) | 76% (83%) | **88% (89%)** |
+| gems carried out per escape | 0.21 | 0.13 |
+| points/haul when a rival banks loot | -0.01 | +0.02 |
+| points/haul when no rival does | +1.17 | **+1.96** |
+
+Three things changed, and they are one thing:
+
+1. **It stopped leaving and started camping.** Lorry exits fell from 1.97 to
+   0.75 per game while pit-cage retreats rose from 2.32 to 2.96 and passes from
+   2.61 to 2.92. A seat standing in a pit cage is immune to the dragon revealed
+   in that round — it is marked escaped before the cards are turned — so
+   "be in a cage when the mine kills everyone else" is a real line, and the
+   learner found it.
+2. **It digs less, shallower, and nearer home.** Digs per game fell 7.1 → 5.3,
+   the mean dug row moved from 0.89 to 0.72, and the share of digs in its own
+   (fully visible) column rose 42% → 50%. Consequently fewer hauls end on a
+   dragon (56% → 51%) and its escape count rises to 88% — while gems carried
+   out per escape fall 0.21 → 0.13. It is buying survival, not loot.
+3. **The points now come from opponents' graves.** When a rival banks loot it
+   still scores nothing (+0.02); when nobody does, it scores +1.96 per haul, up
+   from +1.17. Read together with the escape lines, the extra training taught
+   it the same lesson the leaver exploits, one row earlier in the game: let the
+   others die in the mine, and be the one who is not in it.
+
+Two honest caveats. The training curve itself is noisy and *not* monotone — the
+benchmark win rate at 20-generation checkpoints during the extra run went
+41.7 / 43.3 / 40.0 / 36.7 / 35.0 / 40.0% — so the headline is the paired
+head-to-head, not the curve. And the crown is benchmark-specific: it tops the
+leaderboard against three `rule` bots, but in a direct duel the leaver still
+beats it **+2.63 to -1.57**, because the leaver banks loot before the dragon
+arrives and the camper does not.
+
+One habit did not improve and is worth watching in the viewer: it still steps
+onto a **face-up dragon in its own column 0.46 times per game** (down from
+0.54), where the `rule` bot does it 0.00 times. In a 100-game sample of that
+habit, all 41 cases had at least one other legal action available, so it is a
+policy choice rather than a forced move.
 
 ## 5. Is blasting too weak? No — but it is not a free win either
 
@@ -279,6 +348,12 @@ normal risk-reward trade rather than a dead rule. §6 is about what the learner
 leaves on the table by ignoring the *threat* of a blast.
 
 ### Why the learner blasts 0.03 times a game
+
+The blast and threat numbers in this section and in §6 were measured on the
+60-generation 4-player checkpoint (`checkpoints/selfplay4_g060.npz`). The
+180-generation network in §4 blasts even less (0.02 fired per game) and has
+fewer chances to (0.22 decisions with a dynamite pair, against 0.32), so the
+conclusion is unchanged by the extra training.
 
 The obvious reading — "blasting is a coin-flip, so the learner declines it" —
 turns out to be only a small part of the story. `probe_blast_value.py` forks
@@ -683,6 +758,9 @@ python analyze_blasts.py --checkpoint checkpoints/selfplay4_blast.npz --players 
 # train from scratch (3 minutes on a laptop CPU, ~4 for four players)
 python train_selfplay.py --generations 60 --games-per-generation 64
 python train_selfplay.py --players 4 --generations 60 --games-per-generation 64 --out checkpoints/selfplay4.npz
+# the extra 120 generations in section 4 (resume, then compare the habits)
+python train_selfplay.py --players 4 --resume checkpoints/selfplay4.npz --generations 120 --games-per-generation 64 --seed 7001 --out checkpoints/selfplay4_long.npz
+python profile_agent.py --checkpoints checkpoints/selfplay4_g060.npz,checkpoints/selfplay4_long.npz --games 600
 # ... and the same, but with 60% of the league blasting on sight
 python train_selfplay.py --players 4 --generations 60 --games-per-generation 64 --league-blast-mode always --league-blast-prob 0.6 --out checkpoints/selfplay4_blast.npz
 ```

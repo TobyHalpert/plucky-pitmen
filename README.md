@@ -154,7 +154,7 @@ traced back to the distribution that produced it. It is empty for scripted
 policies, during a tie-break, and while a blast is waiting on a card.
 
 What to look for, given the measurements in [BALANCE.md](BALANCE.md): it should
-rarely blast (0.03-0.05 per game *fired*, for two reasons — it seldom holds two
+rarely blast (0.02-0.05 per game *fired*, for two reasons — it seldom holds two
 dynamite, and most blasts it announces are cancelled by its own next move, §5),
 it should walk to a pit cage as soon as it holds loot, and it should *not*
 visibly change its mind when an opponent announces a blast (§6) — that missing
@@ -195,6 +195,7 @@ uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
 | `analyze_blasts.py` | is a blast worth it, does the learner threaten, does it react, and is the threat real |
 | `probe_blast_value.py` | what a single blast is worth from a real position (forked rollouts), and whether backside knowledge improves the blind choice |
 | `probe_blast_strategy.py` | is "blast while a dragon is waiting for me" a good rule? paired arms over the blast trigger and the keeper choice |
+| `profile_agent.py` | what a checkpoint actually does: digs, front-row digs, passes, retreats, blasts, escapes — side by side for two checkpoints |
 | `gui_controller.py` | Tk-free viewer logic: moves, blasts, tie-breaks, the AI POLICY snapshot |
 | `mine_gui.py` | the Tk viewer itself |
 
@@ -208,6 +209,17 @@ python train_selfplay.py --generations 60 --games-per-generation 64
 This writes `checkpoints/selfplay.npz`, older snapshots to
 `checkpoints/league/`, and the learning curve to
 `checkpoints/selfplay.history.json`.
+
+To train an existing network further, resume it and keep the old one for the
+comparison:
+
+```powershell
+python train_selfplay.py --players 4 --resume checkpoints/selfplay4.npz `
+    --generations 120 --games-per-generation 64 --seed 7001 --out checkpoints/selfplay4_long.npz
+
+# what changed, in habits rather than points
+python profile_agent.py --checkpoints checkpoints/selfplay4.npz,checkpoints/selfplay4_long.npz --games 300
+```
 
 Useful flags:
 
@@ -284,12 +296,14 @@ The full write-up, with confidence intervals and reproduction commands, is in
   **+3.10** (whose own score drops to -1.68). A lone rusher against two leavers
   tops the scoreboard only 35.0% of the time with a *negative* margin.
 * **Four players is more mine, not more coin-flip.** The same benchmark with
-  four seats makes the mine more lethal (62% of hauls end on a dragon, against
+  four seats makes the mine more lethal (61% of hauls end on a dragon, against
   53% at three) while the luck band stays put (mirror spread 4.63 points, 15%
-  tied top scores). The leaver is still the best seat, the rusher still a
-  parasite, and the learner **trained on four players is genuinely better**
-  (+1.11 [+0.73, +1.49], second row of the four-player table) than the same
-  learner trained on three (-0.31).
+  tied top scores). The leaver is still the best scripted seat, the rusher still
+  a parasite, and the learner **trained on four players is genuinely better**
+  (+1.65 [+1.24, +2.07], top of the four-player table) than the same learner
+  trained on three (-0.31). Training it another 120 generations took it from
+  35% to 45% wins against three rule bots and taught it to camp a pit cage
+  instead of leaving (BALANCE.md §4).
 * **A leaderboard against fixed bots cannot tell these apart.** Against the
   scripted bots the ranking is selfplay > rusher > leaver; against a leaver it
   inverts. The report therefore always includes `rusher` and `leaver`, plus a
@@ -307,7 +321,7 @@ The full write-up, with confidence intervals and reproduction commands, is in
   the cheapest counter — walk to the pit cage while the blast is pending —
   recovers **+0.37 [+0.12, +0.63]** of it. The trained network moves its action
   distribution by **0.65%** when a blast is pending and never learns to blast
-  itself (0.03–0.05 per game), even after 60 generations against a league in
+  itself (0.02–0.05 per game), even after 180 generations against a league in
   which 60% of opponents blast on sight. That is a training-budget finding, not
   a rules finding.
 * **`n-1` passes is better than `n`.** Shortens games (65 vs 79 decisions per

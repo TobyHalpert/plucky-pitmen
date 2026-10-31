@@ -706,3 +706,20 @@ def test_behind_blast_mode_needs_an_opponent_in_front():
         blast_pending=False,
     )
     assert should_blast("behind", replaced(armed, opponents=(rival,)))
+
+
+def test_profile_reports_habits_of_a_checkpoint(tmp_path):
+    """The behaviour profiler must run on a checkpoint and count real moves."""
+    from profile_agent import profile_checkpoint
+
+    net = PolicyNet(hidden=8, value_hidden=4, seed=0, name="tiny")
+    path = tmp_path / "tiny.npz"
+    net.save(path)
+
+    row = profile_checkpoint(str(path), games=2, players=3, seed=1, opponents="rule")
+    assert row["stats"].games == 2
+    assert row["decisions"] > 0
+    assert row["digs"] > 0
+    assert 0.0 <= row["front_row_share"] <= 1.0
+    assert 0.0 <= row["own_column_share"] <= 1.0
+    assert row["blasts_fired"] >= 0.0
