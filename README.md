@@ -71,6 +71,7 @@ A haul **ends**
 *   if only one player remains in the mine after the execution phase. This player leaves the mine automatically.
 *   if a complete row cannot be formed after an execution phase. The remaining players leave the mine automatically.
 *   if there are no treasures left in the mine.
+*   if **all players still in the mine stand on their lorry** at the end of a planning phase. Standing on a lorry collects nothing, so such a haul can never progress; it ends and only players who actually left the mine score.
 
 Now, the **scoring** takes place:
 *   Players who left the mine reveal their collected cards. The player with the **most gems** receives **+3 points** (+4 points in the final haul). If only one player has left the mine, they receive these points even without having any gems. In the event of a **tie** for gems, each player with the highest number of gems receives **+1 point**.
@@ -171,7 +172,6 @@ Useful flags:
 | `--no-solo-escape-bonus` | play the rules variant without the free bonus for a sole escapee with zero gems |
 | `--blind-blast-choice` | choose blast cards face down, as the printed rules say |
 | `--pass-rule {n-1,n}` | play the "n passes" variant instead of the printed "n-1" |
-| `--stall-rounds` | safety valve for the lorry-stall gap described in BALANCE.md |
 
 Each game gives the learner one rotating seat while the other seats are filled
 from a league of the hand-tuned rule policy, simple bots and older snapshots of
@@ -224,7 +224,7 @@ The full write-up, with confidence intervals and reproduction commands, is in
   others left with gems, the rusher scores **0.00**.
 * **The counter is to collect and leave.** `leaver` takes one gem and walks out:
   it beats the rusher **+8.72 points with a 100% top score**, and beats the
-  trained agent **+5.08** (the agent's own score goes to -3.00). A lone rusher
+  trained agent **+3.36** (the agent's own score goes to -2.35). A lone rusher
   against two leavers tops the scoreboard only 41.7% of the time with a
   *negative* margin.
 * **A leaderboard against fixed bots cannot tell these apart.** Against the
@@ -236,12 +236,20 @@ The full write-up, with confidence intervals and reproduction commands, is in
   to draw three cards face down and choose two before looking. `MineEnv` showed
   the chooser all three fronts, which makes blasting dominant (+1.65 points).
   With the printed rule (`--blind-blast-choice`) it is neutral (+0.62).
-* **`n-1` passes is better than `n`.** Halves game length (77 vs 143 decisions)
-  and cuts stalled hauls from 27.6% to 4.8%. This also uncovered a real bug:
+* **`n-1` passes is better than `n`.** Shortens games (67 vs 80 decisions per
+  game) and keeps the early-leaver's payoff down (56% vs 88% wins for the
+  rusher). Most of the old difference was deadlock, which the lorry rule now
+  resolves on its own. This also uncovered a real bug:
   `step_one_player()` ignored `--pass-rule` entirely, so the variant only worked
   in the single-learner API.
+* **The lorry stand-off rule changes what self-play learns.** Merely ending the
+  haul when everyone left in the mine is parked (instead of the old
+  "no collection for 8 rounds" valve) took the trained agent from "escapes 99%
+  of hauls empty-handed" to "escapes 70% of hauls carrying 0.28 gems", and its
+  margin against the scripted bots fell from +4.14 to +0.80. The valve had been
+  paying it to keep opponents camping.
 * **Luck dominates a single game.** Identical agents playing each other spread
-  **4.9 points** within a game, more than most between-policy margins here. Use
+  **5.1 points** within a game, more than most between-policy margins here. Use
   the confidence intervals.
 
 ### Testing the rules variants
@@ -262,15 +270,19 @@ python evaluate_balance.py --agents rule,rule:rich,rule:always --games 200 --ski
 python evaluate_balance.py --agents rule,greedy,random,rusher --games 200 --pass-rule n --out reports/pass_n.md
 ```
 
-Four rule gaps surfaced while building this. All four are switchable, so you
-can measure their effect instead of guessing:
+Two rule gaps surfaced while building this, plus one bug. The gaps are
+switchable so you can measure them instead of guessing:
 
 | gap | behaviour | switch |
 | :-- | :-- | :-- |
 | free solo-escape bonus | +3/+4 for leaving alone with zero gems | `--no-solo-escape-bonus` |
 | blast peek | the blaster sees all three draws before choosing | `--blind-blast-choice` (the printed rule) |
-| lorry stall | a haul can never end once everyone remaining is parked | `--stall-rounds` (default 8; 0 can deadlock) |
 | pass count | `step_one_player()` ignored `--pass-rule` and always used `n` | fixed; both variants now work |
+
+The lorry deadlock used to be patched with a `stall_rounds` valve, which paid the
+player who had escaped while voiding the campers' loot. That valve is gone: the
+haul now simply ends when everybody still in the mine stands on their lorry,
+which is the rule the game was missing (see the rules section above).
 
 The defaults keep the historical environment behaviour, so old scripts
 reproduce. For balance work, pass `--blind-blast-choice` and decide explicitly

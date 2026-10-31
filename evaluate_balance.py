@@ -231,7 +231,6 @@ def benchmark(
     games: int,
     players: int,
     seed: int,
-    stall_rounds: int = 8,
     passes: str = "n-1",
     solo_escape_bonus: bool = True,
     blast_choice_sees_fronts: bool = True,
@@ -244,7 +243,6 @@ def benchmark(
         games,
         seed=seed,
         rotate_seats=True,
-        stall_rounds=stall_rounds,
         passes=passes,
         solo_escape_bonus=solo_escape_bonus,
         blast_choice_sees_fronts=blast_choice_sees_fronts,
@@ -259,7 +257,6 @@ def pairwise(
     games: int,
     players: int,
     seed: int,
-    stall_rounds: int = 8,
     passes: str = "n-1",
     solo_escape_bonus: bool = True,
     blast_choice_sees_fronts: bool = True,
@@ -271,7 +268,6 @@ def pairwise(
         games,
         seed=seed,
         rotate_seats=True,
-        stall_rounds=stall_rounds,
         passes=passes,
         solo_escape_bonus=solo_escape_bonus,
         blast_choice_sees_fronts=blast_choice_sees_fronts,
@@ -281,7 +277,6 @@ def pairwise(
         games,
         seed=seed + 1_000_000,
         rotate_seats=True,
-        stall_rounds=stall_rounds,
         passes=passes,
         solo_escape_bonus=solo_escape_bonus,
         blast_choice_sees_fronts=blast_choice_sees_fronts,
@@ -297,7 +292,7 @@ class GameDynamics:
     games: int
     hauls: int
     dragon_hauls: int
-    stalled_hauls: int
+    lorry_hauls: int
     blast_announcements: int
     blast_choices: int
     mean_turns: float
@@ -316,14 +311,14 @@ def dynamics(series: Sequence[SeriesGame], players: int) -> GameDynamics:
         for haul in result.hauls:
             hauls += 1
             dragons += int("dragon" in haul.outcome)
-            stalls += int(haul.outcome == "stalled")
+            stalls += int(haul.outcome == "lorry")
         for seat, score in enumerate(result.scores):
             seat_scores[seat].append(score)
     return GameDynamics(
         games=len(series),
         hauls=hauls,
         dragon_hauls=dragons,
-        stalled_hauls=stalls,
+        lorry_hauls=stalls,
         blast_announcements=blasts,
         blast_choices=choices,
         mean_turns=float(np.mean(turns)) if turns else 0.0,
@@ -337,7 +332,6 @@ def mirror_games(
     games: int,
     players: int,
     seed: int,
-    stall_rounds: int = 8,
     passes: str = "n-1",
     solo_escape_bonus: bool = True,
     blast_choice_sees_fronts: bool = True,
@@ -349,7 +343,6 @@ def mirror_games(
         games,
         seed=seed,
         rotate_seats=False,
-        stall_rounds=stall_rounds,
         passes=passes,
         solo_escape_bonus=solo_escape_bonus,
         blast_choice_sees_fronts=blast_choice_sees_fronts,
@@ -464,9 +457,9 @@ def build_markdown(
     lines.append(
         f"- hauls ending on a dragon: **{100 * dynamics_all.dragon_hauls / max(dynamics_all.hauls, 1):.1f}%** "
         f"({dynamics_all.dragon_hauls}/{dynamics_all.hauls})\n"
-        f"- hauls ending in a stall (no card collected for 8 rounds): "
-        f"**{100 * dynamics_all.stalled_hauls / max(dynamics_all.hauls, 1):.1f}%** "
-        f"({dynamics_all.stalled_hauls}/{dynamics_all.hauls})\n"
+        f"- hauls ending in a lorry stand-off (everyone left inside on a lorry): "
+        f"**{100 * dynamics_all.lorry_hauls / max(dynamics_all.hauls, 1):.1f}%** "
+        f"({dynamics_all.lorry_hauls}/{dynamics_all.hauls})\n"
         f"- blast announcements per game: **{dynamics_all.blast_announcements / max(dynamics_all.games, 1):.2f}**\n"
         f"- planning decisions per game (all seats): **{dynamics_all.mean_turns:.1f}**\n"
     )
@@ -544,12 +537,6 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="choose blast cards face down, as the printed rules say",
     )
-    parser.add_argument(
-        "--stall-rounds",
-        type=int,
-        default=8,
-        help="rounds without a card collection before a haul ends (0 disables)",
-    )
     parser.add_argument("--seed", type=int, default=12_345)
     parser.add_argument("--out", default="reports/balance.md")
     parser.add_argument("--json", default=None)
@@ -577,7 +564,6 @@ def main() -> None:
             games=args.games,
             players=args.players,
             seed=args.seed + index * 100_000,
-            stall_rounds=args.stall_rounds,
             passes=args.pass_rule,
             solo_escape_bonus=args.solo_escape_bonus,
             blast_choice_sees_fronts=not args.blind_blast_choice,
@@ -600,8 +586,7 @@ def main() -> None:
                     games=args.pair_games,
                     players=args.players,
                     seed=args.seed + 3_000_000 + left_index * 10_000 + right_index,
-                    stall_rounds=args.stall_rounds,
-                    passes=args.pass_rule,
+                        passes=args.pass_rule,
                     solo_escape_bonus=args.solo_escape_bonus,
                     blast_choice_sees_fronts=not args.blind_blast_choice,
                 )
@@ -625,7 +610,6 @@ def main() -> None:
             games=args.mirror_games,
             players=args.players,
             seed=args.seed + 7_000_000,
-            stall_rounds=args.stall_rounds,
             passes=args.pass_rule,
             solo_escape_bonus=args.solo_escape_bonus,
             blast_choice_sees_fronts=not args.blind_blast_choice,
@@ -659,7 +643,7 @@ def main() -> None:
             "games": all_dynamics.games,
             "hauls": all_dynamics.hauls,
             "dragon_hauls": all_dynamics.dragon_hauls,
-            "stalled_hauls": all_dynamics.stalled_hauls,
+            "lorry_hauls": all_dynamics.lorry_hauls,
             "blast_announcements": all_dynamics.blast_announcements,
             "mean_turns": all_dynamics.mean_turns,
             "seat_scores": all_dynamics.seat_scores,

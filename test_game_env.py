@@ -513,7 +513,8 @@ def test_lorry_player_stays_in_the_mine_for_the_next_round():
     assert len(env.rows) == initial_row_count + 1
 
 
-def test_lorry_players_can_continue_after_two_additional_rows():
+def test_everybody_on_the_lorry_ends_the_haul_at_once():
+    """Nobody can collect a card, so no new row is dealt and the haul is over."""
     env = MineEnv(opponents=2)
     env.reset(seed=4)
     env.starting_player = 0
@@ -521,16 +522,16 @@ def test_lorry_players_can_continue_after_two_additional_rows():
         player.position = LORRY
     env.planning_turns = 1
     env.planned_players = [True] * env.n_players
+    rows_before = len(env.rows)
 
-    for _ in range(2):
-        for player in env.players:
-            player.position = LORRY
-        env.step(PASS)
-        env.planning_turns = 1
-        env.planned_players = [True] * env.n_players
+    _observation, _reward, terminated, _truncated, info = env.step(PASS)
 
-    assert env.haul == 1
-    assert len(env.rows) == 5
+    assert not terminated
+    assert info["outcome"] == "lorry"
+    assert env.haul == 2
+    # No extra row is dealt: the haul ended instead of growing the mine.
+    assert len(env.haul_history) == 1
+    assert rows_before == 3
 
 
 def test_players_leave_when_no_cards_remain_in_the_mine():
@@ -657,14 +658,17 @@ def test_one_player_passes_advance_lorry_and_pit_cage_positions():
     assert all(player.position == 3 for player in env.players)
 
 
-def test_pit_cage_player_does_not_end_haul_while_lorry_players_remain():
+def test_haul_continues_while_someone_is_still_in_the_mine():
+    """One escaped player must not end the haul for the two still digging."""
     env = MineEnv(opponents=2)
     env.reset(seed=4)
     env.starting_player = 0
     env.players[0].position = PIT_CAGE
     env.players[0].escaped = True
-    env.players[1].position = LORRY
-    env.players[2].position = LORRY
+    env.players[1].position = 1
+    env.players[1].column = 1
+    env.players[2].position = 2
+    env.players[2].column = 2
     env.planning_player = 1
     env.planning_turns = 2
     env.planned_players = [True] * env.n_players

@@ -253,15 +253,14 @@ def test_policy_net_can_learn_to_prefer_one_action():
     assert after > before + 0.05
 
 
-def test_stalled_haul_ends_and_campers_score_nothing():
-    """Once somebody has left, lorry campers must not stall forever."""
-    env = MineEnv(opponents=2, stall_rounds=2)
+def test_lorry_standoff_ends_the_haul_and_pays_nobody_inside():
+    """No card can be collected, so the haul is over: campers score nothing."""
+    env = MineEnv(opponents=2)
     env.reset(seed=4)
     env.players[0].escaped = True
     env.players[0].collected_cards = [(GEM, 0), (GEM, 1)]
     env.players[1].position = LORRY
     env.players[2].position = LORRY
-    env.rounds_without_collection = 2
 
     info: dict = {"outcome": "continued"}
     _reward, terminated = env._finish_round(0.0, info)
@@ -269,12 +268,41 @@ def test_stalled_haul_ends_and_campers_score_nothing():
     assert not terminated
     assert env.haul == 2
     record = env.haul_history[-1]
-    assert record["outcome"] == "stalled"
+    assert record["outcome"] == "lorry"
     assert record["escaped"] == [0]
     assert record["dead"] == []
+    # The sole escapee keeps the haul bonus, the campers get nothing.
     assert env.players[0].score == 3
     assert env.players[1].score == 0
     assert env.players[2].score == 0
+
+
+def test_lorry_standoff_needs_everybody_left_inside_on_a_lorry():
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    env.players[0].position = LORRY
+    env.players[1].position = LORRY
+    env.players[2].position = 1
+    env.players[2].column = 2
+
+    info: dict = {"outcome": "continued"}
+    env._finish_round(0.0, info)
+    assert info.get("outcome") != "lorry"
+    assert env.haul == 1
+
+
+def test_lorry_standoff_does_not_happen_when_someone_has_left():
+    """An escapee is out of the mine, so the rest standing still is still a stall."""
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    env.players[0].escaped = True
+    env.players[1].position = 1
+    env.players[1].column = 1
+    env.players[2].position = LORRY
+
+    info: dict = {"outcome": "continued"}
+    env._finish_round(0.0, info)
+    assert info.get("outcome") != "lorry"
 
 
 def test_pass_rule_variant_changes_the_pass_threshold():
@@ -347,7 +375,6 @@ def test_rusher_loses_its_edge_without_the_solo_bonus():
             play_game(
                 [RusherAgent(), RuleAgent(), RuleAgent()],
                 seed=seed,
-                stall_rounds=8,
                 solo_escape_bonus=bonus,
             ).scores[0]
             for seed in range(30)

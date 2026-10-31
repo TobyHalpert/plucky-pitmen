@@ -132,7 +132,6 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self,
         opponents: int = 3,
         opponent_policy: str = "random",
-        stall_rounds: int = 8,
         passes: str = "n-1",
         solo_escape_bonus: bool = True,
         blast_choice_sees_fronts: bool = True,
@@ -141,19 +140,10 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             raise ValueError("opponents must be 2, 3, or 4")
         if opponent_policy not in {"simple", "random", "cautious", "greedy"}:
             raise ValueError("unknown opponent policy")
-        if stall_rounds < 0:
-            raise ValueError("stall_rounds must be >= 0")
         if passes not in ("n-1", "n"):
             raise ValueError("passes must be 'n-1' or 'n'")
         self.n_players = opponents + 1
         self.opponent_policy = opponent_policy
-        # Safety valve for a real rules gap: once somebody has left the mine no
-        # new row is dealt, so players that keep camping on their lorry (or
-        # bouncing between lorry and pit cage) can stall the haul forever.
-        # After this many consecutive rounds without anyone collecting a card
-        # the haul ends as "stalled": campers keep their loot but score
-        # nothing. Set to 0 to disable and reproduce the raw rules.
-        self.stall_rounds = stall_rounds
         self.passes = passes
         # Rules variant: the printed rules award the haul bonus to a sole
         # escapee even when they carry no gems. That makes "leave immediately"
@@ -164,7 +154,6 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         # three fronts first, which makes blasting far safer. Keep that default
         # for backwards compatibility; set False for the rules-correct gamble.
         self.blast_choice_sees_fronts = bool(blast_choice_sees_fronts)
-        self.rounds_without_collection = 0
         self.action_space = spaces.Discrete(PASS + 1)
         max_rows = MAX_ROWS
         max_visible_cards = max_rows * MAX_COLUMNS
@@ -223,7 +212,6 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.planned_players = [False] * self.n_players
         self.game_finished = False
         self.haul_history = []
-        self.rounds_without_collection = 0
         return self._observation(), {"round": self.round, "haul": self.haul}
 
     # ------------------------------------------------------------------
@@ -404,13 +392,14 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
     def _finish_round(self, reward: float, info: dict[str, Any]) -> tuple[float, bool]:
         """Shared post-resolution bookkeeping for both stepping APIs."""
         mine_empty = not self._mine_has_cards()
-        stalled = (
-            self.stall_rounds > 0
-            and self.rounds_without_collection >= self.stall_rounds
-        )
-        if stalled:
-            info["outcome"] = "stalled"
-        haul_over = self._haul_over() or stalled
+        # Printed-rules gap: sitting on the lorry is safe but collects nothing,
+        # so a haul in which everybody left in the mine stands on a lorry can
+        # never progress. Ending it there is not a workaround but the natural
+        # reading of "the haul is over": nobody takes a card, nobody leaves.
+        lorry_standoff = self._all_remaining_on_lorry()
+        if lorry_standoff and info.get("outcome") in (None, "continued", "escaped"):
+            info["outcome"] = "lorry"
+        haul_over = self._haul_over() or lorry_standoff
 
         if not self._can_deal_row() or mine_empty:
             info["mine_empty"] = True
@@ -537,8 +526,10 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         # victim is already flagged dead, so there is nothing left to assign.
         if info.get("outcome") in ("dragon", "blast_dragon"):
             return
-        # A stalled haul ends without anyone leaving; campers score nothing.
-        if info.get("outcome") == "stalled":
+        # A lorry stand-off ends without anyone leaving: the players still in
+        # the mine were paid nothing for standing on their lorries, exactly as
+        # the rules treat a wasted turn. Only real escapees score.
+        if info.get("outcome") == "lorry":
             return
         active = [player for player in self.players if not player.escaped and not player.dead]
         if info.get("mine_empty") or len(active) <= 1:
@@ -608,7 +599,6 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.tie_breaker_turn = 0
         self.used_blast_backsides = []
         self.displacement_events = []
-        self.rounds_without_collection = 0
 
     # ------------------------------------------------------------------
     # Deck & mine
@@ -855,7 +845,6 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         reward = 0.0
         info: dict[str, Any] = {"round": self.round, "action": self.last_action}
         learner_was_escaped = self.players[0].escaped
-        collected_this_round = 0
         player_order = [
             (self.starting_player + offset) % self.n_players
             for offset in range(self.n_players)
@@ -887,7 +876,6 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             card, backside = card_entry
             self.rows[player.position][player.column] = None
             player.collected_cards.append((card, backside))
-            collected_this_round += 1
 
             if card == DRAGON:
                 for remaining_player in self.players:
@@ -916,14 +904,19 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         elif not info.get("outcome"):
             info["outcome"] = "continued"
 
-        if collected_this_round:
-            self.rounds_without_collection = 0
-        else:
-            self.rounds_without_collection += 1
-
         if info["outcome"] != "dragon":
             self._prepare_blasts()
         return reward, info
+
+    def _all_remaining_on_lorry(self) -> bool:
+        """True when every player still in the mine stands on their lorry."""
+        remaining = [
+            player for player in self.players
+            if not player.escaped and not player.dead
+        ]
+        return bool(remaining) and all(
+            player.position == LORRY for player in remaining
+        )
 
     def _haul_over(self) -> bool:
         """Return True when the current haul must stop."""

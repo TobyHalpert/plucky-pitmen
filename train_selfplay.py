@@ -55,7 +55,6 @@ def evaluate(
     seed: int,
     opponent: str,
     deterministic: bool = False,
-    stall_rounds: int = 8,
     passes: str = "n-1",
     solo_escape_bonus: bool = True,
     blast_choice_sees_fronts: bool = True,
@@ -78,7 +77,6 @@ def evaluate(
         games,
         seed=seed,
         rotate_seats=True,
-        stall_rounds=stall_rounds,
         passes=passes,
         solo_escape_bonus=solo_escape_bonus,
         blast_choice_sees_fronts=blast_choice_sees_fronts,
@@ -97,14 +95,14 @@ def evaluate(
         top_scores += int(learner_score == max(policy_scores))
         ranks.append(1 + sum(1 for score in policy_scores if score > learner_score))
         dragons += game.result.dragons
-    stalls += game.result.stalls
+    stalls += game.result.lorry_standoffs
     return {
         "win_rate": wins / games,
         "top_score_rate": top_scores / games,
         "mean_score": float(np.mean(scores)),
         "mean_rank": float(np.mean(ranks)),
         "dragons_per_game": dragons / games,
-        "stalls_per_game": stalls / games,
+        "lorry_standoffs_per_game": stalls / games,
     }
 
 
@@ -177,7 +175,6 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
                 agents,
                 seed=game_seed,
                 decisions=recorder,
-                stall_rounds=args.stall_rounds,
                 passes=args.pass_rule,
                 solo_escape_bonus=args.solo_escape_bonus,
                 escape_shaping=args.escape_shaping,
@@ -219,7 +216,6 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
                 seed=args.eval_seed,
                 opponent=args.eval_opponent,
                 deterministic=args.deterministic_eval,
-                stall_rounds=args.stall_rounds,
                 passes=args.pass_rule,
                 solo_escape_bonus=args.solo_escape_bonus,
                 blast_choice_sees_fronts=not args.blind_blast_choice,
@@ -232,7 +228,7 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
                 f"score {evaluation['mean_score']:+.2f} | "
                 f"rank {evaluation['mean_rank']:.2f} | "
                 f"dragon {evaluation['dragons_per_game']:.2f} | "
-                f"stall {evaluation['stalls_per_game']:.2f} | "
+                f"lorry {evaluation['lorry_standoffs_per_game']:.2f} | "
                 f"entropy {stats['entropy']:.3f} | "
                 f"blasts {entry['blasts']:.2f}",
                 flush=True,
@@ -309,7 +305,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--eval-opponent", default="rule")
     parser.add_argument("--deterministic-eval", action="store_true", default=False)
     parser.add_argument("--log-every", type=int, default=1)
-    parser.add_argument("--stall-rounds", type=int, default=8)
     parser.add_argument(
         "--blind-blast-choice",
         action="store_true",

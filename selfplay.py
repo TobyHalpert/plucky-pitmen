@@ -70,8 +70,9 @@ class GameResult:
         return sum(len(haul.escaped) for haul in self.hauls)
 
     @property
-    def stalls(self) -> int:
-        return sum(1 for haul in self.hauls if haul.outcome == "stalled")
+    def lorry_standoffs(self) -> int:
+        """Hauls that ended because everybody left inside stood on a lorry."""
+        return sum(1 for haul in self.hauls if haul.outcome == "lorry")
 
 
 # ----------------------------------------------------------------------
@@ -162,7 +163,6 @@ def play_game(
     decisions: list[Any] | None = None,
     reward_shaping: bool = True,
     escape_shaping: float = ESCAPE_SHAPING,
-    stall_rounds: int = 8,
     passes: str = "n-1",
     solo_escape_bonus: bool = True,
     blast_choice_sees_fronts: bool = True,
@@ -174,7 +174,6 @@ def play_game(
 
     env = MineEnv(
         opponents=n_players - 1,
-        stall_rounds=stall_rounds,
         passes=passes,
         solo_escape_bonus=solo_escape_bonus,
         blast_choice_sees_fronts=blast_choice_sees_fronts,
@@ -361,7 +360,6 @@ def play_series(
     seed: int = 0,
     rotate_seats: bool = True,
     decisions: list[Any] | None = None,
-    stall_rounds: int = 8,
     passes: str = "n-1",
     solo_escape_bonus: bool = True,
     blast_choice_sees_fronts: bool = True,
@@ -387,8 +385,7 @@ def play_series(
             agents,
             seed=game_seed,
             decisions=decisions,
-            stall_rounds=stall_rounds,
-            passes=passes,
+                passes=passes,
             solo_escape_bonus=solo_escape_bonus,
             blast_choice_sees_fronts=blast_choice_sees_fronts,
         )
