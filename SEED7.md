@@ -15,9 +15,9 @@ python analyze_game.py --seed 7 --greedy           # the same seed with the samp
 > input) rather than in the search. Fixing that — a `round_dragon_hazard` state
 > feature and an escape rule that waits for it — retrained the checkpoint
 > (BALANCE.md, "A cage is insurance, and the table's hazard was not an input").
-> The shipped checkpoint now plays seed 7 differently: **75 decisions, seven
-> escapes, none of them at a table where nothing visible could blow, scored
-> 4–0–3–4.** The move the viewer flagged (haul 1, round 1: P1 holding a gem and
+> The shipped checkpoint now plays seed 7 differently: **71 decisions, five
+> escapes, none of them at a table where nothing visible could blow and none of
+> them an empty escape while a card it could see was reachable, scored 1–0–3–4.** The move the viewer flagged (haul 1, round 1: P1 holding a gem and
 > standing on a gem it could see, caging at 89%) is gone twice over — the escape
 > rule now recognises that table as calm, and the hazard it reads was corrected
 > to price only the cards nobody at the table can see (0.61 believed, 1% realised

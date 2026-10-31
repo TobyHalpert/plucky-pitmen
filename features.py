@@ -541,6 +541,27 @@ def own_card_is_known_dragon(ctx: PlayerActionContext) -> bool:
     return entry is not None and entry[0] is not None and int(entry[0]) == DRAGON
 
 
+def known_safe_card_available(ctx: PlayerActionContext) -> bool:
+    """True when the seat can step onto a card it can see is not a dragon.
+
+    Only the seat's own column is face up to it, so this is cheap to read and
+    exact: a front that is a gem or dynamite is a card that cannot kill anyone.
+    """
+    for action in ctx.legal_actions:
+        action = int(action)
+        if not 0 <= action < PIT_CAGE:
+            continue
+        row, column = divmod(action, MAX_COLUMNS)
+        if column != ctx.player_index or row >= len(ctx.public_rows):
+            continue
+        entry = ctx.public_rows[row][column]
+        if entry is None or entry[0] is None:
+            continue
+        if int(entry[0]) != DRAGON:
+            return True
+    return False
+
+
 def lorry_skips_a_card_worth_taking(ctx: PlayerActionContext) -> bool:
     """True when parking on the lorry is a move with nothing to gain.
 
@@ -608,7 +629,14 @@ def cage_banks_nothing(ctx: PlayerActionContext) -> bool:
     if ctx.own_blast_pending or any(o.blast_pending for o in ctx.opponents):
         return False
     if own_card_is_known_dragon(ctx):
-        return False
+        # Refusing the dragon is the point, but spending the haul is not the
+        # only way to do it: a card the seat can see is a gem it can take, and
+        # one row away is close enough. Seed 7, haul 3, round 0 -- P3 sits on a
+        # dragon it can see, holds nothing, plans the cage at 62% while a gem it
+        # can see sits at r0c2, and takes that gem at its next decision in the
+        # same phase; from that position the gem is worth +2.59 +- 0.12 and the
+        # cage +2.23 +- 0.10.
+        return known_safe_card_available(ctx)
     for opponent in ctx.opponents:
         if opponent.dead or opponent.escaped or opponent.position == PIT_CAGE:
             continue
@@ -626,6 +654,36 @@ _FRONT_NAMES = {GEM: "gem", DRAGON: "dragon", DYNAMITE: "dynamite"}
 _BACKSIDE_NAMES = {0: "o", 1: "v", 2: "~"}
 
 
+def _cage_reason(ctx: PlayerActionContext) -> str:
+    """What an escape banks and what it is running from, for the viewer.
+
+    The spectator sees backsides, so the danger a cage answers is often private
+    to the seat that takes it: a dragon in its own column is drawn as a plain
+    card.  Without this the viewer shows "pit cage" and the move looks arbitrary.
+    """
+    gems = sum(1 for front, _ in ctx.private_cards if front == GEM)
+    why: list[str] = []
+    if own_card_is_known_dragon(ctx):
+        why.append("the dragon under me")
+    if ctx.own_blast_pending:
+        why.append("my blast")
+    elif any(opponent.blast_pending for opponent in ctx.opponents):
+        why.append("a rival's blast")
+    for opponent in ctx.opponents:
+        if opponent.dead or opponent.escaped:
+            continue
+        if opponent.column != ctx.player_index:
+            continue
+        if not 0 <= opponent.position < len(ctx.public_rows):
+            continue
+        entry = ctx.public_rows[opponent.position][ctx.player_index]
+        if entry is not None and entry[0] is not None and int(entry[0]) == DRAGON:
+            why.append(f"P{opponent.player_index + 1} is on my dragon")
+    if not why:
+        why.append(f"{round_dragon_hazard(ctx):.0%} the mine blows this round")
+    return f"pit cage, banks {gems}g ({', '.join(why)})"
+
+
 def action_reason(ctx: PlayerActionContext, action: int) -> str:
     """One short sentence for *why* an action looks the way it does to its player.
 
@@ -637,9 +695,14 @@ def action_reason(ctx: PlayerActionContext, action: int) -> str:
     primitive, announces_blast = split_action(int(action))
     suffix = " + blast" if announces_blast else ""
     if primitive == PIT_CAGE:
-        return "pit cage" + suffix
+        return _cage_reason(ctx) + suffix
     if primitive == LORRY:
-        return "lorry" + suffix
+        refusal = (
+            "lorry, refuses the dragon I can see"
+            if own_card_is_known_dragon(ctx)
+            else "lorry"
+        )
+        return refusal + suffix
     if primitive == PASS:
         return "pass" + suffix
     row, column = divmod(primitive, MAX_COLUMNS)
@@ -745,6 +808,7 @@ __all__ = [
     "figure_dragon_risk",
     "has_dragon_free_move",
     "join_action",
+    "known_safe_card_available",
     "lorry_skips_a_card_worth_taking",
     "own_card_is_known_dragon",
     "rival_can_push",

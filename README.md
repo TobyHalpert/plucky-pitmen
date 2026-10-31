@@ -167,6 +167,10 @@ prints the same game with the probability behind every decision, and
 `--greedy` replays the seed with the sampler off so you can see the move the
 network actually preferred:
 
+Every escape in the log names what it banks and what it is running from
+(`pit cage, banks 0g (the dragon under me)`), which matters because a dragon in a
+seat's own column is a card only that seat can see.
+
 ```powershell
 python analyze_game.py --seed 7              # every decision of the game you just watched
 python analyze_game.py --seed 7 --forks      # what each flagged move was worth, re-rolled

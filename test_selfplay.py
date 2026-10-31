@@ -809,6 +809,72 @@ def test_action_reason_spells_out_what_the_deciding_seat_knows():
     assert reason.endswith("dragon)"), reason
 
 
+def test_action_reason_says_what_an_escape_is_running_from():
+    """The dragon a cage answers can be private: say so, or the move looks mad.
+
+    Seed 7 of the viewer, haul 3, round 0: P3 sat on a dragon in its own column
+    and planned a cage at 62% with an empty hand.  On screen that is a figure on
+    a plain card walking out of a quiet mine.
+    """
+    from features import action_reason
+
+    on_dragon = _board_context(
+        {(1, 0): (DRAGON, 0)}, legal=(int(PIT_CAGE),), own_position=1
+    )
+    assert action_reason(on_dragon, int(PIT_CAGE)) == (
+        "pit cage, banks 0g (the dragon under me)"
+    )
+
+    carrying = replaced(on_dragon, private_cards=((GEM, 0),))
+    assert "banks 1g" in action_reason(carrying, int(PIT_CAGE))
+
+    # A rival's charged blast is the other thing an escape answers.
+    charged = replaced(
+        _board_context({}, legal=(int(PIT_CAGE),), own_position=5),
+        opponents=(replaced(_rival(1, 4), blast_pending=True),),
+    )
+    assert "a rival's blast" in action_reason(charged, int(PIT_CAGE))
+
+    # Nothing in particular: fall back to the table's hazard.
+    calm = _board_context({}, legal=(int(PIT_CAGE),), own_position=5)
+    assert action_reason(calm, int(PIT_CAGE)) == (
+        "pit cage, banks 0g (0% the mine blows this round)"
+    )
+
+
+def test_the_mask_forbids_spending_the_haul_while_a_visible_card_is_reachable():
+    """A dragon under the figure is a reason to refuse that card, not the haul.
+
+    Seed 7, haul 3, round 0: from that position the gem one row away was worth
+    +2.59 +- 0.12 and the empty escape +2.23 +- 0.10, and the seat took the gem
+    at its next decision in the same phase anyway.
+    """
+    from features import action_mask, cage_banks_nothing, known_safe_card_available
+
+    on_dragon = _board_context(
+        {(0, 0): (GEM, 0), (1, 0): (DRAGON, 0)},
+        legal=(0 * MAX_COLUMNS + 0, 1 * MAX_COLUMNS + 0, int(PIT_CAGE)),
+        own_position=1,
+    )
+    assert known_safe_card_available(on_dragon)
+    assert cage_banks_nothing(on_dragon)
+    assert not action_mask(on_dragon)[int(PIT_CAGE)]
+    assert action_mask(on_dragon)[0 * MAX_COLUMNS + 0]
+
+    # Nothing it can see is safe: now leaving is a real choice and it stays.
+    only_unknown = replaced(
+        on_dragon,
+        legal_actions=(2 * MAX_COLUMNS + 1, int(PIT_CAGE)),
+        public_rows=tuple(
+            (row if index != 2 else ((None, 0),) + row[1:])
+            for index, row in enumerate(on_dragon.public_rows)
+        ),
+    )
+    assert not known_safe_card_available(only_unknown)
+    assert not cage_banks_nothing(only_unknown)
+    assert action_mask(only_unknown)[int(PIT_CAGE)]
+
+
 def test_action_reason_calls_a_raid_a_raid():
     from features import action_reason
 

@@ -858,6 +858,31 @@ stronger player — and 54.2% · +3.50 against three `rule` bots (1,000 games),
 se 1.6). Seed 7 no longer contains an escape at a table where nothing visible can
 blow.
 
+#### Correction: an empty escape with a gem one step away
+
+The next report from the same game: **P3 leaves through the cage in the first
+planning phase, with no danger on the table.** There *was* a danger — P3 was
+standing on a dragon in its own column, and only the owner of a column sees its
+fronts, so the viewer draws a plain card — but the escape was wrong anyway. P3
+held nothing, and a gem it could see sat one row away. The rule treated "a dragon
+I can see is under me" as licence to leave the haul; it now also needs the seat to
+have **no card it can see is safe** to step onto instead. Priced from that
+position: the gem **+2.59 ± 0.12**, the empty escape **+2.23 ± 0.10** — and P3
+took the gem at its next decision in the same phase, so the cage was a plan it
+abandoned. Worth, 1,000 paired four-net games with the clause on one seat against
+the same seat without it: **+0.00 points (se 0.03)**, i.e. free.
+
+The rest of the class stays legal, and that is measured too: forbidding every
+empty escape taken while *any* card is reachable — including a card the seat
+cannot see — costs **−0.11 points (se 0.04)**, so stepping onto an unknown card
+instead of leaving is a real trade rather than a wasted round.
+
+The viewer also stops being the only one who cannot see the danger: `action_reason`
+now spells out what an escape banks and what it is running from —
+`pit cage, banks 0g (the dragon under me)`, `pit cage, banks 1g (a rival's blast)`,
+`pit cage, banks 1g (25% the mine blows this round)` — so the move on screen
+explains itself instead of reading as an arbitrary walk out of a quiet mine.
+
 ## 5. Is blasting too weak? No — but it is not a free win either
 
 The printed blast rule: draw three cards **face down**, choose two, *then* look
