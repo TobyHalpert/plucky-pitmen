@@ -404,9 +404,11 @@ field-specific; and the bluff survives against the blind field (0.30 pushes per
 game, it eats its own bait 0.003 times per game), so what changed is that the
 table can now punish it, not that the move disappeared.
 
-Shipped: `selfplay4_reader.npz` is promoted to `checkpoints/selfplay4.npz`, the
-predecessor is kept as `checkpoints/selfplay4_blind.npz`, and `reader` is
-available everywhere a scripted policy is (`make_scripted_agent("reader")`).
+Shipped then: `selfplay4_reader.npz` was promoted to `checkpoints/selfplay4.npz`
+(superseded by the loot-gated snapshot in the next subsection; the file is kept
+under its own name), the predecessor is `checkpoints/selfplay4_blind.npz`, and
+`reader` is available everywhere a scripted policy is
+(`make_scripted_agent("reader")`).
 
 ### The training signal was paying for empty-handed exits
 
