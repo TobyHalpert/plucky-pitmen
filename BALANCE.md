@@ -408,6 +408,51 @@ Shipped: `selfplay4_reader.npz` is promoted to `checkpoints/selfplay4.npz`, the
 predecessor is kept as `checkpoints/selfplay4_blind.npz`, and `reader` is
 available everywhere a scripted policy is (`make_scripted_agent("reader")`).
 
+### The training signal was paying for empty-handed exits
+
+A viewer reported seats walking into a pit cage "with no present danger
+whatsoever". The frequencies are real, but the asymmetry is the news. Over 400
+games each, counting only the plan that stands when the phase executes:
+
+| seat | cage commitments / game | ...empty-handed | ...empty-handed with nothing pressing |
+| :-- | --: | --: | --: |
+| `rule` bot | 0.66 | 24% | 11% |
+| learner (`selfplay4`) | 0.21 | **86%** | 57% |
+
+The hand-written bot leaves more often but almost always with loot in hand; the
+learner leaves less often and usually with nothing. The cause was in the reward,
+not in the rules: `_reward_vector` paid `ESCAPE_SHAPING = 0.30` for *any* escape,
+loot or not, and a gem is only worth `GEM_SHAPING = 0.20`. Walking out
+empty-handed therefore scored like one and a half gems in training, whatever the
+board said.
+
+So the bonus now requires at least one gem banked (`test_an_empty_handed_escape_is_not_paid_for`).
+Fine-tuning the shipped net for 30 generations under the corrected signal keeps
+its strength and halves the habit it never should have learned:
+
+| checkpoint | vs 3 × `rule` (800 games) | empty-handed cage walks | of those, unthreatened |
+| :-- | :-- | --: | --: |
+| `selfplay4_reader.npz` (before) | 47.4% · +2.67 | 0.18/game | 0.12/game |
+| `selfplay4` (after, gen 30) | 48.1% · +2.61 | 0.12/game | 0.07/game |
+
+Paired head-to-head over 800 seat-games is +0.04 (se 0.05): the same strength,
+less of the habit. Reproduce with
+
+```bash
+python train_selfplay.py --players 4 --resume checkpoints/selfplay4_reader.npz \
+  --generations 30 --games-per-generation 80 --seed 6161 --name selfplay4 \
+  --out checkpoints/selfplay4.npz
+```
+
+Two things this does not fix, stated plainly. Running the fine-tune for 60
+generations instead of 30, or dropping the escape bonus entirely, both *lost*
+strength (42.5% and 39.5% against three `rule` bots, with the policy entropy
+collapsing from 1.27 to 0.93), so the 30-generation snapshot is what shipped.
+And an empty-handed exit is not always wrong: it collects the printed
+sole-escapee bonus of +3, which the learner actually won in 11 of its 53
+empty-handed exits. That is why the move stays legal and why no mask forbids it;
+only the shaping that paid for it unconditionally is gone.
+
 ### "It climbed past two free cards"
 
 That is the next thing a viewer notices, and the first question is whether it is

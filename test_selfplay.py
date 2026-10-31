@@ -849,6 +849,37 @@ def test_the_reader_refuses_a_backside_whose_unknowns_are_all_dragons():
     assert deterministic_policy(ctx, trust_sitter=False) == safe, "the reader does not"
 
 
+def _escape_reward(gems: int):
+    """Dense reward for one seat escaping a haul with ``gems`` in hand."""
+    from types import SimpleNamespace
+
+    from selfplay import _reward_vector, _snapshot
+
+    def player(score, held, gems_held, escaped, dead):
+        return SimpleNamespace(
+            score=score,
+            gems=gems_held,
+            collected_cards=[None] * held,
+            escaped=escaped,
+            dead=dead,
+        )
+
+    before_env = SimpleNamespace(
+        haul=1, players=[player(0, 0, 0, False, False)]
+    )
+    before = _snapshot(before_env)
+    after_env = SimpleNamespace(haul=1, players=[player(0, gems, gems, True, False)])
+    return _reward_vector(after_env, before, escape_shaping=0.3)[0]
+
+
+def test_an_empty_handed_escape_is_not_paid_for():
+    """Walking to a pit cage with nothing must not be rewarded (BALANCE 5)."""
+    empty = _escape_reward(gems=0)
+    with_gem = _escape_reward(gems=1)
+    assert empty == 0.0
+    assert with_gem > 0.3, "the gem shaping and the escape shaping both apply"
+
+
 def _rival(player_index: int, position: int):
     from game_env import OpponentPublicView
 

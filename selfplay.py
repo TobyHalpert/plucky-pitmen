@@ -32,6 +32,7 @@ MAX_PLANNING_FACTOR = 4
 # Dense shaping, kept small relative to the points that decide a haul.
 GEM_SHAPING = 0.20
 OTHER_CARD_SHAPING = 0.02
+# Paid only when the escape banks at least one gem (see _reward_vector).
 ESCAPE_SHAPING = 0.30
 DEATH_SHAPING = -0.05
 WIN_BONUS = 1.0
@@ -118,7 +119,13 @@ def _reward_vector(
             reward += GEM_SHAPING * gems
             reward += OTHER_CARD_SHAPING * (cards - gems)
             if player.escaped and not before.escaped[index]:
-                reward += escape_shaping
+                # Pay only for an escape that banks something. An empty-handed
+                # exit is worth nothing in the scoring unless it is the sole
+                # escape of the haul, and the true score already pays that. A
+                # flat bonus here taught the learner to walk to a pit cage with
+                # no loot and nothing pressing - see BALANCE.md section 1.
+                if player.gems > 0:
+                    reward += escape_shaping
             if player.dead and not before.dead[index]:
                 reward += DEATH_SHAPING
         rewards[index] = float(reward)
