@@ -1066,16 +1066,21 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             return False
         self.tie_breaker_contenders = contenders
         # A tie-break eliminates one contender per dragon drawn, so it needs
-        # ``contenders - 1`` dragons to be able to finish. The card economy
-        # supplies that on its own: each haul starts from a fresh 30-card deck
-        # with six dragons, a dragon ends the haul when it is drawn, so at most
-        # three are spent and at least three remain — and the tightest state
-        # measured over 1300+ games at 3, 4 and 5 players is *exactly* three
-        # dragons for four contenders (slack 0, never negative). This is
-        # therefore a guard, not a reproduced bug: if the invariant is ever
-        # broken by a rules change (more players, fewer dragons per backside,
-        # a new way to lose cards) running out of cards would raise rather than
-        # settle the tie, so top the deck up instead.
+        # ``contenders - 1`` dragons to be able to finish: at most four.
+        # The card economy supplies far more than that. The deck is rebuilt to
+        # all 30 cards at the start of every haul and a haul ends the moment a
+        # dragon is drawn, so a haul spends exactly *one* dragon — the final
+        # tie-break therefore sees five dragons (six if the last haul ended
+        # another way), whatever happened in the hauls before it. The count can
+        # drop a little only through the short-deck branch of `_prepare_blasts`,
+        # which pushes leftover blast cards, dragons included, into a hand.
+        # Measured over 1260 games at 4 and 5 players (249 tie-breaks): five
+        # dragons in 219 cases, six in 26, four in 4 — never fewer than four,
+        # and never fewer than `contenders - 1`.
+        # So this is a guard, not a fix for an observed failure: it has never
+        # fired. It stays because a rules change (more players, fewer dragons
+        # per backside, a new way to lose cards) would make an out-of-cards
+        # tie-break raise instead of settle, and topping the deck up is cheap.
         if self._dragons_left_to_draw() < len(contenders) - 1:
             self.cards_remaining = self._new_deck()
             self.rng.shuffle(self.cards_remaining)

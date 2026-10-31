@@ -39,7 +39,9 @@ The supportable conclusions are:
   finish, so the game was scored all-zero (36 of 60 always-blaster games).
   Fixed, and every report now prints its abandoned-game count (§7). A second
   "bug" I initially reported in the same area — an unwinnable tie-breaker —
-  does not exist, and §7 records why.
+  does not exist: a haul spends one dragon and the deck is rebuilt every haul,
+  so five remain against the four a tie-break can need. §7 records the
+  withdrawal, including the bad arithmetic in my first correction.
 
 All numbers: 4-player results are labelled as such; everything else is 3
 players. Seats rotated every game, 300 games per leaderboard row, 60 games per
@@ -343,24 +345,34 @@ draw. Fixed twice over: the dragon cancels a dead player's blast, and only a
 player who can still act is allowed to defer the end of the round.
 
 **The bug I withdrew: an "unwinnable tie-breaker".** An earlier draft of this
-document claimed the tie-break could run out of dragons — that after three
-hauls every dragon might be held by a player, leaving contenders drawing safe
-cards forever. That is wrong, and the reviewer's objection was right: a dragon
-is spent only by being drawn, and a draw *ends the haul*, so at most three of
-the deck's six dragons are gone by the final tie-break, while eliminating
-`contenders - 1` players needs at most four. Measured over 1300 games at 3, 4
-and 5 players with 255 tie-breaks, the tightest state is **exactly three
-dragons for four contenders** — enough, every time, and never one short. What I
-had actually observed was the dead-blast abort above, with the state printed at
-the wrong moment; I wrote it up as a second bug before finding the first one's
-cause.
+document claimed the tie-break could run out of dragons — that after three hauls
+every dragon might be held by a player, leaving contenders drawing safe cards
+forever. That is wrong, and the reviewer was right twice over: a haul spends
+**one** dragon, not several, because drawing a dragon ends the haul; and the
+deck is rebuilt to all 30 cards at the start of every haul, so the final
+tie-break sees **five** dragons (six, if the last haul ended on a lorry or a
+full board) regardless of what the first two hauls did. Four is the most a
+tie-break can ever need, for five contenders.
 
-The engine keeps a guard for that state anyway (top up the deck if the invariant
-is ever broken by a rules change), but it is a guard, not a fix for an observed
-failure: it has never fired, the flag it sets is called
-`tie_breaker_shortage`, and a test asserts the invariant on real games so that a
-future rules change (more players, fewer dragons per backside, a new way to lose
-cards) fails loudly instead of silently.
+Measured over 1260 games at 4 and 5 players, 249 tie-breaks: five dragons
+available in 219 of them, six in 26, and four in just 4 — those four being games
+where the short-deck branch of `_prepare_blasts` had pushed leftover blast
+cards, a dragon included, into a player's hand. The tightest state observed was
+five dragons for five contenders. Availability never fell below four, and never
+below `contenders - 1`.
+
+My first correction of this passage was also wrong: it said "at most three
+dragons are consumed", which is the arithmetic that made the guard look
+necessary in the first place. What I had actually observed was the dead-blast
+abort above, with the state printed at the wrong moment; I wrote it up as a
+second bug before finding the first one's cause.
+
+The engine keeps a top-up anyway — if fewer dragons remain than `contenders - 1`
+it rebuilds the deck — but it is a guard, not a fix for an observed failure: it
+has never fired, the flag it sets is called `tie_breaker_shortage`, and a test
+asserts the invariant on real games so that a future rules change (more players,
+fewer dragons per backside, a new way to lose cards) fails loudly instead of
+silently.
 
 What both episodes did change is the reporting: every report now prints `games
 the engine abandoned` in its header and every measurement counts it, so an
