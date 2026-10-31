@@ -215,3 +215,40 @@ def test_policy_snapshot_is_quiet_after_the_game_ends(tiny_net):
     controller.reset(2, policy, seed=9)
     play_to_the_end(controller)
     assert controller.policy_snapshot() == []
+
+
+def test_deterministic_mode_takes_the_argmax(tiny_net):
+    """Feedback runs should show the policy, not one sample of it."""
+    policy = f"neural:{tiny_net}"
+    controller = GameController(2, policy, seed=3, deterministic=True)
+    controller.reset(2, policy, seed=3, deterministic=True)
+
+    checked = 0
+    for _ in range(400):
+        if (
+            not controller.in_tie_breaker
+            and not controller.blast_pending
+            and controller.env.planning_player == 0
+        ):
+            expected = controller.policy_snapshot(limit=1)[0][0]
+            result = controller.step_one_player_auto()
+            if controller.last_choice_seat == 0 and controller.last_choice is not None:
+                assert int(controller.last_choice.action) == expected
+                checked += 1
+        else:
+            result = controller.step_one_player_auto()
+        if result.game_over:
+            break
+    assert checked >= 3
+
+
+def test_deterministic_mode_is_reproducible(tiny_net):
+    policy = f"neural:{tiny_net}"
+
+    def play() -> list[int]:
+        controller = GameController(2, policy, seed=8, deterministic=True)
+        controller.reset(2, policy, seed=8, deterministic=True)
+        play_to_the_end(controller)
+        return [player.score for player in controller.env.players]
+
+    assert play() == play()

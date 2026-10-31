@@ -130,6 +130,9 @@ python mine_gui.py --opponents 3 --policy neural:selfplay4
 
 # ... or the same network in every seat, which is the clearest view of its habits
 python mine_gui.py --opponents 3 --policy neural:selfplay4 --all-seats
+
+# play the argmax instead of sampling at temperature 0.7 (what the benchmarks do)
+python mine_gui.py --opponents 3 --policy neural:selfplay4 --deterministic
 ```
 
 The **AI POLICY** panel lists the network's top actions for Player 1 with their

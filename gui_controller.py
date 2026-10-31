@@ -108,8 +108,10 @@ class GameController:
         seed: int,
         *,
         all_seats: bool = False,
+        deterministic: bool = False,
     ) -> None:
         self.all_seats = all_seats
+        self.deterministic = deterministic
         self._net: PolicyNet | None = None
         self._net_policy: str | None = None
         self.agents: list[Any] = []
@@ -133,12 +135,15 @@ class GameController:
         seed: int,
         *,
         all_seats: bool | None = None,
+        deterministic: bool | None = None,
     ) -> None:
         self.opponents = opponents
         self.policy = policy
         self.seed = seed
         if all_seats is not None:
             self.all_seats = bool(all_seats)
+        if deterministic is not None:
+            self.deterministic = bool(deterministic)
         self.training_rng = np.random.default_rng(seed)
         self.training_q_table = None
         self.last_choice = None
@@ -174,12 +179,18 @@ class GameController:
             return
         net = self.policy_net()
         self.agents[0] = NeuralAgent(
-            net, seed=self.seed, temperature=NEURAL_TEMPERATURE
+            net,
+            seed=self.seed,
+            temperature=NEURAL_TEMPERATURE,
+            deterministic=self.deterministic,
         )
         if self.all_seats:
             for seat in range(1, self.env.n_players):
                 self.agents[seat] = NeuralAgent(
-                    net, seed=self.seed + 101 * seat, temperature=NEURAL_TEMPERATURE
+                    net,
+                    seed=self.seed + 101 * seat,
+                    temperature=NEURAL_TEMPERATURE,
+                    deterministic=self.deterministic,
                 )
 
     def ensure_training_ready(self, progress_callback: Callable[[str], None] | None = None) -> None:

@@ -258,9 +258,16 @@ class MineViewer:
         policy: str,
         seed: int,
         all_seats: bool = False,
+        deterministic: bool = False,
     ) -> None:
         self.root = root
-        self.controller = GameController(opponents, policy, seed, all_seats=all_seats)
+        self.controller = GameController(
+            opponents,
+            policy,
+            seed,
+            all_seats=all_seats,
+            deterministic=deterministic,
+        )
         self.autoplay = False
         self.autoplay_job: str | None = None
         self._resize_job: str | None = None
@@ -278,6 +285,7 @@ class MineViewer:
         self.opponents_var = tk.IntVar(value=opponents)
         self.seed_var = tk.IntVar(value=seed)
         self.all_seats_var = tk.BooleanVar(value=all_seats)
+        self.deterministic_var = tk.BooleanVar(value=deterministic)
 
         self._build_controls()
         self._build_scene()
@@ -312,6 +320,8 @@ class MineViewer:
         ttk.Entry(settings, textvariable=self.seed_var, width=7).grid(row=0, column=5, padx=4)
         ttk.Checkbutton(settings, text="AI in every seat",
                         variable=self.all_seats_var).grid(row=0, column=6, padx=(10, 0))
+        ttk.Checkbutton(settings, text="Greedy",
+                        variable=self.deterministic_var).grid(row=1, column=6, padx=(10, 0))
         ttk.Button(settings, text="New game", command=self.reset_game).grid(row=0, column=7, padx=(8, 0))
 
     def _build_scene(self) -> None:
@@ -433,6 +443,7 @@ class MineViewer:
                 policy=self.policy_var.get(),
                 seed=self.seed_var.get(),
                 all_seats=self.all_seats_var.get(),
+                deterministic=self.deterministic_var.get(),
             )
             self.controller.ensure_training_ready(progress_callback=self._on_training_progress)
         except (tk.TclError, ValueError, FileNotFoundError) as error:
@@ -668,6 +679,11 @@ def main() -> None:
         action="store_true",
         help="let the chosen policy (usually neural:<checkpoint>) play every seat",
     )
+    parser.add_argument(
+        "--deterministic",
+        action="store_true",
+        help="play the network's argmax instead of sampling at temperature 0.7",
+    )
     parser.add_argument("--blast-test", action="store_true",
                         help="open directly with enough dynamite to blast")
     parser.add_argument("--tie-break-test", action="store_true",
@@ -675,7 +691,12 @@ def main() -> None:
     args = parser.parse_args()
     root = tk.Tk()
     viewer = MineViewer(
-        root, args.opponents, args.policy, args.seed, all_seats=args.all_seats
+        root,
+        args.opponents,
+        args.policy,
+        args.seed,
+        all_seats=args.all_seats,
+        deterministic=args.deterministic,
     )
     if args.tie_break_test:
         viewer.setup_tie_break_test()
