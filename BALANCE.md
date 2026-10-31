@@ -314,16 +314,19 @@ The habit looks suicidal and is not. The rule that decides it is displacement:
 
 So a known dragon in your own column is a lever: stand on it, and the first
 rival who gambles on that backside pushes you into a free, safe exit and then
-eats the dragon himself. Ask the engine rather than the intuition — 600 games,
-learner in seat 0 against three `rule` bots, temperature 0.7:
+eats the dragon himself. Note also that the blunder audit behind this section's
+predecessor counted every *intermediate* planning decision, not the committed
+one — a plan can be changed up to the last turn, so a figure seen on the card in
+the viewer is not yet a figure that will take it. Ask the engine instead: 600
+games, learner in seat 0 against three `rule` bots, temperature 0.7.
 
 | measurement | value |
 | :-- | --: |
-| hauls where the learner named its own face-up dragon | 254 of 1,800 (0.42/game) |
+| hauls where the learner named its own face-up dragon | 257 of 1,800 (0.43/game) |
 | ...of those, hauls where some rival stood deep enough to push | 251 |
 | times a rival did push it off a dragon card | 248 |
-| in those hauls: the rival took the dragon | 228 of 242 (94%) |
-| in those hauls: the learner escaped (in the cage) | 173 of 242 (71%) |
+| in the 242 hauls holding such a push: a rival took the dragon | 228 (94%) |
+| in those hauls: the learner escaped (in the cage) | 173 (71%) |
 | times the learner ended up eating the dragon itself | 3 of 251 (1.2%) |
 | hauls where **no** rival was deep enough to push | 6 |
 | ...of those, the learner took the card and died | 3 of 6 |
