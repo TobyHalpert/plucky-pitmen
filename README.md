@@ -187,7 +187,7 @@ uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
 | module | purpose |
 | :-- | :-- |
 | `features.py` | fixed-size, seat-invariant state + action features; no hidden information |
-| `agents.py` | `Agent` interface, scripted baselines (incl. `rusher`, `leaver`, and `threat` — a policy that retreats when a rival's blast is pending), `NeuralAgent` |
+| `agents.py` | `Agent` interface, scripted baselines (incl. `rusher`, `leaver`, `threat`, and `reader` — `rule` without the "a quiet rival means a safe card" inference), `NeuralAgent` |
 | `learning.py` | masked-softmax MLP policy + value baseline, REINFORCE, Adam, save/load |
 | `selfplay.py` | full-game driver: every seat controlled, blasts, tie-breaks, per-player returns |
 | `train_selfplay.py` | league self-play trainer with checkpoints and a learning curve |

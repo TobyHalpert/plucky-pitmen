@@ -28,7 +28,10 @@ from agents import NeuralAgent, make_scripted_agent
 from learning import PolicyNet
 from selfplay import play_game, play_series
 
-SCRIPTED_POOL = ("rule", "rule", "rule", "greedy", "random", "cautious")
+# ``reader`` is the backside-honest rule policy: it raids on what the backside
+# says instead of trusting a rival that sits still. Kept at weight in the pool
+# because a learner that only ever meets ``rule`` learns to bait it.
+SCRIPTED_POOL = ("rule", "rule", "reader", "reader", "greedy", "random", "cautious")
 
 
 def _scripted_factory(policy: str, blast: str = "never"):

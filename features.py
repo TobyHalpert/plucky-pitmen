@@ -262,12 +262,16 @@ def action_features(
             values[8 + int(back)] = 1.0
             if front is None:
                 values[15] = 1.0
-                values[16] = float(risk[int(back)])
-                values[17] = 1.0 - float(risk[int(back)])
+                card_risk = float(risk[int(back)])
             else:
                 # 12 = gem, 13 = dragon, 14 = dynamite, 15 = unknown front
                 values[12 + _FRONT_SLOT[int(front)]] = 1.0
-                values[17] = 1.0
+                # A visible front is not an estimate: it is the answer. Reporting
+                # it through the same risk/safety channels as a backside is what
+                # keeps a visible dragon from looking as safe as a visible gem.
+                card_risk = 1.0 if int(front) == DRAGON else 0.0
+            values[16] = card_risk
+            values[17] = 1.0 - card_risk
 
             occupant = _occupant(ctx, row, column)
             if occupant is not None:

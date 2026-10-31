@@ -361,6 +361,53 @@ planning decision as a commitment — and the one genuinely losing variant, the
 dig nobody can punish, is now removed from the action space instead of being
 argued about.
 
+### Backsides have to be read
+
+The trap above pays only against a table that watches the *player* instead of
+the *backside*. The baseline `rule` policy did exactly that: `_find_displacement_raid`
+treated a rival sitting quietly on its own column as proof that the card was
+safe (`risk × 0.1`), which is an inference about behaviour, not a reading of the
+card, and against a sitter on a visible dragon it is wrong 100% of the time.
+Two things were changed.
+
+1. **`reader`, a backside-honest opponent.** Same policy, with
+   `trust_sitter=False`: the only evidence is the backside and the cards already
+   known off it, so a fresh backside (2 dragons in 10) is not raided. It is not
+   a weakened bot — against three `rule` bots it is indistinguishable from
+   `rule` (32.0% wins, margin +0.21 both ways, 600 games; with no sitter to
+   misread, the two policies take the same actions). It is now 2 of the 7
+   scripted opponents in the training pool, which previously was three parts
+   `rule` to one part everything else.
+2. **The encoding stopped calling a visible dragon safe.** In the action
+   features, a card whose front the player can see had the risk channel at 0 and
+   the safety channel at 1 — so a *visible dragon* was encoded exactly like a
+   *visible gem*, with only a one-hot to tell them apart. A visible front is now
+   scored as the answer it is (risk 1, safety 0 for a dragon; 0 and 1 for a gem),
+   and an unknown front keeps the diluted backside risk.
+
+The 4-player net was then resumed for 60 more generations (4,800 games) with
+that pool and that encoding, and evaluated on both fields, 400 games each,
+temperature 0.7, learner in seat 0:
+
+| checkpoint | vs 3 × `rule` | vs 3 × `reader` | card-risk rank | ate its own bait |
+| :-- | :-- | :-- | --: | --: |
+| `selfplay4_blind.npz` (before) | 42.8% · +1.08 margin | 36.2% · +0.37 | 0.382 | 0.17/game vs readers |
+| `selfplay4_reader.npz` (after) | **47.0% · +1.40** | **43.5% · +0.68** | **0.270** | 0.13/game vs readers |
+
+Card-risk rank is the mean percentile of the chosen card's dragon risk among the
+cards on offer, over decisions where the risks differ: 0 is "always the safest
+card", 0.5 is "blind". Reading backsides is not a detail — it is the whole
+difference between a fair trade and a free one. Two caveats keep this honest:
+the retrained net is *not* stronger in general (paired head-to-head against the
+blind checkpoint is +0.02, se 0.05, over 800 seat-games), the gain is
+field-specific; and the bluff survives against the blind field (0.30 pushes per
+game, it eats its own bait 0.003 times per game), so what changed is that the
+table can now punish it, not that the move disappeared.
+
+Shipped: `selfplay4_reader.npz` is promoted to `checkpoints/selfplay4.npz`, the
+predecessor is kept as `checkpoints/selfplay4_blind.npz`, and `reader` is
+available everywhere a scripted policy is (`make_scripted_agent("reader")`).
+
 ## 5. Is blasting too weak? No — but it is not a free win either
 
 The printed blast rule: draw three cards **face down**, choose two, *then* look

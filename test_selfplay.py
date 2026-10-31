@@ -737,6 +737,88 @@ def test_a_face_up_dragon_in_the_own_column_is_recognised():
     assert has_dragon_free_move(ctx)
 
 
+def test_a_visible_dragon_is_not_encoded_as_safe():
+    """Risk channels must state the truth for a front the player can see (BALANCE §4)."""
+    from features import action_features
+
+    ctx = _trap_context(dragon_row=1, own_row=5)
+    dragon = action_features(ctx, 1 * MAX_COLUMNS + 0)
+    gem = action_features(ctx, 0 * MAX_COLUMNS + 0)
+    assert dragon[13] == 1.0 and dragon[16] == 1.0 and dragon[17] == 0.0
+    assert gem[12] == 1.0 and gem[16] == 0.0 and gem[17] == 1.0
+
+
+def test_a_backside_dragon_risk_comes_from_the_backside():
+    """A visible A-dragon leaves one dragon on the A backsides, not two."""
+    from game_env import BACKSIDE_A
+    from features import DRAGONS_PER_BACKSIDE, TOTAL_PER_BACKSIDE, action_features
+
+    ctx = _trap_context(dragon_row=1)
+    rows = list(ctx.public_rows)
+    rows[1] = ((DRAGON, BACKSIDE_A), (None, BACKSIDE_A), None, None)
+    ctx = replaced(ctx, public_rows=tuple(rows))
+
+    unknown = action_features(ctx, 1 * MAX_COLUMNS + 1)
+    assert unknown[15] == 1.0, "the rival's front is unknown"
+    expected = (DRAGONS_PER_BACKSIDE - 1) / (TOTAL_PER_BACKSIDE - 1)
+    assert abs(unknown[16] - expected) < 1e-6
+    assert abs(unknown[16] + unknown[17] - 1.0) < 1e-6
+
+
+def _backside_raid_context():
+    """A rival sits on a backside whose safe cards are all known.
+
+    Eight A-cards are in that rival's pile, and an A backside carries exactly two
+    dragons, so the two unknown A-cards left in the deck are both dragons.
+    """
+    from game_env import BACKSIDE_A, BACKSIDE_B, GEM, PlayerActionContext
+
+    rows = []
+    for row in range(7):
+        rows.append(
+            tuple(
+                (GEM, BACKSIDE_B) if column == 0 else None for column in range(4)
+            )
+        )
+    rows[1] = (None, (None, BACKSIDE_A), None, None)
+    return PlayerActionContext(
+        player_index=0,
+        legal_actions=(1 * MAX_COLUMNS + 1, 3 * MAX_COLUMNS + 0),
+        public_rows=tuple(rows),
+        private_cards=(),
+        own_blast_cards=(),
+        own_score=0,
+        own_position=5,
+        own_column=0,
+        own_cage_index=None,
+        own_blast_pending=False,
+        opponents=(
+            replaced(_rival(1, 1), column=1, collected_backsides=(BACKSIDE_A,) * 8),
+            replaced(_rival(2, 2), column=2),
+            replaced(_rival(3, 3), column=3),
+        ),
+        used_blast_backsides=(),
+        haul=1,
+        round=2,
+        starting_player=0,
+        n_players=4,
+        cards_remaining_in_deck=5,
+        displacement_events=(),
+        tie_breaker_contenders=(),
+    )
+
+
+def test_the_reader_refuses_a_backside_whose_unknowns_are_all_dragons():
+    from rule_policy import _estimate_dragon_risk, deterministic_policy
+
+    ctx = _backside_raid_context()
+    assert _estimate_dragon_risk(ctx, 0) == 1.0, "the backside is exhausted of safe cards"
+    raid = 1 * MAX_COLUMNS + 1
+    safe = 3 * MAX_COLUMNS + 0
+    assert deterministic_policy(ctx) == raid, "the baseline trusts the sitter"
+    assert deterministic_policy(ctx, trust_sitter=False) == safe, "the reader does not"
+
+
 def _rival(player_index: int, position: int):
     from game_env import OpponentPublicView
 

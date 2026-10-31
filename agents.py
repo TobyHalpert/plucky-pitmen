@@ -251,6 +251,34 @@ class RuleAgent(Agent):
         return preferred_blast_choice(cards, ctx)
 
 
+class ReaderAgent(Agent):
+    """The rule baseline, but it raids on the backside instead of on confidence.
+
+    ``RuleAgent`` treats a rival sitting quietly on its own column as proof that
+    the card is safe and raids it. That inference is what makes a visible dragon
+    in one's own column a trap. ``ReaderAgent`` reads only the backside and the
+    cards already known off it, so a fresh backside stays too risky to raid.
+    """
+
+    name = "reader"
+
+    def __init__(self, blast: str = "never") -> None:
+        self.blast = blast
+
+    def act(self, ctx: PlayerActionContext) -> int:
+        from rule_policy import deterministic_policy
+
+        return int(deterministic_policy(ctx, trust_sitter=False))
+
+    def wants_blast(self, ctx: PlayerActionContext) -> bool:
+        return should_blast(self.blast, ctx)
+
+    def blast_choice(
+        self, cards: Sequence[tuple[int, int]], ctx: PlayerActionContext
+    ) -> int:
+        return preferred_blast_choice(cards, ctx)
+
+
 class RusherAgent(Agent):
     """Leaves the mine as fast as the rules allow, whatever the loot.
 
@@ -503,7 +531,16 @@ class NeuralAgent(Agent):
 # ----------------------------------------------------------------------
 # Factory
 # ----------------------------------------------------------------------
-SCRIPTED = ("random", "greedy", "cautious", "rule", "rusher", "leaver", "threat")
+SCRIPTED = (
+    "random",
+    "greedy",
+    "cautious",
+    "rule",
+    "reader",
+    "rusher",
+    "leaver",
+    "threat",
+)
 
 
 def make_scripted_agent(
@@ -517,6 +554,8 @@ def make_scripted_agent(
         return CautiousAgent(seed=seed)
     if policy == "rule":
         return RuleAgent(blast=blast)
+    if policy == "reader":
+        return ReaderAgent(blast=blast)
     if policy == "rusher":
         return RusherAgent()
     if policy == "leaver":
@@ -533,6 +572,7 @@ __all__ = [
     "GreedyAgent",
     "NeuralAgent",
     "RandomAgent",
+    "ReaderAgent",
     "RuleAgent",
     "LeaverAgent",
     "RusherAgent",
