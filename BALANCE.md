@@ -926,6 +926,36 @@ the old rule did not *let* the seat choose. The lorry standoff does not come bac
 with it: **0 wasted hauls in 900** in both arms (BALANCE.md, "Four nets parked on
 their lorries").
 
+#### A front-row gem is not a trap
+
+A column can hold three gems at three depths, and the front row is the one
+position a raid can push the figure out of altogether: displacement sends a
+figure to the nearest pit cage towards the lorry, so from row 0 the cage index is
+0 and no card is left to step back onto, while from row 3 the figure lands in cage
+index 3 with rows 0–2 still open. Seed 7, haul 1, round 1: P1 stands at the front
+with gems at r0, r1 and r3 in its column and takes r0c0 at 55%, while the bottom
+gem is legal at 14%. Is the front one dominated?
+
+Not on the numbers. Priced from that position, 300 paired re-rolls: r0c0
+**+2.55 ± 0.14**, r3c0 **+2.42 ± 0.14**, paired difference **+0.13 ± 0.16**. Haul 1
+alone: 2.57 gems and +1.60 points from the front row against 2.45 and +1.57 from
+the bottom — and in 150 re-rolls of each the figure was never pushed out without
+collecting a card. As a rule, over 1,200 paired four-net games, masking the
+front-row own gem whenever a deeper own gem is reachable costs **−1.5pp of wins
+and −0.12 points (se 0.07)**, and restricting the mask to an empty hand changes
+nothing. It is not shipped.
+
+The reason is that a displacement is a **banked exit**, not a loss: the figure
+leaves with the gems it carries, before the cards turn, which is the same exit the
+cage rule authorises when it is worth taking. What row 0 costs is the round, and
+with the lorry re-routing above even that is recoverable. Row 3 keeps the options
+— and those options are options to stay in a mine that can still kill you.
+
+Where the risk is real, and is modelled: a figure at row 0 with an empty hand can
+be pushed out for a zero-point haul. That is the same "banks nothing" condition
+the cage mask reads, and the reason the escape rule looks at the hand and not just
+at the position.
+
 The viewer also stops being the only one who cannot see the danger: `action_reason`
 now spells out what an escape banks and what it is running from —
 `pit cage, banks 0g (the dragon under me)`, `pit cage, banks 1g (a rival's blast)`,
