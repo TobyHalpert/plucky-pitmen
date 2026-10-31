@@ -29,6 +29,7 @@ from agents import (
     visible_dragon_ahead,
 )
 from game_env import LORRY, MAX_COLUMNS, PASS, PIT_CAGE
+from features import backside_stats
 from rule_policy import deterministic_policy
 from selfplay import play_game
 
@@ -42,6 +43,8 @@ class CommittedBlaster:
         self.rng = np.random.default_rng(seed)
         self.rule = make_scripted_agent("rule", seed=seed)
         self.gem_gaps: list[int] = []
+        self.keeper_risks: list[tuple[float, float, float, int]] = []
+        self.dilution: list[tuple[float, float]] = []
 
     def decide(self, ctx):
         if ctx.own_blast_pending and PASS in ctx.legal_actions:
@@ -57,6 +60,27 @@ class CommittedBlaster:
         return ActionChoice(action, announce)
 
     def blast_choice(self, cards, ctx):
+        if len(cards) == 3:
+            _dragons, _safe, _unknown, risk = backside_stats(ctx)
+            order = sorted(float(risk[front_back[1]]) for front_back in cards)
+            self.keeper_risks.append(
+                (
+                    1 - (1 - order[0]) * (1 - order[1]),
+                    1 - (1 - order[0]) * (1 - order[2]),
+                    1 - (1 - order[1]) * (1 - order[2]),
+                    len({front_back[1] for front_back in cards}),
+                )
+            )
+            diluted, untouched = [], []
+            for _front, back in cards:
+                target = diluted if _dragons[back] > 0 else untouched
+                target.append(float(risk[back]))
+            self.dilution.append(
+                (
+                    statistics.mean(diluted) if diluted else float("nan"),
+                    statistics.mean(untouched) if untouched else float("nan"),
+                )
+            )
         if self.choice == "random":
             return int(self.rng.integers(len(cards)))
         if self.choice in ("avoid_known", "prefer_known"):
@@ -83,6 +107,8 @@ class CommittedBlaster:
 def play_arm(blast, choice, games, players, seed0=0):
     margins, blasts, woke = [], 0, 0
     gaps: list[int] = []
+    risks: list[tuple[float, float, float, int]] = []
+    dilution: list[tuple[float, float]] = []
     per_game_scores = []
     for g in range(games):
         seat0 = CommittedBlaster(blast, choice, seed=seed0 + g)
@@ -95,6 +121,8 @@ def play_arm(blast, choice, games, players, seed0=0):
         per_game_scores.append(result.scores[0])
         blasts += sum(len(h.blasts) for h in result.hauls)
         gaps.extend(seat0.gem_gaps)
+        risks.extend(seat0.keeper_risks)
+        dilution.extend(seat0.dilution)
         woke += sum(1 for h in result.hauls if h.outcome == "blast_dragon")
     mean = statistics.mean(margins)
     se = statistics.pstdev(margins) / len(margins) ** 0.5
@@ -103,6 +131,8 @@ def play_arm(blast, choice, games, players, seed0=0):
         "se": se,
         "blasts": blasts / games,
         "gem_gap": statistics.mean(gaps) if gaps else 0.0,
+        "keeper_risks": risks,
+        "dilution": dilution,
         "behind_share": (
             sum(1 for gap in gaps if gap < 0) / len(gaps) if gaps else 0.0
         ),
@@ -162,6 +192,34 @@ def report_exits(games: int, players: int, seed0: int = 0) -> None:
         print(f"- {name}: {100 * count / max(1, states):.1f}% of them")
 
 
+def report_keeper_ceiling(games: int, players: int, seed0: int = 0) -> None:
+    """The most any backside rule can buy, on the blasts the trap arm takes."""
+    rows = play_arm("trap", "risk", games, players, seed0)["keeper_risks"]
+    if not rows:
+        print("\nno blast keeps measured")
+        return
+    print(f"\nWhat backsides can buy at most, over {len(rows)} blasts:")
+    print("| keep the two ... | chance of waking the dragon |")
+    print("| :-- | --: |")
+    print(f"| safest cards drawn | {100 * statistics.mean(r[0] for r in rows):.1f}% |")
+    print(f"| one safest and one riskiest | {100 * statistics.mean(r[1] for r in rows):.1f}% |")
+    print(f"| riskiest cards drawn | {100 * statistics.mean(r[2] for r in rows):.1f}% |")
+    dilution = [
+        pair for pair in play_arm("trap", "risk", games, players, seed0)["dilution"]
+        if pair[0] == pair[0] and pair[1] == pair[1]
+    ]
+    if dilution:
+        print(
+            f"\nDrawn cards whose backside already shows a dragon: "
+            f"{100 * statistics.mean(d for d, _ in dilution):.1f}% dragon risk; "
+            f"backsides with no dragon seen yet: "
+            f"{100 * statistics.mean(u for _, u in dilution):.1f}%."
+        )
+    mixed = sum(1 for r in rows if r[3] > 1)
+    print(f"\nBlasts whose three draws had more than one backside: "
+          f"{mixed}/{len(rows)} ({100 * mixed / len(rows):.0f}%)")
+
+
 def paired_difference(a, b):
     diffs = [x - y for x, y in zip(a["margins"], b["margins"])]
     mean = statistics.mean(diffs)
@@ -216,6 +274,8 @@ def main() -> None:
         a = play_arm("trap", choice, args.games, args.players, args.seed)
         woke = f"{a['woke']}/{a['fired']} ({100 * a['woke'] / max(1, a['fired']):.0f}%)"
         print(f"| {label} | {a['blasts']:.2f} | {woke} | {a['margin']:+.2f} [{a['se']:.2f}] |")
+
+    report_keeper_ceiling(args.games, args.players, args.seed)
 
     if not args.skip_exits:
         report_exits(args.games, args.players, args.seed)

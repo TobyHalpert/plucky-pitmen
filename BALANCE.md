@@ -306,11 +306,12 @@ each, under the printed rule:
 | at random | 0.67 | 40/100 (40%) | -0.12 (0.21) |
 | never blasts (control) | 0.00 | — | -0.43 (0.21) |
 
-Backside bookkeeping is worth nothing here: each backside carries exactly two
-dragons of ten, the cards you can identify (your own column, the backsides of
-collected cards) barely move the posterior for three cards off the top of the
-pile, and you choose **before** looking. The ~40–50% risk of ending the haul is
-what the blast costs, and it is the same either way.
+That first cut was too blunt, and the sharper measurement below replaces it.
+Backsides *do* carry information — a backside whose dragon is already face up
+has fewer dragons left in it — but the effect is a few points rather than an
+order of magnitude, and the right keeper rule is the opposite of "avoid that
+backside". What is *not* in doubt: the ~40–50% risk of ending the haul is what
+the blast costs.
 
 ### Testing "blast while a dragon is waiting for me"
 
@@ -342,22 +343,28 @@ the haul is paid in full. Blasting *because you are behind* is a wash — an
 earlier 200-game sample put it at +0.36 and it collapsed to -0.02 at 600 games,
 which is why these arms are paired and re-run before anything is written down.
 
-The second half of the idea, that keeping cards of a *different* backside cuts
-the risk, does not just fail to help — it is 48% against 45% for deliberately
-keeping the *same* backside, i.e. noise around the same coin (trap trigger, same
-600-game setup, 376-385 blasts per row):
+The keeper choice is a real effect, and it runs the opposite way round to
+"avoid the backside whose dragon you can see". A backside with one dragon
+already face up is *diluted*: on these very states the engine's count puts a
+drawn card of that backside at **27.3%** dragon risk against **39.1%** for a
+backside where no dragon has been seen yet. So in an A/B/B draw with a known
+A-dragon, the A is the card to keep — which is exactly what `preferred_blast_choice`
+already does, and why the "informed" row below is the best of the four. Keeping
+two of a *different* backside than the known dragon, as first proposed, is the
+worst of them (trap trigger, 600 games, 376-385 blasts per row):
 
 | keepers | blasts / game | woke the dragon | margin vs 3 × rule |
 | :-- | --: | --: | :-- |
-| backside risk (default) | 0.64 | 164/385 (43%) | -0.08 (0.12) |
-| **different backside than the known dragon** | 0.63 | 180/376 (**48%**) | -0.18 (0.12) |
+| backside risk (default: keep the diluted one) | 0.64 | **164/385 (43%)** | -0.08 (0.12) |
+| *different* backside than the known dragon | 0.63 | 180/376 (48%) | -0.18 (0.12) |
 | same backside as the known dragon | 0.63 | 171/380 (45%) | -0.09 (0.12) |
 | at random | 0.63 | 174/380 (46%) | -0.16 (0.12) |
 
-A dragon you can see is one card you know about; the other 29 in the pile do not
-care which backside you name. Each backside carries two dragons in ten, so the
-backside of a card tells you nothing about whether it *is* a dragon — the only
-information a blast-keeper can use, and it is not there to use.
+How much is there to win at most? Over the 429 blasts this arm takes, keeping
+the two cards the count likes best fails **50.4%** of the time; keeping the two
+it likes least, **60.3%**. So a perfect backside rule is worth about ten points
+of failure probability — worth capturing (and captured), but not what decides
+whether to blast.
 
 And the premise underneath the whole idea — *if a dragon is waiting in my column
 I am losing anyway* — is not true at these tables. In **34,137** decisions where
