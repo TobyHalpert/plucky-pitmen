@@ -164,7 +164,12 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
                     )
                 else:
                     policy = SCRIPTED_POOL[int(rng.integers(len(SCRIPTED_POOL)))]
-                    blast = "rich" if rng.random() < 0.15 else "never"
+                    blast = (
+                        args.league_blast_mode
+                        if args.league_blast_mode != "never"
+                        and rng.random() < args.league_blast_prob
+                        else "never"
+                    )
                     agents.append(
                         make_scripted_agent(
                             policy, seed=game_seed + seat, blast=blast
@@ -311,6 +316,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="choose blast cards face down, as the printed rules say",
     )
     parser.add_argument("--pass-rule", choices=("n-1", "n"), default="n-1")
+    parser.add_argument(
+        "--league-blast-mode",
+        choices=("never", "rich", "always"),
+        default="rich",
+        help="how often a scripted league opponent blasts, when it does blast",
+    )
+    parser.add_argument(
+        "--league-blast-prob",
+        type=float,
+        default=0.15,
+        help="share of scripted league opponents that blast at all",
+    )
     parser.add_argument(
         "--escape-shaping",
         type=float,

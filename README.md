@@ -142,11 +142,12 @@ uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
 | module | purpose |
 | :-- | :-- |
 | `features.py` | fixed-size, seat-invariant state + action features; no hidden information |
-| `agents.py` | `Agent` interface, scripted baselines (incl. the `rusher` and `leaver` controls), `NeuralAgent` |
+| `agents.py` | `Agent` interface, scripted baselines (incl. `rusher`, `leaver`, and `threat` — a policy that retreats when a rival's blast is pending), `NeuralAgent` |
 | `learning.py` | masked-softmax MLP policy + value baseline, REINFORCE, Adam, save/load |
 | `selfplay.py` | full-game driver: every seat controlled, blasts, tie-breaks, per-player returns |
 | `train_selfplay.py` | league self-play trainer with checkpoints and a learning curve |
 | `evaluate_balance.py` | benchmarks, pairwise dominance, luck analysis, markdown report |
+| `analyze_blasts.py` | is a blast worth it, does the learner threaten, does it react, and is the threat real |
 
 ### Train
 
@@ -172,6 +173,8 @@ Useful flags:
 | `--no-solo-escape-bonus` | play the rules variant without the free bonus for a sole escapee with zero gems |
 | `--blind-blast-choice` | choose blast cards face down, as the printed rules say |
 | `--pass-rule {n-1,n}` | play the "n passes" variant instead of the printed "n-1" |
+| `--league-blast-mode {never,rich,always}` | how the scripted league blasts (default `rich`) |
+| `--league-blast-prob` | fraction of that league that uses the blast mode in the chosen proportion (default 0.15; set `1.0 --league-blast-mode always` for a league that blasts on sight) |
 
 Each game gives the learner one rotating seat while the other seats are filled
 from a league of the hand-tuned rule policy, simple bots and older snapshots of
@@ -224,10 +227,16 @@ The full write-up, with confidence intervals and reproduction commands, is in
   seat the moment it meets players who collect loot.
 * **Collect and leave is the strongest policy in the pool.** `leaver` takes one
   gem and walks out: it is the best row on the leaderboard (**+1.19 [+0.68,
-  +1.75]**), it beats the rusher **+8.72 points with a 100% top score**, and it
-  beats the trained agent **+2.99** (whose own score drops to -1.92). A lone
-  rusher against two leavers tops the scoreboard only 41.7% of the time with a
-  *negative* margin.
+  +1.75]** at three players, **+1.30 [+0.84, +1.78]** at four), it beats the
+  rusher **+8.37 points with a 100% top score**, and it beats the trained agent
+  **+3.29** (whose own score drops to -1.85). A lone rusher against two leavers
+  tops the scoreboard only 35.0% of the time with a *negative* margin.
+* **Four players is more mine, not more coin-flip.** The same benchmark with
+  four seats makes the mine more lethal (63% of hauls end on a dragon, against
+  55% at three) while the luck band stays put (mirror spread 4.80 points, 13%
+  tied top scores). The leaver is still the best seat, the rusher still a
+  parasite, and the learner **trained on four players is genuinely better**
+  (+0.92 [+0.56, +1.27]) than the same learner trained on three (-0.20).
 * **A leaderboard against fixed bots cannot tell these apart.** Against the
   scripted bots the ranking is selfplay > rusher > leaver; against a leaver it
   inverts. The report therefore always includes `rusher` and `leaver`, plus a
@@ -235,8 +244,19 @@ The full write-up, with confidence intervals and reproduction commands, is in
   is visible instead of looking skilful.
 * **Blasting is not too weak, but the engine was cheating.** The blast rule says
   to draw three cards face down and choose two before looking. `MineEnv` showed
-  the chooser all three fronts, which makes blasting dominant (+1.65 points).
-  With the printed rule (`--blind-blast-choice`) it is neutral (+0.62).
+  the chooser all three fronts, which makes blasting dominant (+1.43 points at
+  three players, +1.16 at four). With the printed rule (`--blind-blast-choice`)
+  it is neutral (+0.38 at both counts), a blast haul is worth the same as a
+  normal one (+0.40 vs +0.39 points), and against a field that banks loot it is
+  a losing move (-0.52).
+* **The blast threat is real; the AI ignores it.** A pending blast costs the
+  blaster's rivals **-0.41 points [-0.76, -0.03]** and 6 points of win rate, and
+  the cheapest counter — walk to the pit cage while the blast is pending —
+  recovers **+0.29 [+0.02, +0.55]** of it. The trained network moves its action
+  distribution by **0.6%** when a blast is pending and never learns to blast
+  itself (0.02–0.03 per game), even after 60 generations against a league in
+  which 60% of opponents blast on sight. That is a training-budget finding, not
+  a rules finding.
 * **`n-1` passes is better than `n`.** Shortens games (67 vs 80 decisions per
   game) and punishes the early leaver harder under `n` than `n-1` once the lorry
   rule is in place (-3.15 vs -0.39 points for the rusher). This also uncovered a
@@ -247,12 +267,17 @@ The full write-up, with confidence intervals and reproduction commands, is in
   "no collection for 8 rounds" valve with "everyone still inside leaves when the
   haul ends" does two things: it stops paying the escapee while voiding the
   campers' loot, and it hands the campers' gems into the scoring. The trained
-  agent's margin against the scripted bots fell from +4.14 to -0.15 (parity),
+  agent's margin against the scripted bots fell from +4.14 to -0.20 (parity),
   the rusher's from +2.69 to +0.26, and the games that used to be farmed now
   end with the campers banking what they collected.
 * **Luck dominates a single game.** Identical agents playing each other spread
-  **4.6 points** within a game, far more than any between-policy margin here. Use
-  the confidence intervals.
+  **4.6–4.8 points** within a game, far more than any between-policy margin here.
+  Use the confidence intervals.
+* **Two engine bugs were silently scoring whole games as zero.** An unwinnable
+  tie-breaker (no dragons left to draw) and a player killed by a dragon while a
+  blast was pending both left the game unable to finish, so it was recorded
+  `aborted` with every score at 0. Both are fixed, and every report now prints
+  how many games the engine abandoned.
 
 ### Testing the rules variants
 
@@ -270,6 +295,13 @@ python evaluate_balance.py --agents rule,rule:rich,rule:always --games 200 --ski
 
 # n-1 vs n passes on otherwise identical runs
 python evaluate_balance.py --agents rule,greedy,random,rusher --games 200 --pass-rule n --out reports/pass_n.md
+
+# four players: leaderboard, and the learner trained on four seats
+python evaluate_balance.py --players 4 --agents rule,greedy,random,cautious,rusher,leaver,checkpoints/selfplay4.npz --games 300 --out reports/balance4_default_rules.md
+python train_selfplay.py --players 4 --generations 60 --games-per-generation 64 --out checkpoints/selfplay4.npz
+
+# blast value, threat learning, threat reaction, and whether the threat is real
+python analyze_blasts.py --checkpoint checkpoints/selfplay4.npz --players 4 --games 240 --out reports/blasts4_noblastleague.md
 ```
 
 Two rule gaps surfaced while building this, plus one bug. The gaps are
@@ -297,8 +329,9 @@ The open questions map directly onto the tooling:
 | :-- | :-- |
 | skill vs luck | mirror matches (always in the report) |
 | dominant strategy? | pairwise head-to-head with the `rusher` **and** `leaver` controls |
-| is blasting too weak? | `rule:rich` / `rule:always`, with and without `--blind-blast-choice` |
-| n-1 vs n passes | `--pass-rule n` on otherwise identical runs |
+| is blasting too weak? | `rule:rich` / `rule:always`, with and without `--blind-blast-choice`; `analyze_blasts.py` for the 4-player money question |
+| does the AI learn to threaten, and does it react? | `analyze_blasts.py` (paired counterfactual on the network, plus the scripted `threat` reaction in a four-condition experiment) |
+| n-1 vs n passes | `--pass-rule n` on otherwise identical runs, at 3 and 4 players |
 | victory-point tweaks | `--solo-escape-bonus` / `--no-solo-escape-bonus`, or edit `_score_haul` |
 
 ### Development

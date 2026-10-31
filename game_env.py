@@ -206,6 +206,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.haul = 1
         self.tie_breaker_contenders = []
         self.tie_breaker_turn = 0
+        self.tie_breaker_reshuffled = False
         self.used_blast_backsides = []
         self.displacement_events = []
         self.planning_player = self.starting_player
@@ -363,7 +364,10 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.last_reward = reward
 
         # --- DELAY FINISHING THE ROUND IF A BLAST IS PENDING ---
-        if any(p.blast_pending for p in self.players):
+        if any(
+            p.blast_pending and not p.escaped and not p.dead
+            for p in self.players
+        ):
             info["blast_active"] = True
             info["player"] = player_index
             return self._observation(), reward, False, False, info
@@ -425,6 +429,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.haul_history.append(
             {
                 "haul": self.haul,
+                "rounds": int(self.round),
                 "outcome": info.get("outcome", "unknown"),
                 "dragon_player": info.get("dragon_player"),
                 "scores": [player.score for player in self.players],
@@ -603,6 +608,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.planned_players = [False] * self.n_players
         self.tie_breaker_contenders = []
         self.tie_breaker_turn = 0
+        self.tie_breaker_reshuffled = False
         self.used_blast_backsides = []
         self.displacement_events = []
 
@@ -884,9 +890,12 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             player.collected_cards.append((card, backside))
 
             if card == DRAGON:
-                for remaining_player in self.players:
+                for remaining_index, remaining_player in enumerate(self.players):
                     if not remaining_player.escaped:
                         remaining_player.dead = True
+                        # A dead player cannot finish a blast. Leaving the flag
+                        # set would block the round from ever resolving.
+                        self._cancel_blast(remaining_index)
                 info["outcome"] = "dragon"
                 info["dragon_player"] = player_index
                 info["home_column_dragon"] = (player.column == player_index)
@@ -1035,6 +1044,17 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
     # Tie-breaker
     # ------------------------------------------------------------------
 
+    def _dragons_left_to_draw(self) -> int:
+        """Dragons still reachable by a tie-break draw (deck + mine)."""
+        in_deck = sum(1 for card, _back in self.cards_remaining if card == DRAGON)
+        in_mine = sum(
+            1
+            for row in self.rows
+            for card in row
+            if card is not None and card[0] == DRAGON
+        )
+        return in_deck + in_mine
+
     def _begin_tie_breaker(self) -> bool:
         highest_score = max(player.score for player in self.players)
         contenders = [
@@ -1045,6 +1065,13 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             self.tie_breaker_contenders = []
             return False
         self.tie_breaker_contenders = contenders
+        # A tie-break only ends when contenders draw dragons. After three hauls
+        # every dragon may already be collected, which would make the tie-break
+        # unwinnable and the game unplayable, so reshuffle a fresh deck.
+        if self._dragons_left_to_draw() < len(contenders) - 1:
+            self.cards_remaining = self._new_deck()
+            self.rng.shuffle(self.cards_remaining)
+            self.tie_breaker_reshuffled = True
         first_contender = next(
             (self.starting_player + offset) % self.n_players
             for offset in range(self.n_players)

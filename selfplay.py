@@ -47,6 +47,10 @@ class HaulSummary:
     dragon_player: int | None = None
     gems: list[int] = field(default_factory=list)
     cards: list[int] = field(default_factory=list)
+    # Players whose blast actually fired during this haul.
+    blasts: list[int] = field(default_factory=list)
+    # Execution rounds played in this haul (more rounds = deeper mine = riskier).
+    rounds: int = 0
 
 
 @dataclass
@@ -60,6 +64,8 @@ class GameResult:
     blast_choices: int = 0
     agent_names: list[str] = field(default_factory=list)
     aborted: bool = False
+    abort_reason: str = ""
+    abort_state: dict[str, Any] = field(default_factory=dict)
 
     @property
     def dragons(self) -> int:
@@ -185,9 +191,11 @@ def play_game(
     last_decision: dict[int, Any] = {}
     blasts_announced = 0
     blast_choices = 0
+    haul_blasts: dict[int, set[int]] = {}
     winner: int | None = None
     steps = 0
     aborted = False
+    abort_reason = ""
     round_key = (env.haul, env.round)
     planning_steps = 0
 
@@ -223,6 +231,8 @@ def play_game(
             choice = int(agents[player_index].blast_choice(cards, ctx))
             choice = min(max(choice, 0), len(cards) - 1)
             blast_choices += 1
+            # Only a blast that actually draws cards counts as fired.
+            haul_blasts.setdefault(env.haul, set()).add(player_index)
             env.resolve_blast(player_index, choice)
             if learning:
                 for index, reward in enumerate(
@@ -237,6 +247,7 @@ def play_game(
             planning_steps = 0
         active = env.active_player_indices()
         if not active:
+            abort_reason = "no_active_players"
             break
         if env.planning_player not in active:
             env.planning_player = active[0]
@@ -244,6 +255,7 @@ def play_game(
 
         ctx = env.player_action_context(player_index)
         if not ctx.legal_actions:
+            abort_reason = "no_legal_actions"
             break
 
         planning_steps += 1
@@ -290,6 +302,27 @@ def play_game(
             break
 
     aborted = not env.game_finished
+    if aborted and not abort_reason:
+        abort_reason = "step_limit"
+    abort_state: dict[str, Any] = {}
+    if aborted:
+        abort_state = {
+            "haul": env.haul,
+            "round": env.round,
+            "game_finished": env.game_finished,
+            "tie_break": list(env.tie_breaker_contenders),
+            "players": [
+                {
+                    "position": player.position,
+                    "escaped": player.escaped,
+                    "dead": player.dead,
+                    "blast_pending": player.blast_pending,
+                    "blast_cards": len(player.blast_cards),
+                    "cards": len(player.collected_cards),
+                }
+                for player in env.players
+            ],
+        }
 
     if env.game_finished and winner is None:
         best = max(player.score for player in env.players)
@@ -320,6 +353,8 @@ def play_game(
                 dragon_player=record.get("dragon_player"),
                 gems=list(record.get("gems", [])),
                 cards=list(record.get("cards", [])),
+                blasts=sorted(haul_blasts.get(int(record["haul"]), ())),
+                rounds=int(record.get("rounds", 0)),
             )
             for record in env.haul_history
         ],
@@ -327,6 +362,8 @@ def play_game(
         blast_choices=blast_choices,
         agent_names=[getattr(agent, "name", type(agent).__name__) for agent in agents],
         aborted=aborted,
+        abort_reason=abort_reason,
+        abort_state=abort_state,
     )
 
 

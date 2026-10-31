@@ -120,6 +120,9 @@ class PolicyStats:
     rival_loot_hauls: int = 0
     points_when_rivals_loot: float = 0.0
     points_when_rivals_stay: float = 0.0
+    # Games the engine could not finish. They score every seat zero, so they
+    # must be zero or the numbers below are not trustworthy.
+    aborted: int = 0
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -141,10 +144,12 @@ class PolicyStats:
             ),
             "points_when_rivals_loot": self.points_when_rivals_loot,
             "points_when_rivals_stay": self.points_when_rivals_stay,
+            "aborted": self.aborted,
         }
 
 
 def summarise(series: Sequence[SeriesGame], name: str) -> PolicyStats:
+    aborted = sum(int(game.result.aborted) for game in series)
     wins = 0
     tops = 0
     scores: list[float] = []
@@ -218,6 +223,7 @@ def summarise(series: Sequence[SeriesGame], name: str) -> PolicyStats:
         points_when_rivals_stay=(
             float(np.mean(points_stay)) if points_stay else 0.0
         ),
+        aborted=aborted,
     )
 
 
@@ -391,6 +397,8 @@ def build_markdown(
         f"- games per benchmark: **{games}**\n"
         f"- benchmark opponents: **{benchmark_name}**\n"
         f"- base seed: `{seed}`\n"
+        f"- games the engine abandoned (all seats scored zero): "
+        f"**{sum(stat.aborted for stat in leaderboard)}**\n"
     )
 
     lines.append("\n## Leaderboard\n")

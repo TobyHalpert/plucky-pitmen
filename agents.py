@@ -335,6 +335,45 @@ def card_front(ctx: PlayerActionContext, action: int) -> int | None:
     return None if entry is None else entry[0]
 
 
+class ThreatAgent(Agent):
+    """The rule policy, but it leaves the mine when an opponent announces a blast.
+
+    A pending blast is a public commitment: the blaster keeps two of three drawn
+    cards, and if either is a dragon the haul ends and everyone still inside
+    dies. This is the cheapest *reaction* to that threat — retreat to the
+    nearest pit cage, which leaves the mine safely at the end of the round.
+    It exists so the threat can be measured: if reacting pays, a trained agent
+    that ignores the threat is leaving value on the table.
+    """
+
+    name = "threat"
+
+    def __init__(self, blast: str = "never") -> None:
+        self.blast = blast
+
+    @staticmethod
+    def threatened(ctx: PlayerActionContext) -> bool:
+        return any(
+            opponent.blast_pending and not opponent.escaped and not opponent.dead
+            for opponent in ctx.opponents
+        )
+
+    def act(self, ctx: PlayerActionContext) -> int:
+        if self.threatened(ctx) and PIT_CAGE in ctx.legal_actions:
+            return PIT_CAGE
+        from rule_policy import deterministic_policy
+
+        return int(deterministic_policy(ctx))
+
+    def wants_blast(self, ctx: PlayerActionContext) -> bool:
+        return should_blast(self.blast, ctx)
+
+    def blast_choice(
+        self, cards: Sequence[tuple[int, int]], ctx: PlayerActionContext
+    ) -> int:
+        return preferred_blast_choice(cards, ctx)
+
+
 def should_blast(mode: str, ctx: PlayerActionContext) -> bool:
     """Shared blast heuristic for scripted agents.
 
@@ -430,7 +469,7 @@ class NeuralAgent(Agent):
 # ----------------------------------------------------------------------
 # Factory
 # ----------------------------------------------------------------------
-SCRIPTED = ("random", "greedy", "cautious", "rule", "rusher", "leaver")
+SCRIPTED = ("random", "greedy", "cautious", "rule", "rusher", "leaver", "threat")
 
 
 def make_scripted_agent(
@@ -448,6 +487,8 @@ def make_scripted_agent(
         return RusherAgent()
     if policy == "leaver":
         return LeaverAgent()
+    if policy == "threat":
+        return ThreatAgent(blast=blast)
     raise ValueError(f"unknown scripted agent: {policy}")
 
 
@@ -461,6 +502,7 @@ __all__ = [
     "RuleAgent",
     "LeaverAgent",
     "RusherAgent",
+    "ThreatAgent",
     "SCRIPTED",
     "make_scripted_agent",
     "card_front",

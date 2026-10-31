@@ -475,3 +475,105 @@ def test_rusher_stops_winning_once_opponents_leave_with_loot():
         wins += result.winner == 0
     # Below the 1-in-3 chance rate of a three-player game.
     assert wins / 60 < 0.40
+
+
+def test_dying_with_a_blast_pending_still_finishes_the_haul():
+    """A dead player must not hold the round open.
+
+    Regression: a dragon that killed a player who had a blast pending left the
+    flag set. Nothing could act, the round never finished, and the game was
+    recorded as ``aborted`` with every score at zero. Four always-blasting
+    ``rule`` players hit this in ~60% of games.
+    """
+    from agents import make_scripted_agent
+
+    for seed in range(40):
+        result = play_game(
+            [make_scripted_agent("rule", seed=seed * 4 + i, blast="always") for i in range(4)],
+            seed=seed,
+        )
+        assert not result.aborted, (seed, result.abort_reason)
+        assert result.abort_reason == ""
+        assert len(result.hauls) == 3
+
+
+def test_pending_blast_from_a_dead_or_escaped_player_does_not_block_the_haul():
+    """The round-finish guard ignores players who can no longer blast."""
+    env = MineEnv(opponents=3)
+    env.reset(seed=11)
+    env.players[1].dead = True
+    env.players[1].blast_pending = True
+    env.players[1].blast_cards = [(0, 0), (0, 1), (0, 2)]
+    env.players[2].escaped = True
+    env.players[2].blast_pending = True
+    env.players[2].blast_cards = [(0, 0), (0, 1), (0, 2)]
+    assert not any(
+        p.blast_pending and not p.escaped and not p.dead for p in env.players
+    )
+
+
+def test_tie_breaker_reshuffles_when_no_dragons_are_left_to_draw():
+    """A tie-break with nothing to draw must not loop forever.
+
+    Regression: after three hauls every dragon can already be in a hand. The
+    tie-break then never eliminates a contender, the game never finishes, and it
+    was recorded as ``aborted`` with all scores at zero.
+    """
+    from game_env import GEM
+
+    env = MineEnv(opponents=2)
+    env.reset(seed=9)
+    for player in env.players:
+        player.score = 4
+    safe = (GEM, 0)
+    env.cards_remaining = [safe] * 10
+    env.rows = [[safe] * 5 for _ in range(2)]
+
+    assert env._dragons_left_to_draw() == 0
+    assert env._begin_tie_breaker() is True
+    assert env.tie_breaker_reshuffled is True
+    # Enough dragons for every contender but the last to be eliminated.
+    assert env._dragons_left_to_draw() >= len(env.tie_breaker_contenders) - 1
+
+
+def test_tie_breaker_does_not_reshuffle_when_the_deck_is_fine():
+    env = MineEnv(opponents=2)
+    env.reset(seed=9)
+    for player in env.players:
+        player.score = 4
+    env.tie_breaker_reshuffled = False
+    assert env._dragons_left_to_draw() >= 1
+    assert env._begin_tie_breaker() is True
+    assert env.tie_breaker_reshuffled is False
+
+
+def test_threat_agent_retreats_when_a_blast_is_pending():
+    """The reaction policy that the trained agent never learns (BALANCE.md §6)."""
+    import dataclasses
+
+    from agents import make_scripted_agent
+
+    threat = make_scripted_agent("threat")
+    calm = make_scripted_agent("rule")
+    env = MineEnv(opponents=2)
+    env.reset(seed=3)
+
+    checked = False
+    for _ in range(60):
+        ctx = env.player_action_context(0)
+        if PIT_CAGE in ctx.legal_actions and ctx.opponents and not env.game_finished:
+            pending = tuple(
+                dataclasses.replace(opponent, blast_pending=True)
+                for opponent in ctx.opponents
+            )
+            threatened = dataclasses.replace(ctx, opponents=pending)
+            assert threat.threatened(ctx) is False
+            assert threat.threatened(threatened) is True
+            # Calm: identical to the plain rule player.
+            assert threat.act(ctx) == calm.act(ctx)
+            # Threatened: go to the cage, whatever the rule policy wanted.
+            assert int(threat.act(threatened)) == PIT_CAGE
+            checked = True
+            break
+        env.step_one_player(PASS, force_action=True)
+    assert checked, "no decision with a reachable pit cage was found"
