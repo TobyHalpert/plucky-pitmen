@@ -377,6 +377,51 @@ def doomed_dragon_digs(ctx: PlayerActionContext) -> set[int]:
     }
 
 
+def walks_past_a_free_card(ctx: PlayerActionContext) -> set[int]:
+    """Face-down digs that pay more than a card they climb past.
+
+    Every planning phase starts with all figures at the front of the mine
+    (``_set_players_to_starting_positions``), and a player takes exactly one card
+    per round, so ending the round on a deeper card buys nothing by itself: the
+    only thing that differs between two face-down cards is the price on their
+    backside. A card is therefore dominated when a *deeper* free card is at
+    least as safe, because the figure walks past that card on the way and could
+    have taken it instead. Choosing the dearer or the equally priced one of the
+    two cannot be explained to a spectator and is not a trade — the backside is
+    the price. Measured on the promoted checkpoint, 4 players, seed-paired:
+    +1.5pp win rate against `rule` (800 games), +2.0pp against `reader` (800),
+    -1.2pp against `leaver` (400), so the rule costs nothing measurable and the
+    point of it is legibility, not strength.
+
+    A card whose front the player can see is not dominated: "a known gem at row
+    1" against "an unknown card at row 2" is a real trade, and so is raiding a
+    rival who stands on their own card.
+    """
+    _known_dragons, _known_safe, _unknown, risk = backside_stats(ctx)
+    free: list[tuple[int, float, int]] = []
+    for action in ctx.legal_actions:
+        action = int(action)
+        if not 0 <= action < PIT_CAGE:
+            continue
+        row, column = divmod(action, MAX_COLUMNS)
+        if row >= len(ctx.public_rows) or column >= len(ctx.public_rows[row]):
+            continue
+        entry = ctx.public_rows[row][column]
+        if entry is None or entry[0] is not None:
+            continue
+        if _occupant(ctx, row, column) is not None:
+            continue
+        free.append((row, float(risk[int(entry[1])]), action))
+    hidden: set[int] = set()
+    for row, price, action in free:
+        if any(
+            other_row > row and other_price <= price + 1e-9
+            for other_row, other_price, _other in free
+        ):
+            hidden.add(action)
+    return hidden
+
+
 def cage_has_no_visible_reason(ctx: PlayerActionContext) -> bool:
     """True when fleeing the mine cannot answer any visible threat.
 
@@ -479,6 +524,13 @@ def action_mask(ctx: PlayerActionContext) -> np.ndarray:
         for primitive in doomed:
             mask[primitive] = False
             mask[join_action(primitive, True)] = False
+    passed = {
+        action for action in walks_past_a_free_card(ctx) if mask[int(action)]
+    }
+    if passed and any(int(a) not in passed and mask[int(a)] for a in ctx.legal_actions):
+        for primitive in passed:
+            mask[primitive] = False
+            mask[join_action(primitive, True)] = False
     if mask[int(PIT_CAGE)] and cage_has_no_visible_reason(ctx):
         trial = mask.copy()
         trial[int(PIT_CAGE)] = False
@@ -507,4 +559,5 @@ __all__ = [
     "split_action",
     "state_action_matrix",
     "state_features",
+    "walks_past_a_free_card",
 ]

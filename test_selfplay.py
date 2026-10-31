@@ -168,8 +168,8 @@ def test_feature_encoder_is_seat_invariant():
 
 
 def test_action_mask_never_widens_the_rules():
-    """The mask may narrow the rules for two documented policies, never widen them."""
-    from features import digs_face_up_dragon
+    """The mask may narrow the rules for documented policies, never widen them."""
+    from features import digs_face_up_dragon, walks_past_a_free_card
 
     env = MineEnv(opponents=2)
     env.reset(seed=2)
@@ -181,9 +181,11 @@ def test_action_mask_never_widens_the_rules():
             if mask[action]:
                 assert env._legal(action, player_index)
             elif env._legal(action, player_index):
-                assert action == int(PIT_CAGE) or digs_face_up_dragon(ctx, action), (
-                    "only the two documented policy rules may hide a legal move"
-                )
+                assert (
+                    action == int(PIT_CAGE)
+                    or digs_face_up_dragon(ctx, action)
+                    or action in walks_past_a_free_card(ctx)
+                ), "only the documented policy rules may hide a legal move"
         dynamite = sum(
             1 for front, _ in ctx.private_cards if front == DYNAMITE
         )
@@ -252,7 +254,12 @@ def test_policy_net_can_learn_to_prefer_one_action():
     play_game(agents, seed=8, decisions=decisions)
     assert decisions
 
-    target = int(decisions[0].ctx.legal_actions[0])
+    allowed = [
+        int(action)
+        for action in decisions[0].ctx.legal_actions
+        if action_mask(decisions[0].ctx)[int(action)]
+    ]
+    target = allowed[0]
     fixed = [
         Decision(
             player=0,
@@ -865,6 +872,84 @@ def _cage_context(**overrides):
     )
     base.update(overrides)
     return replaced(_trap_context(dragon_row=1), **base)
+
+
+def _board_context(cards, *, legal=None, own_position=5):
+    """A 4-seat context on a board whose cells are given as ``{(row, col): cell}``."""
+    from game_env import PlayerActionContext
+
+    rows = []
+    for row in range(4):
+        cells = []
+        for column in range(4):
+            cells.append(cards.get((row, column)))
+        rows.append(tuple(cells))
+    legal_actions = legal if legal is not None else tuple(
+        row * MAX_COLUMNS + column for row, column in sorted(cards)
+    )
+    return PlayerActionContext(
+        player_index=0,
+        legal_actions=tuple(legal_actions),
+        public_rows=tuple(rows),
+        private_cards=(),
+        own_blast_cards=(),
+        own_score=0,
+        own_position=own_position,
+        own_column=0,
+        own_cage_index=None,
+        own_blast_pending=False,
+        opponents=(),
+        used_blast_backsides=(),
+        haul=0,
+        round=0,
+        starting_player=0,
+        n_players=4,
+        cards_remaining_in_deck=10,
+        displacement_events=(),
+        tie_breaker_contenders=(),
+    )
+
+
+def test_the_mask_hides_a_face_down_dig_that_pays_more_than_a_deeper_card():
+    """The backside is the price; walking past a card as safe as this one is free."""
+    from features import backside_stats, walks_past_a_free_card
+
+    same_price = _board_context(
+        {(1, 1): (None, 0), (2, 2): (None, 0)}, own_position=4
+    )
+    assert walks_past_a_free_card(same_price) == {1 * MAX_COLUMNS + 1}
+    mask = action_mask(same_price)
+    assert not mask[1 * MAX_COLUMNS + 1]
+    assert mask[2 * MAX_COLUMNS + 2]
+
+    # Backside 1 is cheap here: both of its dragons are already face up in the
+    # player's own column, so a card off it cannot be a dragon at all.
+    cheap_deeper = _board_context(
+        {(0, 0): (DRAGON, 1), (1, 0): (DRAGON, 1), (1, 1): (None, 0), (2, 2): (None, 1)},
+        own_position=4,
+    )
+    assert backside_stats(cheap_deeper)[3][1] < backside_stats(cheap_deeper)[3][0]
+    assert walks_past_a_free_card(cheap_deeper) == {1 * MAX_COLUMNS + 1}
+
+    # The other way round is reading, not waste: take the cheaper card even
+    # though a dearer one sits deeper.
+    cheap_now = _board_context(
+        {(0, 0): (DRAGON, 1), (1, 0): (DRAGON, 1), (1, 2): (None, 1), (2, 1): (None, 0)},
+        own_position=4,
+    )
+    assert walks_past_a_free_card(cheap_now) == set()
+
+    # A visible front is not a lottery ticket: "known gem now" against
+    # "unknown card deeper" is a real trade and stays in the action space.
+    known = _board_context({(1, 1): (GEM, 0), (2, 2): (None, 0)}, own_position=4)
+    assert walks_past_a_free_card(known) == set()
+
+    # An occupied card is somebody's figure, not a free card to pick up.
+    occupied = replaced(
+        _board_context({(1, 1): (None, 0), (2, 1): (None, 0)}, own_position=4),
+        opponents=(_rival(1, 2),),
+    )
+    assert walks_past_a_free_card(occupied) == set()
 
 
 def test_the_mask_forbids_fleeing_with_nothing_visible():

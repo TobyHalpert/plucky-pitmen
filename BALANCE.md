@@ -542,6 +542,41 @@ the deciding seat knows, and whether the standing plan is locked or tentative
 the same trap as the "92 blunders" audit in the previous section: everyone,
 including me, reads an intermediate planning step as a commitment.
 
+The same question came back sharper — *"that is irrational"* — so the moves were
+classified instead of explained, 250 four-player games with a network in every
+seat, looking at the card the figure walks past on the next row up:
+
+| why the shallower card was taken | share |
+| :-- | --: |
+| a card in the mover's own column, front visible to that seat alone | 91.5% |
+| the shallower card is **dearer** than the card it passed | 4.1% |
+| the two cost the same | 3.3% |
+| the shallower card is **cheaper**: it is reading the backsides | 1.1% |
+
+The first row is invisible knowledge — the viewer draws backsides, so a seat
+digging its own column looks like it is guessing. The last row is the behaviour
+that was asked for. The middle two rows are the ones with no defence: if two
+face-down cards cost the same, walking past one to take the other buys nothing,
+because **the backside is the price** and the position you end the round on does
+not matter (every figure is put back at the front of the mine each round, and a
+player takes one card per round either way).
+
+So that is now a rule (`features.walks_past_a_free_card`, applied in
+`action_mask`): a face-down card is dominated when a deeper free card is at
+least as safe, and the dominated ones are removed unless that would empty the
+action space. Measured on the promoted checkpoint, 4 players, seed-paired
+800-game cells:
+
+| field | rule off | rule on | delta |
+| :-- | :-- | :-- | :-- |
+| 3 × `rule` | 54.9% · +3.12 | **56.4% · +3.18** | +1.5pp |
+| 3 × `reader` | 44.1% · +2.34 | **46.1% · +2.51** | +2.0pp |
+| 3 × `leaver` | 22.5% · +1.22 | 21.2% · +1.21 | -1.2pp (noise) |
+
+With the rule in, the same audit finds the "dearer" and "same price" rows down to
+1.0% and 0.2%, i.e. what a spectator still sees is almost entirely a card whose
+front only that player is allowed to look at.
+
 ## 5. Is blasting too weak? No — but it is not a free win either
 
 The printed blast rule: draw three cards **face down**, choose two, *then* look
