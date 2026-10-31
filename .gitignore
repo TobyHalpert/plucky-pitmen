@@ -219,7 +219,9 @@ __marimo__/
 
 # Plucky Pitmen generated artifacts
 # Every run writes its own checkpoints; the one the viewer and the README name
-# is kept in the repository (40 KB) so a fresh clone has a network to play.
+# is kept in the repository (40 KB) so a fresh clone has a network to play, and
+# its predecessor is kept next to it because SEED7.md analyses that game.
 checkpoints/*
 !checkpoints/selfplay4.npz
+!checkpoints/selfplay4_prehazard.npz
 reports/

@@ -8,16 +8,30 @@ python analyze_game.py --seed 7 --forks            # what each flagged move was 
 python analyze_game.py --seed 7 --greedy           # the same seed with the sampler off
 ```
 
+> **Which game this is.** The checkpoint that plays `--seed 7` today is not the
+> one that played the game read below: while this analysis was being made, two of
+> the escapes in it were taken at a table where nothing could blow, which turned
+> out to be a hole in the *encoder* (the hazard a cage insures against had no
+> input) rather than in the search. Fixing that — a `round_dragon_hazard` state
+> feature and an escape rule that waits for it — retrained the checkpoint
+> (BALANCE.md, "A cage is insurance, and the table's hazard was not an input").
+> The shipped checkpoint now plays seed 7 differently: **82 decisions, 13 escapes
+> and not one of them at a table where nothing could blow, scored 5–4–0–1.** The
+> game read here is the one the previous checkpoint played, kept as
+> `checkpoints/selfplay4_prehazard.npz`, and every command above reproduces it
+> with `--policy neural:selfplay4_prehazard`. What the file is for does not
+> change: it prices individual moves and separates policy from sample noise.
+
 The numbers below come from those three commands. Everything the tool prints is
 read from the position *before* the step, so a decision that ends a haul is not
 filed under the next one, and the replay of the recorded decisions reproduces
 the game exactly (`recorded decisions replayed: [3, 4, 0, -1]`).
 
-The game is the current one. Until this change the viewer handed the seats that
-open a haul ahead of P1 (P2 opening haul 2, for instance) to the environment's
-built-in `simple` bot instead of their networks, so a seed opened in the viewer
-before now plays slightly differently; `GameController.reset(..., advance=False)`
-is what lets the tool own the opening move as well.
+Until the viewer fix in the same change the viewer handed the seats that open a
+haul ahead of P1 (P2 opening haul 2, for instance) to the environment's built-in
+`simple` bot instead of their networks, so a seed opened in the viewer before
+then played slightly differently; `GameController.reset(..., advance=False)` is
+what lets the tool own the opening move as well.
 
 ## The game
 
@@ -179,7 +193,10 @@ of not being the move the network wanted.
 ### 5. The exits look right
 
 Seven cage moves, **six with a gem in hand** — the `cage_banks_nothing` rule
-shipped in `8cd3265` is doing its job in this game. The seventh is the best read
+shipped in `8cd3265` allows all seven, and two of them (`h1r1 P1` and `h3r1 P1`,
+one gem in hand, table hazard 0.00: nobody standing on a card that could be a
+dragon) are the ones the rule as it stands today forbids — that is the change
+described at the top of this file. The seventh escape is the best read
 in the game: P2 leaves in haul 2 with no gems, which the rule allows because a
 rival is standing on a card in P2's own column and P2 can see that the card is a
 **dragon**. P2 left; P3 turned it; the sole escapee's +3 went to P2. That is

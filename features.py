@@ -42,7 +42,13 @@ BACKSIDES = (BACKSIDE_A, BACKSIDE_B, BACKSIDE_C)
 _FRONT_SLOT = {GEM: 0, DRAGON: 1, DYNAMITE: 2}
 MAX_TRACKED_OPPONENTS = 4
 N_OPPONENT_FEATURES = 12
-N_STATE_FEATURES = 25 + 9 + MAX_TRACKED_OPPONENTS * N_OPPONENT_FEATURES
+# Layout of the state block, so callers never have to count by hand:
+#   0..24  the decision point, 25..33 backside bookkeeping, then one block per
+#   tracked opponent, then the table's dragon hazard for this round.
+BACKSIDE_BLOCK = 25
+OPPONENT_BASE = BACKSIDE_BLOCK + 9
+HAZARD_FEATURE = OPPONENT_BASE + MAX_TRACKED_OPPONENTS * N_OPPONENT_FEATURES
+N_STATE_FEATURES = HAZARD_FEATURE + 1
 N_ACTION_FEATURES = 21
 N_INPUT_FEATURES = N_STATE_FEATURES + N_ACTION_FEATURES
 
@@ -107,6 +113,84 @@ def backside_stats(
     with np.errstate(divide="ignore", invalid="ignore"):
         risk = np.where(unknown > 0, remaining_dragons / np.maximum(unknown, 1), 0.0)
     return known_dragons, known_safe, unknown, risk.astype(np.float32)
+
+
+def cell_dragon_risk(
+    ctx: PlayerActionContext, row: int, column: int | None
+) -> float | None:
+    """How likely one cell is a dragon, from this seat's knowledge.
+
+    ``None`` means there is no card there at all (an empty slot, or a figure
+    standing in front of the mine).  A face-up card is certain either way; a
+    face-down card is priced by the backside left in the deck.
+    """
+    if column is None or not 0 <= int(row) < len(ctx.public_rows):
+        return None
+    if not 0 <= int(column) < len(ctx.public_rows[int(row)]):
+        return None
+    entry = ctx.public_rows[int(row)][int(column)]
+    if entry is None:
+        return None
+    front, back = entry
+    if front is not None:
+        return 1.0 if int(front) == DRAGON else 0.0
+    _known_dragons, _known_safe, _unknown, risk = backside_stats(ctx)
+    return float(risk[int(back)])
+
+
+def _figure_cell(
+    ctx: PlayerActionContext, player_index: int
+) -> tuple[int, int | None]:
+    """``(row, column)`` of a figure, in the coordinates of the mine."""
+    if player_index == ctx.player_index:
+        column = ctx.own_column if ctx.own_column is not None else ctx.player_index
+        return int(ctx.own_position), int(column)
+    for opponent in ctx.opponents:
+        if opponent.player_index == player_index:
+            column = (
+                opponent.column
+                if opponent.column is not None
+                else opponent.player_index
+            )
+            return int(opponent.position), int(column)
+    return PIT_CAGE, None
+
+
+def figure_dragon_risk(ctx: PlayerActionContext, player_index: int) -> float:
+    """The dragon risk of the card one figure is standing on, as this seat sees it."""
+    row, column = _figure_cell(ctx, player_index)
+    if not 0 <= row < PIT_CAGE:
+        return 0.0
+    risk = cell_dragon_risk(ctx, row, column)
+    return 0.0 if risk is None else risk
+
+
+def round_dragon_hazard(ctx: PlayerActionContext) -> float:
+    """How likely a dragon is woken this round, from this seat's knowledge.
+
+    This is the only thing a pit cage insures against: a dragon ends the haul and
+    everybody still in the mine scores for a dead figure, loot and haul bonus
+    gone with it.  A figure in front of the mine, in a cage or on a lorry is
+    standing on nothing and carries no risk; every figure still in the columns
+    carries the risk of the card under it, and a charged blast can wake a dragon
+    whatever the board says, so it reads as certain danger.
+
+    It is deliberately a *lower* bound on the truth: a rival is free to walk
+    onto a card mid-round, so a table where nobody currently stands on a
+    dragon-capable card is more dangerous than zero.  What it does capture is
+    the case the seat can read: is anybody -- including itself -- about to turn
+    a card that can be a dragon?
+    """
+    if ctx.own_blast_pending or any(o.blast_pending for o in ctx.opponents):
+        return 1.0
+    seats = [ctx.player_index]
+    seats.extend(
+        o.player_index for o in ctx.opponents if not (o.escaped or o.dead)
+    )
+    survive = 1.0
+    for index in seats:
+        survive *= 1.0 - figure_dragon_risk(ctx, index)
+    return float(1.0 - survive)
 
 
 def _own_depth(ctx: PlayerActionContext) -> int:
@@ -227,6 +311,12 @@ def state_features(ctx: PlayerActionContext) -> np.ndarray:
         # How keen this opponent is on displacing is the one read a seat has on
         # whether standing on a home-column dragon will be taken as bait.
         values[base + 11] = min(opponent.displacements, 3) / 3.0
+
+    # The board only enters the input through the candidate-action block, so a
+    # seat cannot see the card under a rival's figure.  That leaves the escape
+    # decision blind to the one quantity that makes it right or wrong: whether
+    # the mine is about to blow this round (BALANCE.md, "A cage is insurance").
+    values[HAZARD_FEATURE] = round_dragon_hazard(ctx)
 
     return values
 
@@ -458,28 +548,46 @@ def lorry_skips_a_card_worth_taking(ctx: PlayerActionContext) -> bool:
     return not own_card_is_known_dragon(ctx)
 
 
+CAGE_ANSWERS_A_HAZARD = 0.15
+
+
 def cage_banks_nothing(ctx: PlayerActionContext) -> bool:
     """True when leaving through a pit cage would collect nothing and answer nothing.
 
     The cage is the only exit that takes the figure out of the haul *before* the
     cards are turned and banks the gems in hand, so it is worth a round for
-    exactly two reasons: there is loot to bank, or there is something to escape
-    from. Loot means a gem in hand (dynamite is not scored and survives an escape
-    either way). Something to escape from means a blast is charged — the blast
-    ends the haul if it turns a dragon — or a dragon the seat can see is about to
-    be turned: the card under its own figure, or a card in its column with a
-    rival standing on it.
+    exactly two reasons: there is loot to bank, **and** there is something to
+    escape from. Loot means a gem in hand (dynamite is not scored and survives an
+    escape either way). Something to escape from means a blast is charged -- the
+    blast ends the haul if it turns a dragon -- or a dragon the seat can see is
+    about to be turned: the card under its own figure, a card in its column with
+    a rival standing on it, or, at the weakest, a table where somebody is
+    standing on a card that can be a dragon (``round_dragon_hazard``).
+
+    The second reason is the one this mask used to miss, and the reason the
+    clause has to exist at all: leaving is a **decision that repeats**. The seat
+    can leave later in the same planning phase, once the rivals have moved and
+    the danger they create is on the board, and it can leave later in the haul
+    with more gems in hand. Banking before anybody has committed to a card buys
+    nothing that waiting one move does not buy. Do it anyway and the round is
+    spent for nothing: seed 7 of the viewer, the same seat in two hauls, one gem
+    in hand, nobody standing on a dragon-capable card. See BALANCE.md, "A cage is
+    insurance".
+
+    The hazard is a *lower* bound on the danger (a rival is free to walk onto a
+    card mid-round), so the threshold sits at the smallest non-trivial reading
+    rather than at some share of it.
 
     Everything else is a wasted round, and this is the clause that gets that
     wrong in the obvious implementation: **"somebody is already in a cage"** is
     not a threat. Ordinary raiding displaces rivals into cages all the time, and
     once one seat reads another's cage as a reason to flee, the whole table
-    follows: seed 7 of the viewer, four nets, haul 1 ended with every figure in a
+    follows: an earlier checkpoint, seed 7, haul 1, ended with every figure in a
     cage and not one gem collected, and the same thing happened in 40% of sampled
     four-net games. See BALANCE.md, "An escape has to bank something".
     """
     if any(front == GEM for front, _ in ctx.private_cards):
-        return False
+        return round_dragon_hazard(ctx) <= CAGE_ANSWERS_A_HAZARD
     if ctx.own_blast_pending or any(o.blast_pending for o in ctx.opponents):
         return False
     if own_card_is_known_dragon(ctx):
@@ -602,23 +710,28 @@ def action_mask(ctx: PlayerActionContext) -> np.ndarray:
 
 
 __all__ = [
+    "CAGE_ANSWERS_A_HAZARD",
     "N_ACTIONS",
     "N_ACTION_FEATURES",
     "N_BASE_ACTIONS",
     "N_INPUT_FEATURES",
     "N_STATE_FEATURES",
+    "OPPONENT_BASE",
     "action_features",
     "action_mask",
     "action_reason",
     "backside_stats",
     "cage_banks_nothing",
+    "cell_dragon_risk",
     "digs_face_up_dragon",
     "doomed_dragon_digs",
+    "figure_dragon_risk",
     "has_dragon_free_move",
     "join_action",
     "lorry_skips_a_card_worth_taking",
     "own_card_is_known_dragon",
     "rival_can_push",
+    "round_dragon_hazard",
     "split_action",
     "state_action_matrix",
     "state_features",

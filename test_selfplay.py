@@ -991,6 +991,55 @@ def test_the_mask_forbids_parking_on_a_lorry_to_skip_an_ordinary_card():
     assert action_mask(only_lorry)[int(LORRY)]
 
 
+def test_the_state_says_how_likely_the_mine_is_to_blow_this_round():
+    """A cage is insurance; the risk it insures against has to be an input.
+
+    The board only enters the policy input through the candidate-action block, so
+    a seat cannot see the card under a rival's figure.  Without this feature the
+    escape decision is blind to the one quantity that makes it right or wrong.
+    """
+    from features import (
+        HAZARD_FEATURE,
+        round_dragon_hazard,
+        state_features,
+    )
+
+    # Nobody is in the columns: no card can be turned, so no dragon this round.
+    empty = _board_context({}, legal=(0,), own_position=5)
+    assert round_dragon_hazard(empty) == 0.0
+    assert state_features(empty)[HAZARD_FEATURE] == 0.0
+
+    # A rival on a face-down card carries that backside's remaining dragons:
+    # two dragons behind ten cards is 0.2.
+    rival = replaced(
+        _board_context({(2, 1): (None, 0)}, legal=(0,)), opponents=(_rival(1, 2),)
+    )
+    assert round_dragon_hazard(rival) == pytest.approx(0.2)
+    assert state_features(rival)[HAZARD_FEATURE] == pytest.approx(0.2)
+
+    # Same card, but both of that backside's dragons are already face up in the
+    # seat's own column: the card cannot be one, and the hazard is zero again.
+    spent = replaced(
+        _board_context(
+            {(0, 0): (DRAGON, 0), (1, 0): (DRAGON, 0), (2, 1): (None, 0)},
+            legal=(2 * MAX_COLUMNS + 1,),
+        ),
+        opponents=(_rival(1, 2),),
+    )
+    assert round_dragon_hazard(spent) == 0.0
+
+    # The seat's own card counts too, whether it is home or a raid.
+    standing = _board_context({(2, 0): (None, 0)}, legal=(0,), own_position=2)
+    assert round_dragon_hazard(standing) == pytest.approx(0.2)
+
+    # A charged blast can wake a dragon whatever the board says.
+    charged = replaced(
+        _board_context({(2, 1): (None, 0)}, legal=(0,)),
+        opponents=(replaced(_rival(1, 2), blast_pending=True),),
+    )
+    assert round_dragon_hazard(charged) == 1.0
+
+
 def test_the_mask_forbids_an_escape_that_banks_nothing():
     """Nothing collected, nothing to escape from: the cage buys nothing."""
     from features import action_mask, cage_banks_nothing
@@ -1002,12 +1051,44 @@ def test_the_mask_forbids_an_escape_that_banks_nothing():
     assert mask[0 * MAX_COLUMNS + 0]
 
 
-def test_the_mask_keeps_the_cage_when_there_is_loot_to_bank():
-    from features import action_mask, cage_banks_nothing
+def test_the_mask_forbids_banking_a_gem_while_nothing_can_blow():
+    """Leaving is a decision that repeats: the roll has not been made yet.
+
+    One gem in hand is not a reason to spend the round.  The seat can leave
+    later in the same planning phase, once a rival has moved onto a card and the
+    danger is on the board, and it can leave later in the haul with more gems --
+    and the gem count is what the haul bonus compares.
+    """
+    from features import action_mask, cage_banks_nothing, round_dragon_hazard
 
     carrying = replaced(_cage_context(), private_cards=((GEM, 0),))
-    assert not cage_banks_nothing(carrying)
-    assert action_mask(carrying)[int(PIT_CAGE)]
+    assert round_dragon_hazard(carrying) == 0.0
+    assert cage_banks_nothing(carrying)
+    assert not action_mask(carrying)[int(PIT_CAGE)]
+
+
+def test_the_mask_keeps_the_cage_when_something_can_blow():
+    """Loot plus a table where somebody can turn a dragon: that is an exit."""
+    from features import (
+        CAGE_ANSWERS_A_HAZARD,
+        action_mask,
+        cage_banks_nothing,
+        round_dragon_hazard,
+    )
+
+    threatened = replaced(
+        _board_context(
+            {(2, 1): (None, 0)},
+            legal=(0, int(PIT_CAGE)),
+            own_position=5,
+        ),
+        private_cards=((GEM, 0),),
+        opponents=(_rival(1, 2),),
+    )
+    # The gem in hand nudges the backside's risk (one known-safe card fewer).
+    assert round_dragon_hazard(threatened) > CAGE_ANSWERS_A_HAZARD
+    assert not cage_banks_nothing(threatened)
+    assert action_mask(threatened)[int(PIT_CAGE)]
 
 
 def test_the_mask_keeps_the_cage_when_a_blast_is_charged():

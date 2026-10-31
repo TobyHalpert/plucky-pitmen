@@ -173,10 +173,16 @@ python analyze_game.py --seed 7 --forks      # what each flagged move was worth,
 python analyze_game.py --seed 7 --greedy     # the same seed, argmax only
 ```
 
-One such game — seed 7, four neural seats, scored 3–4–0–−1 — is read in full in
-**[SEED7.md](SEED7.md)**: which moves were the policy's own first choice, which
-were 10% samples, where the network is genuinely blind (displacement), and what
-the argmax game of the same seed looks like instead.
+One such game — seed 7, four neural seats, scored **5–4–0–1** with the shipped
+checkpoint — is read in full in **[SEED7.md](SEED7.md)**: which moves were the
+policy's own first choice, which were 10% samples, where the network is genuinely
+blind (displacement), and what the argmax game of the same seed looks like
+instead. The file analyses the 3–4–0–−1 game that the previous checkpoint played,
+which is kept as `checkpoints/selfplay4_prehazard.npz` and still runs:
+
+```powershell
+python analyze_game.py --seed 7 --policy neural:selfplay4_prehazard
+```
 
 ```powershell
 # the 4-player self-play learner against three rule bots
@@ -254,7 +260,7 @@ uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
 | `probe_escape.py` | escape rules side by side: how often a haul is thrown away by a herd of empty-handed cage moves, and what each variant is worth |
 | `analyze_game.py` | one game move by move: what each seat knew, the probability the network put on the move, and what the move was worth from there |
 | `probe_displacement.py` | is a push worth anything — to the seat that pushes, or to the one that parks where it can be pushed? paired arms over a 1,000-game league |
-| `migrate_checkpoint.py` | widen a checkpoint saved before a feature was added (zero columns, behaviour unchanged) |
+| `migrate_checkpoint.py` | widen a checkpoint saved before a feature was added (zero columns or a zero row, behaviour unchanged; `--append-hazard` for the table-hazard feature) |
 | `profile_agent.py` | what a checkpoint actually does: digs, front-row digs, passes, retreats, blasts, escapes — side by side for two checkpoints |
 | `gui_controller.py` | Tk-free viewer logic: moves, blasts, tie-breaks, the AI POLICY snapshot |
 | `mine_gui.py` | the Tk viewer itself |
@@ -328,7 +334,9 @@ not a dominant strategy.
 The encoder reads only `PlayerActionContext`, which already hides opponent card
 fronts, opponent collections and private blast draws. The state block covers the
 public situation (scores, seats, deck size, visible own-column fronts, inferred
-dragon risk per backside, per-opponent public facts including how often each
+dragon risk per backside, the table's dragon hazard for this round — one minus
+the chance that nobody turns a dragon-capable card before the haul ends — and
+per-opponent public facts including how often each
 opponent has displaced somebody this game — displacement is made in the open,
 and it is the one read on whether a table takes bait). Each of the 53 primitive
 actions gets an action block (row/column, backside, visible front, risk, whether
@@ -386,6 +394,17 @@ The full write-up, with confidence intervals and reproduction commands, is in
   masked, with the measurement behind each in BALANCE.md §4. Before them, 40% of
   hauls in four-net games ended with three or more seats in cages and no gems
   collected; now 2.9% do.
+* **An escape is insurance, so the policy is told what can blow.** A cage buys
+  protection against a dragon and nothing else, which makes it right when the
+  table is dangerous and wrong when nobody is standing on a dragon-capable card —
+  the seat can leave later, in the same phase or later in the haul, with more gems
+  to its name. The encoder had no way to say "three of us are standing on cards
+  that can be a dragon": the board reached the policy only through the
+  candidate-action block, never the card under a rival. `round_dragon_hazard` is
+  now a state feature (input 103 → 104) and the escape rule reads it. Seed 7's
+  danger-free escapes were worth **−0.35** points and its dangerous ones **+0.53**;
+  the retrained checkpoint is **+0.45 points** better than the one before it and
+  takes no escape at a table where nothing can blow (BALANCE.md §4.5).
 * **The blast threat is real; the AI ignores it.** A pending blast costs the
   blaster's rivals **-0.43 points [-0.81, -0.06]** and 11 points of win rate, and
   the cheapest counter — walk to the pit cage while the blast is pending —

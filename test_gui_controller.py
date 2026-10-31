@@ -14,7 +14,7 @@ import json
 import numpy as np
 import pytest
 
-from features import N_INPUT_FEATURES
+from features import N_INPUT_FEATURES, join_action
 from gui_controller import (
     GameController,
     agent_policies,
@@ -324,7 +324,13 @@ def test_deterministic_mode_takes_the_argmax(tiny_net):
             expected = controller.policy_snapshot(limit=1)[0][0]
             result = controller.step_one_player_auto()
             if controller.last_choice_seat == 0 and controller.last_choice is not None:
-                assert int(controller.last_choice.action) == expected
+                # The snapshot names the action the way the policy does (a blast
+                # is a separate index); the choice carries the blast as a flag.
+                chosen = join_action(
+                    int(controller.last_choice.action),
+                    bool(controller.last_choice.announce_blast),
+                )
+                assert chosen == expected
                 checked += 1
         else:
             result = controller.step_one_player_auto()

@@ -393,11 +393,16 @@ def test_a_seat_can_count_how_often_a_rival_displaces_somebody():
     assert [o for o in victim.opponents if o.player_index == 2][0].displacements == 0
     assert env.player_view(1)["opponents"][0]["displacements"] == 1
 
-    from features import N_OPPONENT_FEATURES, N_STATE_FEATURES, state_features
+    from features import (
+        N_OPPONENT_FEATURES,
+        N_STATE_FEATURES,
+        OPPONENT_BASE,
+        state_features,
+    )
 
     row = state_features(victim)
     assert row.shape == (N_STATE_FEATURES,)
-    slot_base = N_STATE_FEATURES - 4 * N_OPPONENT_FEATURES
+    slot_base = OPPONENT_BASE
     ordered = sorted(victim.opponents, key=lambda o: (o.player_index - 1) % 3)
     pusher_slot = [i for i, o in enumerate(ordered) if o.player_index == 0][0]
     quiet_slot = 1 - pusher_slot

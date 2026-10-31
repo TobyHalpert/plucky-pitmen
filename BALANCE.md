@@ -743,6 +743,82 @@ put on the move, and what one move was worth from that position — in
 **[SEED7.md](SEED7.md)**, which is also where the sample noise behind the viewer
 (47% of moves are not the network's first choice) is quantified.
 
+### A cage is insurance, and the table's hazard was not an input
+
+The rule above leaves one case open, and the viewer found it too: **seed 7, a
+seat holding a gem walks to the cage while nobody is standing on a card that can
+be a dragon.** Nothing on the table can blow, so the escape buys nothing. The
+seat can leave later in the same planning phase, once a rival has moved onto a
+card, and it can leave later in the haul with more gems in hand — and the haul
+bonus compares gem *counts*, so a gem banked in round 0 is the weakest claim a
+seat can make.
+
+What a cage actually buys is insurance against the one thing that destroys loot:
+a dragon, which ends the haul and scores every figure still in the mine as dead.
+Priced that way the escape is right when the table is dangerous (three rivals
+each on a 20% card is ~50% that the mine blows this round) and wrong when it is
+not. Seed 7, every escape priced with 60 re-rolled continuations of the same
+position (`analyze_game.py --forks`):
+
+| table hazard at the escape | what the cage was worth | escapes |
+| :-- | :-- | --: |
+| 0.00 – 0.22, nothing on the board can blow | −0.35 points on average (+0.27, −0.12, −0.18, −1.38) | 4 |
+| 0.44 – 1.00, a card or a blast that can blow | +0.53 points on average (+0.88, +0.00, +0.72) | 3 |
+
+The network could not make that distinction, and not because it is hard: **the
+hazard was not in its input.** The state vector carries the seat's own column
+and a twelve-number block per rival — position, column, score, card count, blast
+flag, displacement count — but never the card *under* a rival, and the board
+enters the policy only through the candidate-action block. There was no way to
+represent "three of us are standing on cards that can be a dragon". Two seats,
+one at a table hazard of 0.00 and one at 0.56, looked identical to the encoding
+on the escape decision. Among 471 chosen escapes in 60 sampled four-net games,
+**11% were taken at a table where nothing could blow** — and 49 of those 54 were
+a single gem banked.
+
+The fix is in three parts, and each part is measured:
+
+1. **`features.round_dragon_hazard(ctx)`** — one minus the product, over the
+   surviving figures, of the risk of the card each is standing on, and a flat
+   1.0 whenever a blast is charged. It is appended to the state vector
+   (`HAZARD_FEATURE` = index 82, `N_INPUT_FEATURES` 103 → 104) and
+   `migrate_checkpoint.py --append-hazard` widens checkpoints that predate it.
+   It is deliberately a *lower* bound: a rival is free to walk onto a card
+   mid-round, so a table where nobody stands on a dragon-capable card is more
+   dangerous than zero.
+2. **`cage_banks_nothing` reads it.** One gem in hand is no longer enough on its
+   own: the cage needs a hazard above 0.15, or a charged blast, or a dragon the
+   seat can see about to be turned. The reason this is right and not just
+   tidy — leaving is a decision that *repeats*, so waiting one move gives the
+   same information and keeps the gems. Worth, 1,000 paired four-net games with
+   the tested seat's escapes masked against the same seat unmasked:
+
+   | checkpoint | paired difference | escapes blocked |
+   | :-- | :-- | --: |
+   | the previous one (`selfplay4_prehazard.npz`) | +0.02 points (se 0.04), −0.6pp wins | 0.71/game |
+   | retrained with the hazard as an input | **+0.10 points (se 0.04), +1.5pp wins** | 0.79/game |
+
+   The rule is worth something only once the net can *use* the round it buys,
+   which is the whole point of the feature: it waits, watches, and leaves in the
+   same phase once the danger is on the board.
+3. **The checkpoint is retrained** from the shipped one — the new input starts at
+   zero weight, so this is learning what to do with it, not starting over:
+   30 generations with the feature in place, then 20 more under the rule above.
+   Against the previous checkpoint, 800 paired four-net games with the tested net
+   in seat 0: **+4.5pp wins (se 2.0), +0.45 points (se 0.10)**. Against scripted
+   fields: 3 × `rule` **51.8% · +3.27** (was 48.2% · +2.60), 3 × `reader`
+   **41.0% · +2.22** (was 33.6% · +1.41).
+
+Seed 7 now plays a different game — 82 decisions, 13 escapes and not one of them
+at a table where nothing could blow, scores 5–4–0–1. The checkpoint that played
+the game analysed in [SEED7.md](SEED7.md) is kept as
+`checkpoints/selfplay4_prehazard.npz`, so that analysis stays reproducible.
+
+The residual is honest: about five escapes a game are still empty-handed. The
+rule allows them whenever a card or a blast can blow, and an empty escape still
+takes +3 when it is the only exit — that is the game's own bargain, insurance
+paid for with a round, not a defect in the model.
+
 ## 5. Is blasting too weak? No — but it is not a free win either
 
 The printed blast rule: draw three cards **face down**, choose two, *then* look
@@ -1172,6 +1248,15 @@ honest way to read a table like this.
    whole games as all-zero (§7). Any head-to-head table produced before it is
    suspect, and the reports now print the abandoned-game count for exactly this
    reason.
+9. **Price the escape with the table's hazard, and put the hazard in the
+   input.** A cage is insurance against a dragon and nothing else, so the only
+   reason to spend the round is a round that can blow: one gem in hand is not a
+   reason (the seat can leave later, in the same phase or later in the haul).
+   Measured, the danger-free escapes are worth −0.35 points and the dangerous
+   ones +0.53 (§4.5). The deeper defect was informational — the encoding could
+   not represent "somebody is standing on a card that can be a dragon" — and
+   fixing that is worth +0.45 points against the previous checkpoint, a fifth of
+   which is the escape rule itself.
 
 ## 11. Reproduce
 
@@ -1218,6 +1303,17 @@ python probe_backside_reading.py checkpoints/selfplay4.npz --games 600
 # widen a checkpoint saved before the per-opponent displacement feature
 python migrate_checkpoint.py checkpoints/selfplay4_reader.npz
 
+# widen one saved before the table-hazard feature (the append case)
+python migrate_checkpoint.py old.npz new.npz --append-hazard
+
+# what one move was worth, from the identical position, and why it looked right
+python analyze_game.py --seed 7
+python analyze_game.py --seed 7 --forks --fork-samples 60 --forks-max 40
+
+# the hazard fix: 30 generations with the feature, then 20 under the escape rule
+python train_selfplay.py --players 4 --resume checkpoints/selfplay4_prehazard.npz --generations 30 --games-per-generation 80 --seed 6161 --name selfplay4_hazard --out checkpoints/selfplay4_hazard.npz
+python train_selfplay.py --players 4 --resume checkpoints/selfplay4_hazard.npz --generations 20 --games-per-generation 80 --seed 6162 --out checkpoints/selfplay4.npz
+
 # is blasting worth it, does the AI threaten, does it react, is the threat real
 python analyze_blasts.py --checkpoint checkpoints/selfplay4.npz --players 4 --games 240 --out reports/blasts4_noblastleague.md
 python analyze_blasts.py --checkpoint checkpoints/selfplay4_blast.npz --players 4 --games 240 --out reports/blasts4_blastleague.md
@@ -1233,13 +1329,13 @@ python train_selfplay.py --players 4 --generations 60 --games-per-generation 64 
 ```
 
 **Which network is in the repository.** `checkpoints/selfplay4.npz` is tracked
-(everything else under `checkpoints/` is ignored) so the viewer has something to
-play out of the box. It is a fresh 60-generation run of the command above on the
-current code — 48.1% wins against three `rule` bots (800 games), 38.0% against
-three `reader` bots and 19.5% against three `leaver` bots (400 each, seat 0, 0.7
-temperature) — and therefore *not* the tuned snapshot the tables above were
-measured on, which is not distributed. Retrain or fine-tune it
-(`--resume checkpoints/selfplay4.npz --generations 30`) for the stronger one.
+(everything else under `checkpoints/` is ignored, apart from its predecessor) so
+the viewer has something to play out of the box. It is the checkpoint from the escape work in §4.5 — the
+table-hazard input, the escape rule, and 50 resumed generations on top of the
+previous run — and it wins 51.8% against three `rule` bots and 41.0% against
+three `reader` bots (500 games each, seat 0, 0.7 temperature). The checkpoint it
+replaced, which is the one every table before §4.5 was measured on, is kept as
+`checkpoints/selfplay4_prehazard.npz` and tracked for the same reason.
 
 **A checkpoint is only valid for the feature layout it was trained on.** The row
 features are normalised by `MAX_ROWS` and the observation carries one cell per
