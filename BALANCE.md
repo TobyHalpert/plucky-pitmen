@@ -26,7 +26,9 @@ The supportable conclusions are:
   move on the old peeking engine (**+1.00** at four players) and a coin-flip
   under the printed face-down rule (**+0.38**, interval touching zero); against
   a field that banks loot it *loses* points (**-0.52**). That is a coherent
-  design, and it is why the self-play learners choose to barely blast (§5).
+  design; and the fact that the self-play learners barely blast is mostly an
+  artefact of the learner, not a verdict on the rule — it seldom holds two
+  dynamite and cancels most of the blasts it announces (§5).
 * **The threat of a blast is real — worth about 0.4 points to a non-blaster —
   and the AI never learns to react to it.** A one-line "walk to the pit cage
   when someone's blast is pending" policy recovers the whole loss; the trained
@@ -273,11 +275,68 @@ Read the three tables together:
 
 So "blasting is too weak" is **not supported**: under the printed rule it is
 roughly neutral in a passive field and negative in a competent one, which is a
-normal risk-reward trade rather than a dead rule. And the near-zero blast rate
-of the trained agents (0.03–0.05 per game) is *not* an artefact: given a choice
-between a coin-flip and collecting loot next to players who keep dying, the
-learner picks the coin-free option. §6 is about what it leaves on the table by
-doing so.
+normal risk-reward trade rather than a dead rule. §6 is about what the learner
+leaves on the table by ignoring the *threat* of a blast.
+
+### Why the learner blasts 0.03 times a game
+
+The obvious reading — "blasting is a coin-flip, so the learner declines it" —
+turns out to be only a small part of the story. `probe_blast_value.py` forks
+the game at every position where a seat holds two dynamite and can move to a
+card, announces the blast in one copy and not in the other, and plays both out:
+
+| engine | blast worth from that position | when behind on gems | level or ahead |
+| :-- | :-- | :-- | :-- |
+| peek (blaster sees the three fronts) | **+0.49** (se 0.27), 140 forks | +0.28 (se 0.29) | +1.33 (se 0.63) |
+| printed rule (choose blind) | +0.06 (se 0.28), 140 forks | -0.06 (se 0.30) | +0.59 (se 0.74) |
+
+Note first what a blast *is*: the rules give you the card under your figure as
+usual and then **additionally** three off the draw pile, of which you keep two.
+It is not a substitute for a dangerous dig — you still take the card you are
+standing on — so blasting cannot be used to dodge a dragon you know about, and
+two dynamite are pure cost only until the moment you cash them in.
+
+Does choosing the two keepers by backside knowledge reduce the risk? Not
+measurably. Same trigger, same movement, only the choice differs, 150 games
+each, under the printed rule:
+
+| who chooses | blasts / game | blasts that woke the dragon | seat margin [se] |
+| :-- | --: | --: | :-- |
+| informed (backside risk) | 0.69 | **47/103 (46%)** | +0.01 (0.22) |
+| at random | 0.67 | 40/100 (40%) | -0.12 (0.21) |
+| never blasts (control) | 0.00 | — | -0.43 (0.21) |
+
+Backside bookkeeping is worth nothing here: each backside carries exactly two
+dragons of ten, the cards you can identify (your own column, the backsides of
+collected cards) barely move the posterior for three cards off the top of the
+pile, and you choose **before** looking. The ~40–50% risk of ending the haul is
+what the blast costs, and it is the same either way.
+
+So why 0.03? Two measured reasons, and neither is a judgement about that
+trade-off.
+
+1. **It rarely can.** Blasting needs two dynamite in hand and a card move, and
+   the learner leaves the mine early with thin loot (75% escapes, 0.21 gems per
+   escape): **0.17 blastable decisions per game** when sampling, 0.00 under
+   argmax, against **11.2** for a rule bot in the same seats. "Rarely blasts"
+   is mostly "rarely has two dynamite".
+2. **Its blasts are cancelled by its own next move.** The rules abort a blast
+   if the player later picks anything but "Pass" in that planning phase. Over
+   60 four-player games the learner announced **0.17 blasts per game and fired
+   0.02** — 10% survive. A `rule` bot told to blast whenever it can keeps 31%
+   (9.23 announced, 2.85 fired). The network can see `own_blast_pending` in its
+   features, but it has not learned the commitment, so most of its blast
+   announcements are silently thrown away.
+
+And the sharpest evidence that this is under-learning rather than strategy: the
+nets were trained on the **peeking** engine, where the same blast was worth
+**+0.49** per decision and the always-blasting seat beat the field by +1.00 —
+and they still learned to blast essentially never. A rare branch with a
+33%-of-the-action-space twin is hard for a 60-generation REINFORCE run to find.
+Two things would change it, neither of them a rules change: train under the
+printed rule (`--blind-blast-choice`), which is the game we actually play, and
+make the commitment visible to the learner by masking everything but "Pass"
+while its blast is pending.
 
 ## 6. The threat of a blast: real, worth ~0.4 points, and never learned
 
@@ -522,6 +581,9 @@ honest way to read a table like this.
 
 ```powershell
 python -m pip install -r requirements.txt
+
+# what a single blast is worth, and whether backside knowledge helps the choice
+python probe_blast_value.py --games 150
 
 # the two controls that make the leaderboard honest
 python evaluate_balance.py --agents rule,greedy,random,cautious,rusher,leaver,checkpoints/selfplay.npz --games 300 --out reports/balance_default_rules.md

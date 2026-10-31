@@ -22,7 +22,7 @@ from typing import Any, Callable
 
 import numpy as np
 
-from agents import ActionChoice, NeuralAgent
+from agents import ActionChoice, NeuralAgent, make_scripted_agent
 from features import action_mask, state_action_matrix
 from game_env import (
     BACKSIDE_A,
@@ -39,10 +39,15 @@ from game_env import (
 )
 from learning import PolicyNet
 from rule_policy import deterministic_policy
+from selfplay import _choice_for
 from train_q_learning import select_action, train
 
 FRONT_LABELS = {GEM: "GEM", DRAGON: "DRAGON", DYNAMITE: "DYNAMITE"}
 SCRIPTED_STRATEGIES = ("simple", "training", "random", "cautious", "greedy")
+# The rule bot's movement, but it cashes in every dynamite pair it can. Blasts
+# are rare in self-play (the learner seldom holds two dynamite), so this is the
+# only way to watch the mechanic — and the ~50% chance that it wakes the dragon.
+BLAST_STRATEGY = "blaster"
 TRAINING_EPISODES = 1000
 TRAINING_CACHE_VERSION = 2
 TRAINING_CACHE_DIR = Path(__file__).with_name(".training_cache")
@@ -65,9 +70,11 @@ def available_checkpoints(directory: Path | None = None) -> list[Path]:
 
 def agent_policies(directory: Path | None = None) -> list[str]:
     """Policy names for the viewer's dropdown: scripted ones plus checkpoints."""
-    return list(SCRIPTED_STRATEGIES) + [
-        f"{NEURAL_PREFIX}{path.stem}" for path in available_checkpoints(directory)
-    ]
+    return (
+        list(SCRIPTED_STRATEGIES)
+        + [BLAST_STRATEGY]
+        + [f"{NEURAL_PREFIX}{path.stem}" for path in available_checkpoints(directory)]
+    )
 
 
 def resolve_checkpoint(policy: str, directory: Path | None = None) -> Path | None:
@@ -175,6 +182,12 @@ class GameController:
     def _build_agents(self) -> None:
         """One agent per seat this controller decides for; ``None`` = env policy."""
         self.agents = [None] * self.env.n_players
+        if self.policy == BLAST_STRATEGY:
+            for seat in range(self.env.n_players if self.all_seats else 1):
+                self.agents[seat] = make_scripted_agent(
+                    "rule", seed=self.seed + 101 * seat, blast="always"
+                )
+            return
         if not self.is_neural:
             return
         net = self.policy_net()
@@ -222,6 +235,8 @@ class GameController:
             return "random"
         if self.policy in SCRIPTED_STRATEGIES:
             return self.policy
+        if self.policy == BLAST_STRATEGY:
+            return "simple"
         # A neural policy says nothing about the opponents; play them as the
         # deterministic rule bot, which is the benchmark used in BALANCE.md.
         return "simple"
@@ -374,7 +389,7 @@ class GameController:
         """
         agent = self.agents[seat] if seat < len(self.agents) else None
         if agent is not None:
-            return agent.decide(self.env.player_action_context(seat))
+            return _choice_for(agent, self.env.player_action_context(seat))
         if seat != 0:
             return None
         action = self.autoplay_choose_action()
@@ -434,8 +449,15 @@ class GameController:
             )
         try:
             result = self.env.resolve_tie_breaker(source, row, column)
-        except ValueError as error:
-            return StepResult(str(error), game_over=not self.env.tie_breaker_contenders)
+        except ValueError:
+            # The agent asked for a card that is not there (an empty draw pile
+            # is the usual case). Fall back to any legal source instead of
+            # retrying the same illegal choice forever.
+            options = self.tie_break_options()
+            if not options:
+                return StepResult("no tie-break card left", game_over=True)
+            source, row, column = options[0]
+            result = self.env.resolve_tie_breaker(source, row, column)
         step = self._tie_break_message(result)
         if step.game_over:
             return step

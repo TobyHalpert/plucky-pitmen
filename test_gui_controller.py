@@ -252,3 +252,68 @@ def test_deterministic_mode_is_reproducible(tiny_net):
         return [player.score for player in controller.env.players]
 
     assert play() == play()
+
+
+def test_tie_break_falls_back_when_the_requested_pile_is_empty(tiny_net):
+    """A tie-break draw the agent cannot make must not freeze the viewer.
+
+    With four neural seats in the mine, both piles can run out at once: the
+    contenders are all escaped, the mine is empty, and the agent still asks for
+    a card. Before the fallback the driver retried the same illegal draw
+    forever, which looked like a hang in the window.
+    """
+    policy = f"neural:{tiny_net}"
+    controller = GameController(3, policy, seed=1, all_seats=True)
+    controller.reset(3, policy, seed=1, all_seats=True)
+    controller.env.tie_breaker_contenders = [0, 1]
+    controller.env.tie_breaker_turn = 0
+    controller.env.cards_remaining = []
+
+    class MineOnly:
+        """Always asks for a card the mine no longer has."""
+
+        def tie_break(self, ctx):
+            return ("mine", 0, 0)
+
+        def decide(self, ctx):  # pragma: no cover - not reached here
+            raise AssertionError("no planning steps expected")
+
+    controller.agents[0] = MineOnly()
+    result = controller.step_one_player_auto()
+    assert "tie-break" in result.message or result.game_over
+
+
+def test_blaster_policy_announces_and_fires_blasts():
+    """The viewer needs a baseline that actually blasts; the learner does not."""
+    announced = fired = 0
+    for seed in range(6):
+        controller = GameController(3, "blaster", seed=seed)
+        controller.reset(3, "blaster", seed=seed)
+        for _ in range(4000):
+            before = sum(len(p.blast_cards) for p in controller.env.players)
+            result = controller.step_one_player_auto()
+            if controller.last_choice is not None and controller.last_choice.announce_blast:
+                announced += 1
+            if sum(len(p.blast_cards) for p in controller.env.players) > before:
+                fired += 1
+            if result.game_over:
+                break
+        else:  # pragma: no cover - the driver must terminate
+            raise AssertionError("the game did not finish")
+    assert announced > 0
+    assert fired > 0
+
+
+def test_every_seat_neural_finishes_across_seeds(tiny_net):
+    """Four neural seats must always reach the end of the third haul.
+
+    Two seeds used to stall at the game-ending tie-break; a hung window is the
+    worst failure mode this viewer has, so this walks a handful of seeds.
+    """
+    policy = f"neural:{tiny_net}"
+    for seed in range(8):
+        controller = GameController(3, policy, seed=seed, all_seats=True)
+        controller.reset(3, policy, seed=seed, all_seats=True)
+        steps = play_to_the_end(controller)
+        assert steps > 0
+        assert controller.env.game_finished

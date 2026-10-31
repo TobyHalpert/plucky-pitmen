@@ -121,8 +121,10 @@ Use **Take action** to choose the learner's destination, or **Autoplay** to run 
 Any checkpoint in `checkpoints/` shows up in the **Policy** dropdown as
 `neural:<name>`, and the autoplay driver then hands every decision to the
 network — including whether to announce a blast and which of the three blast
-cards to keep (the scripted policies never blast, so before this the viewer
-could not show that part of the game at all).
+cards to keep. `blaster` is the rule bot's movement with the opposite blast
+policy (it cashes in every dynamite pair it can), which is the only way to see
+the mechanic on screen: the trained learner fires a blast about once every
+thirty games.
 
 ```powershell
 # the 4-player self-play learner against three rule bots
@@ -133,6 +135,10 @@ python mine_gui.py --opponents 3 --policy neural:selfplay4 --all-seats
 
 # play the argmax instead of sampling at temperature 0.7 (what the benchmarks do)
 python mine_gui.py --opponents 3 --policy neural:selfplay4 --deterministic
+
+# ... and a baseline that really does blast, for comparison
+python mine_gui.py --opponents 3 --policy blaster
+python mine_gui.py --opponents 3 --policy blaster --all-seats
 ```
 
 The **AI POLICY** panel lists the network's top actions for Player 1 with their
@@ -141,10 +147,12 @@ traced back to the distribution that produced it. It is empty for scripted
 policies, during a tie-break, and while a blast is waiting on a card.
 
 What to look for, given the measurements in [BALANCE.md](BALANCE.md): it should
-rarely blast (0.03-0.05 per game), it should walk to a pit cage as soon as it
-holds loot, and it should *not* visibly change its mind when an opponent
-announces a blast (§6) — that missing reaction is the finding, not a bug in the
-viewer.
+rarely blast (0.03-0.05 per game *fired*, for two reasons — it seldom holds two
+dynamite, and most blasts it announces are cancelled by its own next move, §5),
+it should walk to a pit cage as soon as it holds loot, and it should *not*
+visibly change its mind when an opponent announces a blast (§6) — that missing
+reaction is the finding, not a bug in the viewer. Watch `blaster` once to see
+what blasting looks like, including the dragon it wakes roughly half the time.
 
 Try each opponent model:
 
@@ -178,6 +186,9 @@ uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
 | `train_selfplay.py` | league self-play trainer with checkpoints and a learning curve |
 | `evaluate_balance.py` | benchmarks, pairwise dominance, luck analysis, markdown report |
 | `analyze_blasts.py` | is a blast worth it, does the learner threaten, does it react, and is the threat real |
+| `probe_blast_value.py` | what a single blast is worth from a real position (forked rollouts), and whether backside knowledge improves the blind choice |
+| `gui_controller.py` | Tk-free viewer logic: moves, blasts, tie-breaks, the AI POLICY snapshot |
+| `mine_gui.py` | the Tk viewer itself |
 
 ### Train
 

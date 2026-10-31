@@ -172,19 +172,31 @@ def play_game(
     passes: str = "n-1",
     solo_escape_bonus: bool = True,
     blast_choice_sees_fronts: bool = True,
+    env: MineEnv | None = None,
 ) -> GameResult:
-    """Play one complete 3-haul game with one agent per seat."""
+    """Play one complete 3-haul game with one agent per seat.
+
+    Pass ``env`` to continue from a position that is already under way instead
+    of dealing a fresh game. The environment must be built for
+    ``len(agents)`` seats; forked copies (``copy.deepcopy``) share no state, so
+    a single position can be rolled out several ways to measure the value of a
+    decision, which is how the blast counterfactuals in ``BALANCE.md`` were
+    measured.
+    """
     n_players = len(agents)
     if n_players not in (3, 4, 5):
         raise ValueError("Plucky Pitmen supports 3 to 5 players")
 
-    env = MineEnv(
-        opponents=n_players - 1,
-        passes=passes,
-        solo_escape_bonus=solo_escape_bonus,
-        blast_choice_sees_fronts=blast_choice_sees_fronts,
-    )
-    env.reset(seed=seed)
+    if env is None:
+        env = MineEnv(
+            opponents=n_players - 1,
+            passes=passes,
+            solo_escape_bonus=solo_escape_bonus,
+            blast_choice_sees_fronts=blast_choice_sees_fronts,
+        )
+        env.reset(seed=seed)
+    elif env.n_players != n_players:
+        raise ValueError("env has a different number of seats than agents")
     learning = decisions is not None
     if decisions is None:
         decisions = []
