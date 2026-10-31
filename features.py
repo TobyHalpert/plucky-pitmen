@@ -422,6 +422,42 @@ def walks_past_a_free_card(ctx: PlayerActionContext) -> set[int]:
     return hidden
 
 
+def own_card_is_known_dragon(ctx: PlayerActionContext) -> bool:
+    """True when the figure stands on a card the seat can see is a dragon."""
+    row = ctx.own_position
+    if not 0 <= row < len(ctx.public_rows):
+        return False
+    column = ctx.own_column if ctx.own_column is not None else ctx.player_index
+    if column != ctx.player_index or column >= len(ctx.public_rows[row]):
+        return False
+    entry = ctx.public_rows[row][column]
+    return entry is not None and entry[0] is not None and int(entry[0]) == DRAGON
+
+
+def lorry_skips_a_card_worth_taking(ctx: PlayerActionContext) -> bool:
+    """True when parking on the lorry is a move with nothing to gain.
+
+    Standing on a lorry collects nothing, and it does not protect the figure
+    either: the rules kill **every** player still in the mine when a dragon is
+    woken, the ones on their lorry included — only a pit cage removes a figure
+    from the haul. So the lorry has exactly one use, which is to skip the card
+    under your own figure, and that is only worth a round when that card is a
+    dragon you can see. Everywhere else it trades a card (eight cards in ten are
+    a gem or a dynamite) for nothing.
+
+    It is also a coordination trap, and the reason this rule exists: each seat
+    dodges for itself, so at a table that samples its moves all four can end up
+    parked in the same planning phase, and then the haul is over with nobody
+    having collected anything (+1 point apiece, if that). With the shipped
+    checkpoint in all four seats, 93 of 200 sampled games lost the first haul
+    that way (seed 7 among them); under the argmax, which picks the lorry less
+    often, none did. See BALANCE.md, "Four nets parked on their lorries".
+    """
+    if ctx.own_position == LORRY:
+        return False  # parked already; the move is not legal from here anyway
+    return not own_card_is_known_dragon(ctx)
+
+
 def cage_has_no_visible_reason(ctx: PlayerActionContext) -> bool:
     """True when fleeing the mine cannot answer any visible threat.
 
@@ -531,6 +567,11 @@ def action_mask(ctx: PlayerActionContext) -> np.ndarray:
         for primitive in passed:
             mask[primitive] = False
             mask[join_action(primitive, True)] = False
+    if mask[int(LORRY)] and lorry_skips_a_card_worth_taking(ctx):
+        trial = mask.copy()
+        trial[int(LORRY)] = False
+        if trial.any():
+            mask = trial
     if mask[int(PIT_CAGE)] and cage_has_no_visible_reason(ctx):
         trial = mask.copy()
         trial[int(PIT_CAGE)] = False
@@ -555,6 +596,8 @@ __all__ = [
     "doomed_dragon_digs",
     "has_dragon_free_move",
     "join_action",
+    "lorry_skips_a_card_worth_taking",
+    "own_card_is_known_dragon",
     "rival_can_push",
     "split_action",
     "state_action_matrix",

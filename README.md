@@ -232,6 +232,7 @@ uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
 | `probe_blast_strategy.py` | is "blast while a dragon is waiting for me" a good rule? paired arms over the blast trigger and the keeper choice |
 | `probe_bait_value.py` | what a move onto a dragon the player can see is worth, forked per opponent (rule bots vs readers vs its own peers) |
 | `probe_backside_reading.py` | does the learner read a backside? risk of the card it takes, against the risk it was offered |
+| `probe_lorry.py` | how often a seat parks on its lorry, and how often a haul is lost to a stand-off because every seat did |
 | `migrate_checkpoint.py` | widen a checkpoint saved before a feature was added (zero columns, behaviour unchanged) |
 | `profile_agent.py` | what a checkpoint actually does: digs, front-row digs, passes, retreats, blasts, escapes — side by side for two checkpoints |
 | `gui_controller.py` | Tk-free viewer logic: moves, blasts, tie-breaks, the AI POLICY snapshot |

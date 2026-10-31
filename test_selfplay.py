@@ -169,7 +169,11 @@ def test_feature_encoder_is_seat_invariant():
 
 def test_action_mask_never_widens_the_rules():
     """The mask may narrow the rules for documented policies, never widen them."""
-    from features import digs_face_up_dragon, walks_past_a_free_card
+    from features import (
+        digs_face_up_dragon,
+        lorry_skips_a_card_worth_taking,
+        walks_past_a_free_card,
+    )
 
     env = MineEnv(opponents=2)
     env.reset(seed=2)
@@ -183,6 +187,8 @@ def test_action_mask_never_widens_the_rules():
             elif env._legal(action, player_index):
                 assert (
                     action == int(PIT_CAGE)
+                    or action == int(LORRY)
+                    and lorry_skips_a_card_worth_taking(ctx)
                     or digs_face_up_dragon(ctx, action)
                     or action in walks_past_a_free_card(ctx)
                 ), "only the documented policy rules may hide a legal move"
@@ -950,6 +956,39 @@ def test_the_mask_hides_a_face_down_dig_that_pays_more_than_a_deeper_card():
         opponents=(_rival(1, 2),),
     )
     assert walks_past_a_free_card(occupied) == set()
+
+
+def test_the_mask_forbids_parking_on_a_lorry_to_skip_an_ordinary_card():
+    """The lorry skips the card under the figure, so it is only right over a dragon.
+
+    It does not even protect the figure: a dragon kills everyone still in the
+    mine, lorry included. So parking is worth a round only when the card being
+    skipped is one the seat can see is a dragon — and in that case it stays.
+    """
+    from features import lorry_skips_a_card_worth_taking
+
+    ordinary = _board_context(
+        {(1, 1): (None, 0), (2, 1): (None, 0)},
+        legal=(1 * MAX_COLUMNS + 1, int(LORRY)),
+        own_position=2,
+    )
+    assert lorry_skips_a_card_worth_taking(ordinary)
+    mask = action_mask(ordinary)
+    assert not mask[int(LORRY)]
+    assert mask[1 * MAX_COLUMNS + 1]
+
+    # Standing on a dragon the seat can see: the lorry is the way to refuse it.
+    on_dragon = _board_context(
+        {(1, 0): (DRAGON, 0), (2, 1): (None, 0)},
+        legal=(2 * MAX_COLUMNS + 1, int(LORRY)),
+        own_position=1,
+    )
+    assert not lorry_skips_a_card_worth_taking(on_dragon)
+    assert action_mask(on_dragon)[int(LORRY)]
+
+    # The lorry is the only legal move: never empty the action space.
+    only_lorry = _board_context({}, legal=(int(LORRY),), own_position=3)
+    assert action_mask(only_lorry)[int(LORRY)]
 
 
 def test_the_mask_forbids_fleeing_with_nothing_visible():

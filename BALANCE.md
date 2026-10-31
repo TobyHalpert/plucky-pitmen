@@ -577,6 +577,66 @@ With the rule in, the same audit finds the "dearer" and "same price" rows down t
 1.0% and 0.2%, i.e. what a spectator still sees is almost entirely a card whose
 front only that player is allowed to look at.
 
+### Four nets parked on their lorries
+
+Seed 7, network in every seat: all four figures stood on their lorries at the end
+of the first planning phase and the haul ended there with nobody having taken a
+card. That is not a rare accident of one seed — over 200 games with the shipped
+checkpoint in all four seats, **93 lost the first haul that way**, and it was a
+sampling artefact in the strict sense: under the argmax (the viewer's "Greedy"
+box) it happened **0 times in 200**.
+
+What the move is worth, read off the rules rather than argued about: standing on
+a lorry collects nothing, and it does not protect the figure either. A woken
+dragon kills **every** player still in the mine, the ones on their lorry
+included — only a pit cage takes a figure out of the haul. So the lorry has one
+use, refusing the card under your own figure, and that is worth a round *only*
+when that card is a dragon the seat can see. Everywhere else it trades a card
+(eight in ten are a gem or a dynamite) for nothing.
+
+It is also a coordination trap, which is what makes the whole table do it: each
+seat dodges for itself, so four seats on lorry is not four mistakes in isolation
+but one outcome. And the seat-level numbers say where the habit came from — over
+300 games the learner parked **2.49 times a game** against `rule` bots (0.46 of
+them in the first planning phase of a haul), *and won 48.1% doing it*. Parking
+was not costing it points against a field that also leaves loot behind, so
+nothing in the reward was pushing back.
+
+`features.lorry_skips_a_card_worth_taking` (applied in `action_mask`) hides the
+lorry unless the seat is standing on a dragon it can see, and never empties the
+action space. A/B, 4 players, learner in seat 0, seed-paired:
+
+| field | rule off | rule on | first haul lost to a stand-off | any haul |
+| :-- | :-- | :-- | :-- | :-- |
+| 3 × `rule` (800) | 48.1% · +1.82 | **56.2% · +2.81** | 22.5% → 32.9% | 20.5% → 29.9% |
+| 3 × `reader` (800) | 37.5% · +1.02 | **44.1% · +1.77** | 17.9% → 23.2% | 18.1% → 22.2% |
+| 3 × `leaver` (400) | 19.5% · +0.73 | **24.5% · +0.81** | 7.8% → 0.0% | 7.7% → 0.1% |
+| the same net in all four seats (400) | 37.8% · +1.81 | 37.8% · +1.86 | **29.8% → 1.2%** | 29.2% → 0.8% |
+
+Three things in that table are worth reading carefully.
+
+1. **The habit was the field's, and fixing it pays: +8.1 points against `rule`
+   and +6.6 against `reader`.** The seat stops parking, takes its card, and the
+   points follow because the card is usually worth something.
+2. **The stand-off rate against scripted bots rises, and that is the control
+   being the control.** In every one of those stand-offs the learner had already
+   left; the parked seats were bots, whose policy this repo does not mask. What
+   changes is that the learner no longer joins them.
+3. **In a field of its own kind the stand-off disappears (29.8% → 1.2%) and the
+   win rate does not move** (37.8% both ways, +1.86 against +1.81). A table of
+   copies splits a fixed pot, so removing a symmetric mistake helps everybody
+   equally — it is the spectator-facing defect that goes away, not a new edge.
+   Seed 7 under the rule: haul 1 ends normally with 4 gems on the table instead
+   of nobody collecting anything.
+
+The pit cage keeps its own rule (a cage does remove the figure from the haul and
+it banks the loot, so fleeing with something to flee *from* stays legal). It was
+worth checking whether the same cascade was hiding there: removing "a rival is
+queued in a pit cage" as a reason to flee as well costs 3.5 points against
+`rule` and 4.0 against `reader`, and at four players it changes almost nothing
+(3+ seats leaving the first haul empty-handed: 0.3% → 0.2%), so the cage rule
+stays as measured.
+
 ## 5. Is blasting too weak? No — but it is not a free win either
 
 The printed blast rule: draw three cards **face down**, choose two, *then* look
@@ -1029,6 +1089,9 @@ python evaluate_balance.py --players 4 --agents rule,greedy,random,rusher --game
 
 # four players: the leaderboard, and the learner trained on four players
 python evaluate_balance.py --players 4 --agents rule,greedy,random,cautious,rusher,leaver,checkpoints/selfplay4.npz --games 300 --out reports/balance4_default_rules.md
+
+# how often a seat parks on its lorry, and how often a haul is lost to that
+python probe_lorry.py --games 200
 
 # what a bluff onto a dragon you can see is worth, per field (forked rollouts)
 python probe_bait_value.py --games 300 --fields rule,reader,selfplay4
