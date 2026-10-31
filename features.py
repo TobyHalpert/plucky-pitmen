@@ -580,6 +580,14 @@ def lorry_skips_a_card_worth_taking(ctx: PlayerActionContext) -> bool:
     checkpoint in all four seats, 93 of 200 sampled games lost the first haul
     that way (seed 7 among them); under the argmax, which picks the lorry less
     often, none did. See BALANCE.md, "Four nets parked on their lorries".
+
+    A figure standing in a pit cage is decided elsewhere, in ``action_mask``,
+    because there the pair lorry/pass has to be read together: the cage leaves
+    the mine by itself when the cards are turned, so a pass *is* the departure
+    and the lorry is the only move that keeps the haul alive. This rule on its
+    own masked the lorry there and left nothing but that pass -- seed 7 of the
+    viewer, haul 1, P3 displaced into cage index 0, hazard 0.00, one legal move
+    left.
     """
     if ctx.own_position == LORRY:
         return False  # parked already; the move is not legal from here anyway
@@ -615,6 +623,10 @@ def cage_banks_nothing(ctx: PlayerActionContext) -> bool:
     The hazard is a *lower* bound on the danger (a rival is free to walk onto a
     card mid-round), so the threshold sits at the smallest non-trivial reading
     rather than at some share of it.
+
+    The same question is asked of a *pass* taken while already in a cage: a
+    figure in a cage leaves the mine when the cards are turned, so passing there
+    is the same departure one decision later.
 
     Everything else is a wasted round, and this is the clause that gets that
     wrong in the obvious implementation: **"somebody is already in a cage"** is
@@ -729,7 +741,7 @@ def action_reason(ctx: PlayerActionContext, action: int) -> str:
 def action_mask(ctx: PlayerActionContext) -> np.ndarray:
     """Legal policy actions, including legal blast announcements.
 
-    Four narrow rules ride on top of the legal moves, all of them policies rather
+    Five narrow rules ride on top of the legal moves, all of them policies rather
     than rules of the game, which is why they live here and not in the
     environment (see BALANCE.md):
 
@@ -747,6 +759,12 @@ def action_mask(ctx: PlayerActionContext) -> np.ndarray:
     4. The pit cage is the only exit that banks loot before the cards are turned,
        so an escape has to bank something or answer a visible threat.
        ``cage_banks_nothing``.
+    5. A figure in a pit cage is already halfway out: whoever is still in a cage
+       when the cards are turned leaves the mine.  So from a cage the lorry and
+       the pass are one decision, not two — the escape is taken when it banks
+       something, and refused (staying in the haul on the lorry) when it does
+       not.  Before this the lorry was masked in the cage and the only move left
+       was a pass, so the seat "chose" an empty departure at 100%.
 
     Rules 3 and 4 are about wasted rounds, and 4 in particular exists because
     "somebody is already in a cage" is *not* a threat: a raid puts a rival there,
@@ -775,7 +793,22 @@ def action_mask(ctx: PlayerActionContext) -> np.ndarray:
         for primitive in passed:
             mask[primitive] = False
             mask[join_action(primitive, True)] = False
-    if mask[int(LORRY)] and lorry_skips_a_card_worth_taking(ctx):
+    if int(ctx.own_position) == PIT_CAGE:
+        # From a cage the escape is already half taken: a figure still in a cage
+        # when the cards are turned leaves the mine.  So the lorry/pass pair has
+        # to be read together.  A departure that banks nothing is refused and the
+        # seat stays in the haul on the lorry (seed 7, haul 1: P3 displaced into
+        # cage index 0, hazard 0.00, lorry +0.93 +- 0.11 against pass +0.55 +- 0.10);
+        # one that is worth taking keeps the pass and drops the lorry.
+        trial = mask.copy()
+        if cage_banks_nothing(ctx):
+            trial[int(PASS)] = False
+            trial[int(LORRY)] = True
+        else:
+            trial[int(LORRY)] = False
+        if trial.any():
+            mask = trial
+    elif mask[int(LORRY)] and lorry_skips_a_card_worth_taking(ctx):
         trial = mask.copy()
         trial[int(LORRY)] = False
         if trial.any():

@@ -895,12 +895,36 @@ Those gem-less escapes are not a bug either. Removing them from the bot (an
 escape banks nothing, so stay and dig) costs it **0.76 points a seat and wins 32.8%
 of tables against a 50% null** over 400 paired games, because fleeing before a
 dragon it can see turns a sure −1 into 0 or, as sole escapee, +3. What looked arbitrary
-is a private read. The all-neural table has no gem-less escape at all: seed 7
-plays 71 decisions with five escapes, one gem banked each, at hazards 0.25–1.00.
+is a private read. The all-neural table escapes far less often: seed 7 plays 109
+decisions with sixteen escapes, fourteen of them banking a gem.
 
 Both the player list and `analyze_game.py` now name the policy behind every seat,
 and `--viewer` replays the mixed table, so a report can be matched to the game it
 came from.
+
+#### A pass in the cage is the escape
+
+The mask that refuses an escape with nothing to bank only ever gated the *cage
+move*. A seat already standing in a cage could take the same departure by
+passing, and a second rule made that the only move it had: the lorry is masked
+unless it skips a card the seat can see is a dragon, and in a cage there is no
+card at all. So the mask removed the lorry and left one legal action — a pass that
+ends the haul.
+
+Seed 7, haul 1, planning phase 1 is exactly that position. P3 takes the gem it can
+see at r0c2 (45%, its second choice), P1 raids that slot off a 1% sample and
+displaces P3 into cage index 0, the hazard reads **0.00**, nothing is banked, and
+the network takes the pass at 100% while the lorry was the better move: **lorry
++0.93 ± 0.11 against pass +0.55 ± 0.10** over 200 re-rolls from that position.
+
+The two moves are now decided together: from a cage, an escape that banks nothing
+is refused and the lorry keeps the haul alive; an escape that banks something or
+answers a charged blast drops the lorry and keeps the pass. Over 1,200 paired
+four-net games that is 25.1% / +1.70 before and 25.8% / +1.62 after — **+0.8pp
+wins (se 1.7), −0.09 points (se 0.08)**, a wash, and the reason to ship it is that
+the old rule did not *let* the seat choose. The lorry standoff does not come back
+with it: **0 wasted hauls in 900** in both arms (BALANCE.md, "Four nets parked on
+their lorries").
 
 The viewer also stops being the only one who cannot see the danger: `action_reason`
 now spells out what an escape banks and what it is running from —

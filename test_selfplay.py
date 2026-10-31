@@ -982,6 +982,38 @@ def _board_context(cards, *, legal=None, own_position=5):
     )
 
 
+def test_a_figure_in_a_cage_is_given_the_lorry_instead_of_a_pass():
+    """A pass in the cage *is* the escape, so the lorry has to stay on the menu.
+
+    Seed 7 of the viewer, haul 1, planning phase 1: P3 is displaced into cage
+    index 0 holding nothing, with a hazard of 0.00.  The lorry rule masked the
+    lorry -- it "skips a card worth taking", and there is no card at all in a
+    cage -- so the only legal move left was a pass, and the network "chose" an
+    empty departure at 100%.  Priced from that position on 200 re-rolls: lorry
+    +0.93 +- 0.11, pass +0.55 +- 0.10.
+    """
+    from features import action_mask
+
+    in_cage = _board_context(
+        {(0, 0): (GEM, 0)},
+        legal=(int(LORRY), int(PASS)),
+        own_position=int(PIT_CAGE),
+    )
+    assert action_mask(in_cage)[int(LORRY)]
+    assert not action_mask(in_cage)[int(PASS)]
+
+    # Loot in hand does not change it while nothing can blow: the cage banks a
+    # claim it could bank later, so the haul is worth keeping alive.
+    carrying = replaced(in_cage, private_cards=((GEM, 0),))
+    assert action_mask(carrying)[int(LORRY)]
+    assert not action_mask(carrying)[int(PASS)]
+
+    # A charged blast is something to run from, so the departure stands.
+    charged = replaced(in_cage, own_blast_pending=True)
+    assert action_mask(charged)[int(PASS)]
+    assert not action_mask(charged)[int(LORRY)]
+
+
 def test_the_mask_hides_a_face_down_dig_that_pays_more_than_a_deeper_card():
     """The backside is the price; walking past a card as safe as this one is free."""
     from features import backside_stats, walks_past_a_free_card
