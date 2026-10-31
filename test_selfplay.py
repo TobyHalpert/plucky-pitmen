@@ -512,12 +512,56 @@ def test_pending_blast_from_a_dead_or_escaped_player_does_not_block_the_haul():
     )
 
 
-def test_tie_breaker_reshuffles_when_no_dragons_are_left_to_draw():
-    """A tie-break with nothing to draw must not loop forever.
+def test_a_tie_break_always_has_enough_dragons_to_finish():
+    """The card economy guarantees the tie-break can end, so nothing is topped up.
 
-    Regression: after three hauls every dragon can already be in a hand. The
-    tie-break then never eliminates a contender, the game never finishes, and it
-    was recorded as ``aborted`` with all scores at zero.
+    Each haul starts from a fresh 30-card deck with six dragons and a haul ends
+    as soon as a dragon is drawn, so at most three are spent before the final
+    tie-break, while eliminating ``contenders - 1`` players needs at most four.
+    This checks the invariant on real games at both player counts instead of
+    trusting the argument, and pins down that the guard never has to fire.
+    """
+    from agents import make_scripted_agent
+
+    observed: list[tuple[int, int]] = []
+    original = MineEnv._begin_tie_breaker
+
+    def recording(env):
+        started = original(env)
+        if started:
+            observed.append(
+                (
+                    len(env.tie_breaker_contenders) - 1,
+                    env._dragons_left_to_draw(),
+                )
+            )
+        return started
+
+    MineEnv._begin_tie_breaker = recording
+    try:
+        for players, names in (
+            (4, ("rule",) * 4),
+            (5, ("rule", "rule", "cautious", "random", "leaver")),
+        ):
+            for seed in range(40):
+                agents = [
+                    make_scripted_agent(name, seed=seed * 13 + index)
+                    for index, name in enumerate(names)
+                ]
+                result = play_game(agents, seed=seed)
+                assert not result.aborted, (players, seed, result.abort_reason)
+    finally:
+        MineEnv._begin_tie_breaker = original
+
+    assert observed, "no tie-break was exercised"
+    assert all(have >= need for need, have in observed), observed
+
+
+def test_tie_breaker_guard_tops_up_the_deck_if_the_invariant_is_broken():
+    """Defensive only: an unreachable state must still settle instead of hanging.
+
+    Constructed by hand, never seen in a game — see the test above. If a rules
+    change ever leaves too few dragons, the tie-break must still terminate.
     """
     from game_env import GEM
 
@@ -525,26 +569,13 @@ def test_tie_breaker_reshuffles_when_no_dragons_are_left_to_draw():
     env.reset(seed=9)
     for player in env.players:
         player.score = 4
-    safe = (GEM, 0)
-    env.cards_remaining = [safe] * 10
-    env.rows = [[safe] * 5 for _ in range(2)]
+    env.cards_remaining = [(GEM, 0)] * 10
+    env.rows = [[(GEM, 0)] * 5 for _ in range(2)]
 
     assert env._dragons_left_to_draw() == 0
     assert env._begin_tie_breaker() is True
-    assert env.tie_breaker_reshuffled is True
-    # Enough dragons for every contender but the last to be eliminated.
+    assert env.tie_breaker_shortage is True
     assert env._dragons_left_to_draw() >= len(env.tie_breaker_contenders) - 1
-
-
-def test_tie_breaker_does_not_reshuffle_when_the_deck_is_fine():
-    env = MineEnv(opponents=2)
-    env.reset(seed=9)
-    for player in env.players:
-        player.score = 4
-    env.tie_breaker_reshuffled = False
-    assert env._dragons_left_to_draw() >= 1
-    assert env._begin_tie_breaker() is True
-    assert env.tie_breaker_reshuffled is False
 
 
 def test_threat_agent_retreats_when_a_blast_is_pending():

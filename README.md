@@ -273,11 +273,13 @@ The full write-up, with confidence intervals and reproduction commands, is in
 * **Luck dominates a single game.** Identical agents playing each other spread
   **4.6–4.8 points** within a game, far more than any between-policy margin here.
   Use the confidence intervals.
-* **Two engine bugs were silently scoring whole games as zero.** An unwinnable
-  tie-breaker (no dragons left to draw) and a player killed by a dragon while a
-  blast was pending both left the game unable to finish, so it was recorded
-  `aborted` with every score at 0. Both are fixed, and every report now prints
-  how many games the engine abandoned.
+* **An engine bug was silently scoring whole games as zero.** A player killed by
+  a dragon while a blast was pending left the haul unable to finish, so the game
+  was recorded `aborted` with every score at 0 (36 of 60 always-blaster games).
+  Fixed, and every report now prints how many games the engine abandoned. A
+  second bug reported alongside it — a tie-break with no dragons left to draw —
+  does not exist: the card economy always leaves enough, and
+  [BALANCE.md](BALANCE.md) §7 records the withdrawal.
 
 ### Testing the rules variants
 

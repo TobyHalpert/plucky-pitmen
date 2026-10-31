@@ -34,10 +34,12 @@ The supportable conclusions are:
   less skill-driven at four players, the leaver is still the best single seat,
   and the learner trained on four players is genuinely better than the same
   learner trained on three (§4).
-* Two engine bugs were found because the AI was finally asked to blast: an
-  unwinnable tie-breaker and a dead player with a blast pending. Both aborted
-  the game and scored every seat zero; both are fixed and counted in every
-  report (§7).
+* One engine bug was found because the AI was finally asked to blast: a player
+  killed by a dragon while its blast was pending left the haul unable to
+  finish, so the game was scored all-zero (36 of 60 always-blaster games).
+  Fixed, and every report now prints its abandoned-game count (§7). A second
+  "bug" I initially reported in the same area — an unwinnable tie-breaker —
+  does not exist, and §7 records why.
 
 All numbers: 4-player results are labelled as such; everything else is 3
 players. Seats rotated every game, 300 games per leaderboard row, 60 games per
@@ -325,33 +327,50 @@ the game that self-play at this budget simply does not discover, because it is
 rare (0.8 blasts/game), announced early, and punishes the blaster's own haul 58%
 of the time — so it never earns enough games to show up in the gradient.
 
-## 7. Two engine bugs found by making the AI blast
+## 7. The bug behind the aborted games — and one bug I had to withdraw
 
-Both bugs produced the same silent failure: the game could not finish, so
-`play_game` returned `aborted=True` with **every score at zero**. A benchmark
-that quietly averages zeros looks exactly like a hard game.
+Asking the AI to blast surfaced a real engine bug. It produced a silent failure:
+the game could not finish, so `play_game` returned `aborted=True` with **every
+score at zero**, and a benchmark that quietly averages zeros looks exactly like
+a hard game.
 
-1. **An unwinnable tie-breaker.** A tie-break ends when contenders draw dragons.
-   After three hauls every dragon may already be in someone's hand, so the final
-   tie-break had nothing to draw and looped forever. Seen in a 4-player
-   `rule:always` game with two contenders, 10 deck cards and 11 mine cards, all
-   safe. Fixed by reshuffling a fresh deck when fewer dragons remain than
-   `contenders - 1`, with a regression test.
-2. **A dead player holding the round open.** A dragon that kills the players
-   still inside left `blast_pending` set on the corpse. The round-finish guard
-   waited for that player's blast to resolve, no player could act, and the haul
-   was abandoned. With four always-blasting `rule` players this hit **36 of 60
-   games**. Fixed twice over: the dragon cancels a dead player's blast, and only
-   a player who can still act is allowed to defer the end of the round.
+**The bug: a dead player holding the round open.** A dragon that kills the
+players still inside left `blast_pending` set on the corpse. The round-finish
+guard waited for that player's blast to resolve, no player could act, and the
+haul was abandoned. With four always-blasting `rule` players this hit **36 of
+60 games**; every one of them was being scored 0-0-0-0 and averaged in as a
+draw. Fixed twice over: the dragon cancels a dead player's blast, and only a
+player who can still act is allowed to defer the end of the round.
 
-Every report now prints `games the engine abandoned` in its header and every
-measurement counts it, so the failure can never be invisible again. Re-running
-the old reports with the fix moves numbers that involved blasting: the 3-player
-peek leaderboard for `rule:always` drops from **+1.68 to +1.43**, the blind one
-from **+0.62 to +0.38**, and the peek/never contrast in §5 from +0.70 to +1.37
-against two `rule` seats. An earlier draft of this document also claimed that a
-blasting field compressed the 4-player field into 22% tied top scores; that was
-aborted games being scored as ties. The real effect is 10% → 12%. Withdrawn.
+**The bug I withdrew: an "unwinnable tie-breaker".** An earlier draft of this
+document claimed the tie-break could run out of dragons — that after three
+hauls every dragon might be held by a player, leaving contenders drawing safe
+cards forever. That is wrong, and the reviewer's objection was right: a dragon
+is spent only by being drawn, and a draw *ends the haul*, so at most three of
+the deck's six dragons are gone by the final tie-break, while eliminating
+`contenders - 1` players needs at most four. Measured over 1300 games at 3, 4
+and 5 players with 255 tie-breaks, the tightest state is **exactly three
+dragons for four contenders** — enough, every time, and never one short. What I
+had actually observed was the dead-blast abort above, with the state printed at
+the wrong moment; I wrote it up as a second bug before finding the first one's
+cause.
+
+The engine keeps a guard for that state anyway (top up the deck if the invariant
+is ever broken by a rules change), but it is a guard, not a fix for an observed
+failure: it has never fired, the flag it sets is called
+`tie_breaker_shortage`, and a test asserts the invariant on real games so that a
+future rules change (more players, fewer dragons per backside, a new way to lose
+cards) fails loudly instead of silently.
+
+What both episodes did change is the reporting: every report now prints `games
+the engine abandoned` in its header and every measurement counts it, so an
+aborted game can never be invisible again. Re-running the old reports with the
+dead-blast fix moves numbers that involved blasting: the 3-player peek
+leaderboard for `rule:always` drops from **+1.68 to +1.43**, the blind one from
+**+0.62 to +0.38**, and the peek/never contrast in §5 from +0.70 to +1.37
+against two `rule` seats. An earlier draft also claimed that a blasting field
+compressed the 4-player field into 22% tied top scores; that was aborted games
+being scored as ties. The real effect is 10% → 12%. Withdrawn.
 
 ## 8. n-1 passes or n passes?
 
@@ -440,8 +459,8 @@ honest way to read a table like this.
    problem, not a rules problem. A cheap fix is to seed the league with
    `threat` agents — the reaction policy measured above — so that the value of
    respecting a pending blast shows up in the games the learner plays.
-7. **Fix silent aborts before trusting any benchmark.** Two engine bugs scored
-   whole games as all-zero (§7). Any head-to-head table produced before them is
+7. **Fix silent aborts before trusting any benchmark.** An engine bug scored
+   whole games as all-zero (§7). Any head-to-head table produced before it is
    suspect, and the reports now print the abandoned-game count for exactly this
    reason.
 
