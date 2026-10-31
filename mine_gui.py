@@ -3,22 +3,20 @@
 from __future__ import annotations
 
 import argparse
-import pickle
 import sys
 import tkinter as tk
 from dataclasses import dataclass
-from pathlib import Path
 from tkinter import ttk
-from typing import Callable
-
-import numpy as np
 
 from game_env import (
     BACKSIDE_A, BACKSIDE_B, BACKSIDE_C, DRAGON, DYNAMITE, GEM, LORRY,
-    HAULS_PER_GAME, MineEnv, PASS, PIT_CAGE,
+    MineEnv, PASS, PIT_CAGE,
 )
-from rule_policy import deterministic_policy
-from train_q_learning import select_action, train
+from gui_controller import (
+    GameController,
+    StepResult,
+    agent_policies,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -33,11 +31,10 @@ SPECIAL_ACTION_LABELS = {
 PLAYER_COLORS = ("#f5c451", "#e05a5a", "#4d8fe8", "#55b979", "#f5f5f5")
 BACKSIDE_SYMBOLS = {BACKSIDE_A: "o", BACKSIDE_B: "v", BACKSIDE_C: "~"}
 FRONT_LABELS = {GEM: "GEM", DRAGON: "DRAGON", DYNAMITE: "DYNAMITE"}
-STRATEGIES = ("simple", "training", "random", "cautious", "greedy")
-TRAINING_EPISODES = 1000
-TRAINING_CACHE_VERSION = 2
-TRAINING_CACHE_DIR = Path(__file__).with_name(".training_cache")
+POLICIES = agent_policies()
 BLAST_ACTION_PREFIX = "Blast: "
+# The action space is 28 primitives plus the same 28 "and announce a blast".
+ANNOUNCE_OFFSET = 28
 AUTOPLAY_DELAY_MS = 750
 RESIZE_DEBOUNCE_MS = 100
 
@@ -95,276 +92,6 @@ class Layout:
 
 
 LAYOUT = Layout()
-
-
-# ---------------------------------------------------------------------------
-# Game controller — no Tkinter imports below this line inside the class
-# ---------------------------------------------------------------------------
-
-@dataclass
-class StepResult:
-    """Outcome of advancing the simulation by one atomic step."""
-    message: str = ""
-    game_over: bool = False
-
-
-class GameController:
-    """Owns the MineEnv and encapsulates all game-progression logic."""
-
-    def __init__(self, opponents: int, policy: str, seed: int) -> None:
-        self.opponents = opponents
-        self.policy = policy
-        self.seed = seed
-        self.training_q_table = None
-        self.training_rng = np.random.default_rng(seed)
-        self.env = MineEnv(opponents=opponents, opponent_policy=self._environment_policy())
-        self._shown_displacement_count = 0
-
-    # -- setup -------------------------------------------------------------
-
-    def reset(self, opponents: int, policy: str, seed: int) -> None:
-        self.opponents = opponents
-        self.policy = policy
-        self.seed = seed
-        self.training_rng = np.random.default_rng(seed)
-        self.training_q_table = None
-        self._shown_displacement_count = 0
-        self.env = MineEnv(opponents=opponents, opponent_policy=self._environment_policy())
-        self.env.reset(seed=seed)
-        self._advance_opponents_to_p1()
-
-    def ensure_training_ready(self, progress_callback: Callable[[str], None] | None = None) -> None:
-        if self.policy != "training" or self.training_q_table is not None:
-            return
-        cache_path = self.training_cache_path()
-        if cache_path.exists():
-            with cache_path.open("rb") as cache_file:
-                self.training_q_table = pickle.load(cache_file)
-            return
-        if progress_callback:
-            progress_callback("Training P1 policy...")
-        self.training_q_table = train(
-            TRAINING_EPISODES, self.opponents, "random", self.seed
-        )
-        TRAINING_CACHE_DIR.mkdir(exist_ok=True)
-        with cache_path.open("wb") as cache_file:
-            pickle.dump(self.training_q_table, cache_file)
-
-    def training_cache_path(self) -> Path:
-        return TRAINING_CACHE_DIR / (
-            f"q_table_opponents_{self.opponents}_seed_{self.seed}_"
-            f"episodes_{TRAINING_EPISODES}_v{TRAINING_CACHE_VERSION}.pkl"
-        )
-
-    def _environment_policy(self) -> str:
-        return "random" if self.policy == "training" else self.policy
-
-    def _advance_opponents_to_p1(self) -> None:
-        while self.env.planning_player != 0:
-            _obs, _reward, terminated, _trunc, _info = self.env.step_one_player()
-            if terminated or self.env.players[0].escaped or self.env.players[0].dead:
-                return
-
-    # -- state queries -----------------------------------------------------
-
-    @property
-    def player(self):
-        return self.env.players[0]
-
-    @property
-    def in_tie_breaker(self) -> bool:
-        return bool(self.env.tie_breaker_contenders)
-
-    @property
-    def blast_pending(self) -> bool:
-        p = self.player
-        return p.blast_pending and bool(p.blast_cards)
-
-    def legal_actions(self) -> list[int]:
-        return [i for i, ok in enumerate(self.env.action_mask()) if ok]
-
-    def movement_depth(self) -> int:
-        # Wraps the env's private helper so callers stay decoupled.
-        return self.env._movement_depth(self.player)
-
-    def tie_break_options(self) -> list[tuple[str, int | None, int | None]]:
-        options: list[tuple[str, int | None, int | None]] = []
-        if self.env.cards_remaining:
-            options.append(("deck", None, None))
-        options.extend(
-            ("mine", r, c)
-            for r, row in enumerate(self.env.rows)
-            for c, card in enumerate(row)
-            if card is not None
-        )
-        return options
-
-    # -- test scaffolding --------------------------------------------------
-
-    def setup_tie_break_test(self) -> None:
-        self.env.haul = 3
-        self.env.starting_player = 0
-        self.env.players[0].score = 5
-        self.env.players[1].score = 5
-        for p in self.env.players[2:]:
-            p.score = 0
-        self.env.rows = [[None] * self.env.n_players for _ in range(3)]
-        self.env.rows[0][0] = (GEM, BACKSIDE_A)
-        self.env.rows[0][1] = (DRAGON, BACKSIDE_B)
-        self.env.cards_remaining = [(GEM, BACKSIDE_C)]
-        self.env._begin_tie_breaker()
-
-    def setup_blast_test(self) -> None:
-        """Injects 2 dynamite cards into P1's hand so they can blast immediately."""
-        self.env.players[0].collected_cards = [
-            (DYNAMITE, BACKSIDE_A),
-            (DYNAMITE, BACKSIDE_B),
-        ]
-        self.env.players[0].position = 3
-        self.env.players[0].column = None
-
-    # -- message formatting ------------------------------------------------
-
-    def _consume_displacement_messages(self) -> str:
-        new = self.env.displacement_events[self._shown_displacement_count:]
-        self._shown_displacement_count += len(new)
-        return "".join(
-            f" Player {d + 1} stood on his own card, Player {s + 1} displaced him."
-            for d, s in new
-        )
-
-    def _format_outcome(self, info: dict, reward: float) -> str:
-        outcome = info.get("outcome", "continued")
-        msg = f"Round {info.get('round', self.env.round)}: {outcome}. Reward {reward:+.2f}."
-        dragon_player = info.get("dragon_player")
-        if outcome == "dragon" and dragon_player is not None:
-            msg += f" Player {dragon_player + 1} awakened the dragon."
-        msg += self._consume_displacement_messages()
-        return msg
-
-    # -- blast resolution --------------------------------------------------
-
-    def resolve_player_blast(self, choice_index: int, player_index: int = 0) -> StepResult:
-        player = self.env.players[player_index]
-        if not 0 <= choice_index < len(player.blast_cards):
-            return StepResult("Select one of the three blast cards.")
-        
-        final_haul = self.env.haul == HAULS_PER_GAME
-        chosen = self.env.resolve_blast(player_index, choice_index)
-        player_num = player_index + 1
-        
-        if chosen[0] == DRAGON:
-            if final_haul:
-                return StepResult(
-                    f"Blast choice: DRAGON. Player {player_num} awakened the dragon. Game over.",
-                    game_over=True,
-                )
-            return StepResult(
-                f"Blast choice: DRAGON. Player {player_num} awakened the dragon. Starting the next haul."
-            )
-        return StepResult(f"Blast choice: {FRONT_LABELS[chosen[0]]}. Reward +0.00.")
-
-    # -- action taking -----------------------------------------------------
-
-    def take_player_action(self, action: int, announce_blast: bool) -> StepResult:
-        if action >= self.env.action_space.n or not self.env.action_mask()[action]:
-            return StepResult("That destination is not legal from your current position.")
-
-        # First let any pending opponents move.
-        p = self.player
-        while self.env.planning_player != 0 and not (p.escaped or p.dead):
-            _obs, reward, terminated, _trunc, info = self.env.step_one_player()
-            if terminated:
-                return StepResult(self._format_outcome(info, reward), game_over=True)
-
-        if p.escaped or p.dead:
-            return StepResult("")
-
-        try:
-            _obs, reward, terminated, _trunc, info = self.env.step_one_player(
-                action, announce_blast=announce_blast
-            ) if announce_blast else self.env.step_one_player(action)
-        except ValueError as error:
-            return StepResult(str(error))
-
-        while not terminated and self.env.planning_player != 0:
-            # P1 may have left the mine or died with this action; in that case
-            # its turn never comes again and the loop would spin forever.
-            if p.escaped or p.dead:
-                break
-            _obs, reward, terminated, _trunc, info = self.env.step_one_player()
-
-        return StepResult(self._format_outcome(info, reward), game_over=terminated)
-
-    # -- autoplay / auto step ---------------------------------------------
-
-    def autoplay_choose_action(self) -> int | None:
-        legal = self.legal_actions()
-        if not legal:
-            return None
-        if self.policy == "training" and self.training_q_table is not None:
-            return int(select_action(self.env, self.training_q_table, 0.0, self.training_rng))
-        if self.policy == "simple":
-            return int(deterministic_policy(self.env.player_action_context(0)))
-        if self.policy == "random":
-            return int(self.training_rng.choice(legal))
-        # "cautious" and "greedy" fall through to a safe default until
-        # dedicated heuristics are wired in.
-        if self.player.position in (PIT_CAGE, LORRY) and PASS in legal:
-            return PASS
-        return legal[0]
-
-    def step_one_player_auto(self) -> StepResult:
-        """Advance one player (either P1 via the current policy, or an opponent)."""
-        if self.env.planning_player == 0:
-            action = self.autoplay_choose_action()
-            if action is None and not (self.player.escaped or self.player.dead):
-                return StepResult("")
-            if action is None:
-                _obs, reward, terminated, _trunc, info = self.env.step_one_player()
-            else:
-                _obs, reward, terminated, _trunc, info = self.env.step_one_player(action)
-        else:
-            _obs, reward, terminated, _trunc, info = self.env.step_one_player()
-        return StepResult(self._format_outcome(info, reward), game_over=terminated)
-
-    # -- tie-break ---------------------------------------------------------
-
-    def resolve_tie_break_choice(self, choice_index: int) -> list[StepResult]:
-        """Resolve P1's tie-break choice and any subsequent opponent draws."""
-        options = self.tie_break_options()
-        if not 0 <= choice_index < len(options):
-            return [StepResult("Select a tie-break card source.")]
-
-        results: list[StepResult] = []
-        source, row, column = options[choice_index]
-        results.append(self._tie_break_message(self.env.resolve_tie_breaker(source, row, column)))
-
-        while self.env.tie_breaker_contenders:
-            current = self.env.tie_breaker_contenders[self.env.tie_breaker_turn]
-            if current == 0:
-                break
-            opts = self.tie_break_options()
-            src, r, c = opts[0] if len(opts) == 1 else opts[int(self.env.rng.integers(len(opts)))]
-            results.append(self._tie_break_message(self.env.resolve_tie_breaker(src, r, c)))
-            if results[-1].game_over:
-                break
-        return results
-
-    @staticmethod
-    def _tie_break_message(result: dict) -> StepResult:
-        player_num = result["player"] + 1
-        if result.get("game_over"):
-            return StepResult(
-                f"Player {player_num} drew a dragon and was eliminated from the tie-break. "
-                f"Player {result['winner'] + 1} wins the tie-break. Game over.",
-                game_over=True,
-            )
-        if result["outcome"] == "dragon":
-            return StepResult(
-                f"Player {player_num} drew a dragon and was eliminated from the tie-break."
-            )
-        return StepResult(f"Player {player_num} drew a safe tie-break card.")
 
 
 # ---------------------------------------------------------------------------
@@ -524,9 +251,16 @@ class MineViewer:
     """Interactive visual monitor. Delegates game logic to GameController
     and canvas drawing to MineRenderer."""
 
-    def __init__(self, root: tk.Tk, opponents: int, policy: str, seed: int) -> None:
+    def __init__(
+        self,
+        root: tk.Tk,
+        opponents: int,
+        policy: str,
+        seed: int,
+        all_seats: bool = False,
+    ) -> None:
         self.root = root
-        self.controller = GameController(opponents, policy, seed)
+        self.controller = GameController(opponents, policy, seed, all_seats=all_seats)
         self.autoplay = False
         self.autoplay_job: str | None = None
         self._resize_job: str | None = None
@@ -543,6 +277,7 @@ class MineViewer:
         self.policy_var = tk.StringVar(value=policy)
         self.opponents_var = tk.IntVar(value=opponents)
         self.seed_var = tk.IntVar(value=seed)
+        self.all_seats_var = tk.BooleanVar(value=all_seats)
 
         self._build_controls()
         self._build_scene()
@@ -570,12 +305,14 @@ class MineViewer:
                     textvariable=self.opponents_var).grid(row=0, column=1, padx=4)
         tk.Label(settings, text="Policy", fg="#b7c8cc", bg="#182832",
                  font=ui_font(10)).grid(row=0, column=2, padx=4)
-        ttk.Combobox(settings, textvariable=self.policy_var, values=STRATEGIES,
-                     state="readonly", width=9).grid(row=0, column=3, padx=4)
+        ttk.Combobox(settings, textvariable=self.policy_var, values=POLICIES,
+                     state="readonly", width=18).grid(row=0, column=3, padx=4)
         tk.Label(settings, text="Seed", fg="#b7c8cc", bg="#182832",
                  font=ui_font(10)).grid(row=0, column=4, padx=4)
         ttk.Entry(settings, textvariable=self.seed_var, width=7).grid(row=0, column=5, padx=4)
-        ttk.Button(settings, text="New game", command=self.reset_game).grid(row=0, column=6, padx=(8, 0))
+        ttk.Checkbutton(settings, text="AI in every seat",
+                        variable=self.all_seats_var).grid(row=0, column=6, padx=(10, 0))
+        ttk.Button(settings, text="New game", command=self.reset_game).grid(row=0, column=7, padx=(8, 0))
 
     def _build_scene(self) -> None:
         body = tk.Frame(self.root, bg="#101820", padx=18, pady=14)
@@ -610,6 +347,14 @@ class MineViewer:
         self.autoplay_button.pack(fill="x", pady=(6, 0))
         self.autoplay_step_button = ttk.Button(side, text="Autoplay step", command=self.autoplay_once)
         self.autoplay_step_button.pack(fill="x", pady=(6, 0))
+
+        tk.Label(side, text="AI POLICY", fg="#f5c451", bg="#14242c",
+                 font=ui_font(11, "bold")).pack(anchor="w", pady=(18, 0))
+        self.policy_text = tk.Text(
+            side, height=7, width=25, bg="#0e1a20", fg="#9fd6c0", relief="flat",
+            font=mono_font(9), padx=8, pady=8, state="disabled",
+        )
+        self.policy_text.pack(fill="x", pady=(8, 0))
 
         message_frame = tk.Frame(side, bg="#14242c")
         message_frame.pack(fill="both", expand=True, pady=(18, 0))
@@ -670,6 +415,8 @@ class MineViewer:
                 return
 
     def _action_label(self, action: int) -> str:
+        if action >= ANNOUNCE_OFFSET:
+            return f"{BLAST_ACTION_PREFIX}{self._action_label(action - ANNOUNCE_OFFSET)}"
         if action in SPECIAL_ACTION_LABELS:
             return SPECIAL_ACTION_LABELS[action]
         row, col = divmod(action, 5)
@@ -685,9 +432,10 @@ class MineViewer:
                 opponents=self.opponents_var.get(),
                 policy=self.policy_var.get(),
                 seed=self.seed_var.get(),
+                all_seats=self.all_seats_var.get(),
             )
             self.controller.ensure_training_ready(progress_callback=self._on_training_progress)
-        except (tk.TclError, ValueError) as error:
+        except (tk.TclError, ValueError, FileNotFoundError) as error:
             self._post_message(f"Could not start game: {error}")
             return
         self._update_action_options()
@@ -771,19 +519,13 @@ class MineViewer:
         self._run_single_player_step()
 
     def _run_single_player_step(self) -> None:
-        if self.controller.in_tie_breaker:
-            self._process_results(self.controller.resolve_tie_break_choice(0))
-        elif self.controller.blast_pending:
-            self._process_results([self.controller.resolve_player_blast(0)])
-        else:
-            if self.controller.env.planning_player == 0:
-                chosen = self.controller.autoplay_choose_action()
-                if chosen is not None:
-                    self.action_var.set(chosen)
-                    self.action_menu.set(self._action_label(chosen))
-            self._process_results([self.controller.step_one_player_auto()])
-
+        self._process_results([self.controller.step_one_player_auto()])
         self._update_action_options()
+        choice = self.controller.last_choice
+        if choice is not None and self.controller.last_choice_seat == 0:
+            # Show what the agent actually chose, rather than sampling it twice.
+            self.action_var.set(int(choice.action))
+            self.action_menu.set(self._action_label(int(choice.action)))
         self.draw_scene()
 
     # -- result handling ---------------------------------------------------
@@ -809,6 +551,7 @@ class MineViewer:
         top_back = BACKSIDE_SYMBOLS[env.cards_remaining[0][1]] if env.cards_remaining else "-"
         self.stack_var.set(f"Stack: {len(env.cards_remaining)}  |  top back: {top_back}")
         self._update_player_list()
+        self._update_policy_panel()
 
     def _update_player_list(self) -> None:
         env = self.controller.env
@@ -837,6 +580,31 @@ class MineViewer:
             used = ", ".join(BACKSIDE_SYMBOLS[b] for b in env.used_blast_backsides)
             self.players_text.insert("end", f"used cards: {used}\n")
         self.players_text.configure(state="disabled")
+
+    def _update_policy_panel(self) -> None:
+        """Top action probabilities for the neural seat (feedback aid)."""
+        self.policy_text.configure(state="normal")
+        self.policy_text.delete("1.0", "end")
+        snapshot = self.controller.policy_snapshot(limit=6)
+        if not snapshot and not self.controller.is_neural:
+            self.policy_text.insert("end", "scripted policy\n(no network)")
+        elif not snapshot:
+            self.policy_text.insert("end", "no decision pending")
+        else:
+            chosen = self.controller.last_choice
+            chosen_action = int(chosen.action) if chosen is not None else None
+            for action, probability in snapshot:
+                marker = ">" if action == chosen_action else " "
+                self.policy_text.insert(
+                    "end",
+                    f"{marker} {probability * 100:5.1f}%  {self._action_label(action)}\n",
+                )
+            if any(
+                self.controller.env.players[seat].blast_pending
+                for seat in range(self.controller.env.n_players)
+            ):
+                self.policy_text.insert("end", "\nblast pending\n")
+        self.policy_text.configure(state="disabled")
 
     # -- action menu -------------------------------------------------------
 
@@ -888,15 +656,27 @@ class MineViewer:
 def main() -> None:
     parser = argparse.ArgumentParser(description="View MineEnv player progression.")
     parser.add_argument("--opponents", type=int, choices=(2, 3, 4), default=3)
-    parser.add_argument("--policy", choices=STRATEGIES, default="simple")
+    parser.add_argument(
+        "--policy",
+        choices=POLICIES,
+        default="simple",
+        help="scripted policy, or neural:<checkpoint> from checkpoints/",
+    )
     parser.add_argument("--seed", type=int, default=7)
+    parser.add_argument(
+        "--all-seats",
+        action="store_true",
+        help="let the chosen policy (usually neural:<checkpoint>) play every seat",
+    )
     parser.add_argument("--blast-test", action="store_true",
                         help="open directly with enough dynamite to blast")
     parser.add_argument("--tie-break-test", action="store_true",
                         help="open directly at a tie-break scenario")
     args = parser.parse_args()
     root = tk.Tk()
-    viewer = MineViewer(root, args.opponents, args.policy, args.seed)
+    viewer = MineViewer(
+        root, args.opponents, args.policy, args.seed, all_seats=args.all_seats
+    )
     if args.tie_break_test:
         viewer.setup_tie_break_test()
     elif args.blast_test:

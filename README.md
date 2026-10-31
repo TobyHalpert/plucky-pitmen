@@ -116,6 +116,33 @@ python mine_gui.py --policy random
 
 Use **Take action** to choose the learner's destination, or **Autoplay** to run the simulation automatically. The viewer shows card backs only; opponent gems and dynamite remain hidden.
 
+### Watching the trained agents
+
+Any checkpoint in `checkpoints/` shows up in the **Policy** dropdown as
+`neural:<name>`, and the autoplay driver then hands every decision to the
+network — including whether to announce a blast and which of the three blast
+cards to keep (the scripted policies never blast, so before this the viewer
+could not show that part of the game at all).
+
+```powershell
+# the 4-player self-play learner against three rule bots
+python mine_gui.py --opponents 3 --policy neural:selfplay4
+
+# ... or the same network in every seat, which is the clearest view of its habits
+python mine_gui.py --opponents 3 --policy neural:selfplay4 --all-seats
+```
+
+The **AI POLICY** panel lists the network's top actions for Player 1 with their
+probabilities, marking the action it actually took, so a surprising move can be
+traced back to the distribution that produced it. It is empty for scripted
+policies, during a tie-break, and while a blast is waiting on a card.
+
+What to look for, given the measurements in [BALANCE.md](BALANCE.md): it should
+rarely blast (0.02-0.03 per game), it should walk to a pit cage as soon as it
+holds loot, and it should *not* visibly change its mind when an opponent
+announces a blast (§6) — that missing reaction is the finding, not a bug in the
+viewer.
+
 Try each opponent model:
 
 ```powershell
