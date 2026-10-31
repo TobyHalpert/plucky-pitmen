@@ -115,35 +115,50 @@ at **−0.07 points** in total — statistically nothing. The moves the sampler 
 were worth, on average, exactly what the moves it passed over were worth. What
 wrecked this game was not a bias but a variance: one draw out of 72.
 
-### 3. Displacement is the real blind spot
+### 3. Displacement looks like the blind spot — and is not worth exploiting
 
 The sharpest move in this game is not a dig. It is a move onto a card an
 opponent is standing on in that opponent's own column: the rival goes to a pit
 cage, and everyone in a cage leaves at the end of the planning phase, so the
 rival is out of the haul — keeping what it already holds, collecting nothing
 more — and the card it was standing on is yours. That is why the front row is a
-dangerous place to park: the rival you eject there has usually collected
-nothing yet, and the gem you take is the one you were both after.
+dangerous place to park: the rival you eject there has usually collected nothing
+yet, and the gem you take is the one you were both after.
 
 * In twenty seeds there were **495 positions where a displacement was legal**.
   The best one was the network's first choice **zero times**; mean probability
-  **2%**.
-* The `rule` bot takes it in **93%** of those positions.
+  **2%**. The hand `rule` policy takes it far more eagerly — though in
+  rule-vs-rule games the chance never arises, because `rule` barely digs its own
+  column (2.6% of its decisions), so nobody is ever standing where it can be
+  pushed.
 * In seed 7 the two times it happened, both off the sampler's tail (13% and 4%),
   it was the best move on the board by re-rolled value: **+1.07** over pass and
   +0.52 over the cage for P4; **+1.57** over pass and +1.37 over the cage for
   P3. Together they decided who won two of the three hauls.
+* The other half of the blind spot is that the network is easy to displace. In
+  twenty seeds the probability it puts on a gem in its own column is **18% when
+  a rival can still push it and 19% when it cannot**, i.e. it does not price the
+  risk at all. And the risk is not rare: **1.15 pushes a game**, with **18 of 23
+  victims holding no gems**.
 
-It cuts both ways, of course: eject a rival who is already carrying gems and you
-have just walked them out of the mine safely, which can hand them the haul.
-The other half of the blind spot is that the network is easy to displace: it
-parks on its own column's front-row gem whenever that is the best-looking card
-(P3 in haul 1, P4 in haul 3), which is exactly the position that hands a rival
-a free ejection. `features.rival_can_push` already encodes this for the *bait*
-rule; the policy does not act on it.
+So P4's push and P3's parking both look like the two ends of the sharpest
+mechanic in the game. `probe_displacement.py` prices them over 1,000 seed-paired
+games per arm (four seats, one arm in seat 1):
 
-2% against 93% means at least one of the two is badly calibrated. That is worth a
-probe before it is worth a rule.
+| arm | win | score | pushes/game | pushed off/game |
+| :-- | --: | --: | --: | --: |
+| four networks | 24.1% | +1.09 | 0.20 | 0.21 |
+| **pusher**: takes every displacement the hand rule would | 24.3% | +0.98 | 1.62 | 0.10 |
+| **cautious**: never parks on a pushable own-column card, empty-handed | 20.2% | +0.83 | 0.31 | **0.04** |
+| **front row only** | 21.7% | +0.90 | 0.28 | 0.14 |
+
+Eight times the pushes buys **+0.2pp** of win rate (se 1.9). Cutting its own
+exposure by five costs **−3.9pp** (se 1.8) — and even the narrow "do not park in
+the front row empty-handed" costs 2.4pp. The mechanic is a tax on whoever parks,
+and parking is what collecting your own column costs; the network's 2% is a
+correctly low price, not an unexploited edge. **Nothing to fix here.** What *is*
+worth doing is keeping the caveat alive: the league pushes 0.2 times a game, and
+against a field that pushed ten times as often the answer could change.
 
 ### 4. The way it actually lost the game was one 36% sample
 
@@ -180,11 +195,11 @@ held more than one dynamite in this game.
    having before the next round of feedback: `analyze_game.py --greedy` already
    replays any seed that way, and the same seed then plays a visibly different
    game.
-2. **Displacement.** A paired probe — a seat that seeks displacements against
-   three current nets — is the cheap way to find out whether 2% or 93% is closer
-   to the truth. If seeking it is worth points, the mask/feature is already there
-   (`action_features` bit 19) and it is a training problem, not a representational
-   one.
+2. **Nothing on displacement.** It reads like the sharpest thing in the game and
+   it is worth nothing either way (`probe_displacement.py`, 1,000 paired games
+   per arm): a seat that takes every push the hand rule offers wins +0.2pp, and a
+   seat that refuses to stand where it can be pushed loses 2.4–3.9pp. The
+   network's 2% is not an unexploited edge.
 3. **The gem-versus-raid trade.** I would not touch it. The net already takes its
    own gem six times more often than the hand rule does, and the paired numbers
    are a wash.

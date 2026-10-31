@@ -253,6 +253,7 @@ uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
 | `probe_lorry.py` | how often a seat parks on its lorry, and how often a haul is lost to a stand-off because every seat did |
 | `probe_escape.py` | escape rules side by side: how often a haul is thrown away by a herd of empty-handed cage moves, and what each variant is worth |
 | `analyze_game.py` | one game move by move: what each seat knew, the probability the network put on the move, and what the move was worth from there |
+| `probe_displacement.py` | is a push worth anything — to the seat that pushes, or to the one that parks where it can be pushed? paired arms over a 1,000-game league |
 | `migrate_checkpoint.py` | widen a checkpoint saved before a feature was added (zero columns, behaviour unchanged) |
 | `profile_agent.py` | what a checkpoint actually does: digs, front-row digs, passes, retreats, blasts, escapes — side by side for two checkpoints |
 | `gui_controller.py` | Tk-free viewer logic: moves, blasts, tie-breaks, the AI POLICY snapshot |

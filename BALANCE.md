@@ -361,6 +361,52 @@ planning decision as a commitment — and the one genuinely losing variant, the
 dig nobody can punish, is now removed from the action space instead of being
 argued about.
 
+### Displacement is a tax on the seat that parks, not a weapon
+
+The bait above only works because a push is cheap for the pusher, so the obvious
+next question is whether it is cheap for the *victim*. In the viewer's seed 7 it
+was not: P3 parked on its own front-row gem with three rivals deeper than it,
+P4 pushed it off four decisions later at a 13% sample, and P3 — holding nothing
+— left the mine with nothing. That is the whole haul gone, and it looks like the
+kind of mistake a policy should not make.
+
+Over twenty four-net games it is not a rare accident: **1.15 pushes a game**, and
+**18 of the 23 victims were holding no gems** (a push always parks the victim in
+a pit cage, i.e. safely out of the mine, so it only *banks* anything for a seat
+that has already collected). The network does not price any of it:
+
+| measurement, twenty four-net games | value |
+| :-- | --: |
+| probability on its own-column gem, while a rival could still push it | 18% (615 options) |
+| ...with no rival deep enough to push it | 19% (85 options) |
+| times the net took a displacement when one was on offer | 2% (0 of 495 first choices) |
+
+So both halves are blind: the net neither pushes nor steps around the risk. The
+question is whether either blindness costs points. 1,000 seed-paired games per
+arm, four seats, temperature 0.7, one arm in seat 1 (`probe_displacement.py`):
+
+| arm | win | score | pushes/game | pushed off/game | paired difference |
+| :-- | --: | --: | --: | --: | :-- |
+| four networks | 24.1% | +1.09 | 0.20 | 0.21 | — |
+| **pusher**: takes every displacement the hand rule would | 24.3% | +0.98 | 1.62 | 0.10 | +0.2pp (se 1.9), −0.11 pts (se 0.10) |
+| **cautious**: never ends a phase on a pushable own-column card, empty-handed | 20.2% | +0.83 | 0.31 | **0.04** | **−3.9pp (se 1.8), −0.26 pts (se 0.09)** |
+| **front row only** | 21.7% | +0.90 | 0.28 | 0.14 | **−2.4pp (se 1.8), −0.19 pts (se 0.09)** |
+
+Eight times the pushes buys nothing; cutting its own exposure by five buys
+*worse* results. Both ends of the mechanic are a wash at best, because a push
+hands the victim a safe exit with whatever it holds — and if it holds nothing it
+was going to lose the haul anyway — while the pusher spends a turn to take a card
+it could usually take by waiting. Parking on your own front-row card is not a
+blunder: it is what collecting your own column costs.
+
+Two caveats, both about the field rather than the rules. The hand `rule` bot
+never even offers the opportunity — it digs its own column on 2.6% of its
+decisions, so in ten rule-vs-rule games **not one push was available** — which is
+why no table in this file had shown the mechanic's price until now. And the nets
+push at 0.2 a game, so a league that pushes ten times as often might teach the
+cautious side to be worth something; the arms above say it is not worth anything
+against the population that exists.
+
 ### Backsides have to be read
 
 The trap above pays only against a table that watches the *player* instead of
@@ -1117,7 +1163,12 @@ honest way to read a table like this.
    problem, not a rules problem. A cheap fix is to seed the league with
    `threat` agents — the reaction policy measured above — so that the value of
    respecting a pending blast shows up in the games the learner plays.
-7. **Fix silent aborts before trusting any benchmark.** An engine bug scored
+7. **Do not chase displacement.** It reads like the sharpest move in the game —
+   eject a rival off its own card and take it — and it is worth nothing: eight
+   times the pushes (1.62 vs 0.20 a game) move the win rate by +0.2pp, and
+   refusing to stand where you can be pushed costs 2.4–3.9pp (see "Displacement
+   is a tax on the seat that parks").
+8. **Fix silent aborts before trusting any benchmark.** An engine bug scored
    whole games as all-zero (§7). Any head-to-head table produced before it is
    suspect, and the reports now print the abandoned-game count for exactly this
    reason.
