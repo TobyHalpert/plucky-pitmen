@@ -44,10 +44,17 @@ from train_q_learning import select_action, train
 
 FRONT_LABELS = {GEM: "GEM", DRAGON: "DRAGON", DYNAMITE: "DYNAMITE"}
 SCRIPTED_STRATEGIES = ("simple", "training", "random", "cautious", "greedy")
-# The rule bot's movement, but it cashes in every dynamite pair it can. Blasts
-# are rare in self-play (the learner seldom holds two dynamite), so this is the
-# only way to watch the mechanic — and the ~50% chance that it wakes the dragon.
+# The rule bot's movement, but a scripted blast trigger. Blasts are rare in
+# self-play (the learner seldom holds two dynamite), so these are the only seats
+# that can be watched blasting — and the ~45% chance that it wakes the dragon.
+# ``blaster:trap`` is the "a dragon is waiting for me anyway" rule from
+# BALANCE.md §5, kept in the viewer so it can be watched losing too.
 BLAST_STRATEGY = "blaster"
+BLAST_STRATEGIES = {
+    BLAST_STRATEGY: "always",
+    "blaster:trap": "trap",
+    "blaster:behind": "behind",
+}
 TRAINING_EPISODES = 1000
 TRAINING_CACHE_VERSION = 2
 TRAINING_CACHE_DIR = Path(__file__).with_name(".training_cache")
@@ -72,7 +79,7 @@ def agent_policies(directory: Path | None = None) -> list[str]:
     """Policy names for the viewer's dropdown: scripted ones plus checkpoints."""
     return (
         list(SCRIPTED_STRATEGIES)
-        + [BLAST_STRATEGY]
+        + list(BLAST_STRATEGIES)
         + [f"{NEURAL_PREFIX}{path.stem}" for path in available_checkpoints(directory)]
     )
 
@@ -182,10 +189,12 @@ class GameController:
     def _build_agents(self) -> None:
         """One agent per seat this controller decides for; ``None`` = env policy."""
         self.agents = [None] * self.env.n_players
-        if self.policy == BLAST_STRATEGY:
+        if self.policy in BLAST_STRATEGIES:
             for seat in range(self.env.n_players if self.all_seats else 1):
                 self.agents[seat] = make_scripted_agent(
-                    "rule", seed=self.seed + 101 * seat, blast="always"
+                    "rule",
+                    seed=self.seed + 101 * seat,
+                    blast=BLAST_STRATEGIES[self.policy],
                 )
             return
         if not self.is_neural:

@@ -374,13 +374,47 @@ class ThreatAgent(Agent):
         return preferred_blast_choice(cards, ctx)
 
 
+def visible_dragon_ahead(ctx: PlayerActionContext) -> tuple[int, int] | None:
+    """A dragon the player can see in its own column, if it can still be forced onto it.
+
+    Fronts in a player's own colour column are visible to that player, so a
+    dragon there is known. Rows below the figure can never be dug again (a move
+    must go towards the lorries), so only rows above the current position count.
+    Returns ``(row, backside)`` — the backside matters: a dragon known to be in
+    the mine is one dragon of that set that is *not* in the draw pile.
+    """
+    column = ctx.player_index
+    depth = _movement_depth(ctx)
+    for row in range(min(depth, len(ctx.public_rows))):
+        cards = ctx.public_rows[row]
+        if column >= len(cards):
+            continue
+        entry = cards[column]
+        if entry is not None and entry[0] == DRAGON:
+            return row, int(entry[1])
+    return None
+
+
 def should_blast(mode: str, ctx: PlayerActionContext) -> bool:
     """Shared blast heuristic for scripted agents.
 
     ``never``  - the baseline rule policy never blasts.
     ``rich``   - blast once two gems are safe in hand.
     ``always`` - blast whenever two dynamite are available.
+    ``trap``   - blast when a dragon is known to be waiting in the player's own
+                 column, i.e. sitting still is a losing move anyway.
+    ``behind`` - blast when another player is ahead on gems.
     """
+    if mode in ("never", "", None):
+        return False
+    if not owns_dynamite_pair(ctx):
+        return False
+    if not _card_actions(ctx):
+        return False
+    if mode == "trap":
+        return visible_dragon_ahead(ctx) is not None
+    if mode == "behind":
+        return any(opponent.score > ctx.own_score for opponent in ctx.opponents)
     if mode in ("never", "", None):
         return False
     if not owns_dynamite_pair(ctx):

@@ -318,7 +318,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--pass-rule", choices=("n-1", "n"), default="n-1")
     parser.add_argument(
         "--league-blast-mode",
-        choices=("never", "rich", "always"),
+        choices=("never", "rich", "always", "trap", "behind"),
         default="rich",
         help="how often a scripted league opponent blasts, when it does blast",
     )

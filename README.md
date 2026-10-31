@@ -121,10 +121,15 @@ Use **Take action** to choose the learner's destination, or **Autoplay** to run 
 Any checkpoint in `checkpoints/` shows up in the **Policy** dropdown as
 `neural:<name>`, and the autoplay driver then hands every decision to the
 network — including whether to announce a blast and which of the three blast
-cards to keep. `blaster` is the rule bot's movement with the opposite blast
-policy (it cashes in every dynamite pair it can), which is the only way to see
-the mechanic on screen: the trained learner fires a blast about once every
-thirty games.
+cards to keep. The `blaster*` policies are the rule bot's movement with a fixed
+blast trigger, which is the only way to see the mechanic on screen: the trained
+learner fires a blast about once every thirty games.
+
+| policy | blasts when |
+| :-- | :-- |
+| `blaster` | every dynamite pair it can cash in |
+| `blaster:trap` | it can see a dragon in its own column, still ahead of it |
+| `blaster:behind` | another player is ahead on gems |
 
 ```powershell
 # the 4-player self-play learner against three rule bots
@@ -136,9 +141,11 @@ python mine_gui.py --opponents 3 --policy neural:selfplay4 --all-seats
 # play the argmax instead of sampling at temperature 0.7 (what the benchmarks do)
 python mine_gui.py --opponents 3 --policy neural:selfplay4 --deterministic
 
-# ... and a baseline that really does blast, for comparison
+# ... and baselines that really do blast, for comparison
 python mine_gui.py --opponents 3 --policy blaster
 python mine_gui.py --opponents 3 --policy blaster --all-seats
+# the "a dragon is waiting for me anyway" rule, which measures *worse* (§5)
+python mine_gui.py --opponents 3 --policy blaster:trap --all-seats
 ```
 
 The **AI POLICY** panel lists the network's top actions for Player 1 with their
@@ -187,6 +194,7 @@ uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
 | `evaluate_balance.py` | benchmarks, pairwise dominance, luck analysis, markdown report |
 | `analyze_blasts.py` | is a blast worth it, does the learner threaten, does it react, and is the threat real |
 | `probe_blast_value.py` | what a single blast is worth from a real position (forked rollouts), and whether backside knowledge improves the blind choice |
+| `probe_blast_strategy.py` | is "blast while a dragon is waiting for me" a good rule? paired arms over the blast trigger and the keeper choice |
 | `gui_controller.py` | Tk-free viewer logic: moves, blasts, tie-breaks, the AI POLICY snapshot |
 | `mine_gui.py` | the Tk viewer itself |
 

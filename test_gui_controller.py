@@ -317,3 +317,26 @@ def test_every_seat_neural_finishes_across_seeds(tiny_net):
         steps = play_to_the_end(controller)
         assert steps > 0
         assert controller.env.game_finished
+
+
+def test_the_watchable_blast_rules_all_finish_and_trap_blasts_less():
+    """"Blast when a dragon is waiting for me" must be watchable, not a hang.
+
+    It is a losing rule (BALANCE.md §5), which is exactly why the viewer offers
+    it: the announced counts should sit between never and always.
+    """
+    announced = {}
+    for policy in ("blaster:behind", "blaster:trap", "blaster"):
+        announced[policy] = 0
+        for seed in range(4):
+            controller = GameController(3, policy, seed=seed)
+            controller.reset(3, policy, seed=seed)
+            for _ in range(4000):
+                result = controller.step_one_player_auto()
+                if controller.last_choice is not None and controller.last_choice.announce_blast:
+                    announced[policy] += 1
+                if result.game_over:
+                    break
+            else:  # pragma: no cover - the driver must terminate
+                raise AssertionError("the game did not finish")
+    assert announced["blaster"] > announced["blaster:trap"] > 0

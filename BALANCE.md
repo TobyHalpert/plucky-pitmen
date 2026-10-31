@@ -312,6 +312,70 @@ collected cards) barely move the posterior for three cards off the top of the
 pile, and you choose **before** looking. The ~40–50% risk of ending the haul is
 what the blast costs, and it is the same either way.
 
+### Testing "blast while a dragon is waiting for me"
+
+The most natural reading of a blast — *two dynamite are dead cards, a known
+dragon in my own column makes staying put a losing move anyway, so cash them in*
+— was implemented and measured rather than argued about.
+`probe_blast_strategy.py` keeps the rule bot's movement in every seat and varies
+only the blast trigger (plus, in the second table, the keeper choice), 600 games
+per arm, paired seeds, printed rule, committed blasts so nothing is cancelled:
+
+| trigger | blasts / game | gems behind at the blast | woke the dragon | margin vs 3 × rule | paired vs never blasting |
+| :-- | --: | --: | --: | :-- | :-- |
+| never blasting | 0.00 | — | — | +0.21 (0.13) | — |
+| **known dragon ahead in my own column** | 0.64 | -0.8 (40% behind) | 164/385 (43%) | -0.08 (0.12) | **-0.29 (0.14)** |
+| behind on gems | 0.43 | -3.0 (100% behind) | 123/258 (48%) | +0.20 (0.13) | -0.02 (0.10) |
+| always (any dynamite pair) | 0.91 | -0.7 (39% behind) | 252/545 (46%) | +0.01 (0.13) | -0.21 (0.15) |
+
+The premise about the *cost* of holding dynamite is right, and it is in the
+table: a seat that is about to blast is on average **0.8 gems behind** the
+leader, and when the trigger is "somebody is ahead" it is 3.0 gems behind and
+behind in 100% of the cases. Two dynamite really are dead weight. What the
+numbers do not support is that a blast converts that deficit into points: from
+the same behind-on-gems positions it is worth **-0.02** in expectation.
+
+Waiting for a known dragon makes blasting **worse**, not better. A known dragon
+is a free move you were about to make anyway: you walk around it, and a blast
+does not spare you the card you are standing on, while the 43% chance of ending
+the haul is paid in full. Blasting *because you are behind* is a wash — an
+earlier 200-game sample put it at +0.36 and it collapsed to -0.02 at 600 games,
+which is why these arms are paired and re-run before anything is written down.
+
+The second half of the idea, that keeping cards of a *different* backside cuts
+the risk, does not just fail to help — it is 48% against 45% for deliberately
+keeping the *same* backside, i.e. noise around the same coin (trap trigger, same
+600-game setup, 376-385 blasts per row):
+
+| keepers | blasts / game | woke the dragon | margin vs 3 × rule |
+| :-- | --: | --: | :-- |
+| backside risk (default) | 0.64 | 164/385 (43%) | -0.08 (0.12) |
+| **different backside than the known dragon** | 0.63 | 180/376 (**48%**) | -0.18 (0.12) |
+| same backside as the known dragon | 0.63 | 171/380 (45%) | -0.09 (0.12) |
+| at random | 0.63 | 174/380 (46%) | -0.16 (0.12) |
+
+A dragon you can see is one card you know about; the other 29 in the pile do not
+care which backside you name. Each backside carries two dragons in ten, so the
+backside of a card tells you nothing about whether it *is* a dragon — the only
+information a blast-keeper can use, and it is not there to use.
+
+And the premise underneath the whole idea — *if a dragon is waiting in my column
+I am losing anyway* — is not true at these tables. In **34,137** decisions where
+a seat could see a dragon still ahead of it in its own column (13,986 of them
+while holding a dynamite pair), the same player also had, on those very states:
+
+| a way out | share of those decisions |
+| :-- | --: |
+| leave on the lorry | 100.0% |
+| dig another column | 99.8% |
+| retreat to a pit cage | 81.5% |
+| pass | 53.8% |
+
+A known dragon is a card to walk around, not a wall. That is why paying a 43%
+chance of ending the haul to "use up" two dynamite is a loss rather than a
+rescue — and it is also the honest answer to *why does the AI not blast*: there
+is nothing there to rescue it from.
+
 So why 0.03? Two measured reasons, and neither is a judgement about that
 trade-off.
 
@@ -584,6 +648,9 @@ python -m pip install -r requirements.txt
 
 # what a single blast is worth, and whether backside knowledge helps the choice
 python probe_blast_value.py --games 150
+
+# is "blast while a dragon is waiting for me" a good rule? (triggers, paired seeds)
+python probe_blast_strategy.py --games 600
 
 # the two controls that make the leaderboard honest
 python evaluate_balance.py --agents rule,greedy,random,cautious,rusher,leaver,checkpoints/selfplay.npz --games 300 --out reports/balance_default_rules.md

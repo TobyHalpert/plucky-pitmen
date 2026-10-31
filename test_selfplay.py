@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+
 import numpy as np
 import pytest
 
@@ -21,7 +23,16 @@ from features import (
     state_action_matrix,
     state_features,
 )
-from game_env import DYNAMITE, FRONT_UNKNOWN, GEM, LORRY, PASS, PIT_CAGE, MineEnv
+from game_env import (
+    DRAGON,
+    DYNAMITE,
+    FRONT_UNKNOWN,
+    GEM,
+    LORRY,
+    PASS,
+    PIT_CAGE,
+    MineEnv,
+)
 from learning import Decision, PolicyNet, compute_returns
 from selfplay import play_game, play_series
 
@@ -612,3 +623,86 @@ def test_threat_agent_retreats_when_a_blast_is_pending():
             break
         env.step_one_player(PASS, force_action=True)
     assert checked, "no decision with a reachable pit cage was found"
+
+
+def replaced(ctx, **changes):
+    return dataclasses.replace(ctx, **changes)
+
+
+def _trap_context(*, dragon_row: int | None, own_row: int = 5, opponents=()):
+    """A 4-seat context with an own-column dragon at ``dragon_row``."""
+    from game_env import GEM, PlayerActionContext
+
+    rows = []
+    for row in range(7):
+        cells = []
+        for column in range(4):
+            front = GEM if column == 0 else None
+            if dragon_row is not None and row == dragon_row and column == 0:
+                front = DRAGON
+            cells.append((front, 1) if front is not None else None)
+        rows.append(tuple(cells))
+    return PlayerActionContext(
+        player_index=0,
+        legal_actions=(own_row * 4 + 0,),
+        public_rows=tuple(rows),
+        private_cards=(),
+        own_blast_cards=(),
+        own_score=0,
+        own_position=own_row,
+        own_column=0,
+        own_cage_index=None,
+        own_blast_pending=False,
+        opponents=tuple(opponents),
+        used_blast_backsides=(),
+        haul=0,
+        round=0,
+        starting_player=0,
+        n_players=4,
+        cards_remaining_in_deck=10,
+        displacement_events=(),
+        tie_breaker_contenders=(),
+    )
+
+
+def test_visible_dragon_ahead_only_counts_rows_still_ahead_of_the_figure():
+    from agents import visible_dragon_ahead
+
+    assert visible_dragon_ahead(_trap_context(dragon_row=1)) == (1, 1)
+    # Below the figure you can never dig again, so it is not a "known ahead".
+    assert visible_dragon_ahead(_trap_context(dragon_row=6)) is None
+    assert visible_dragon_ahead(_trap_context(dragon_row=None)) is None
+
+
+def test_trap_blast_mode_needs_a_dynamite_pair_and_a_known_dragon_ahead():
+    from agents import should_blast
+
+    pair = ((DYNAMITE, 1), (DYNAMITE, 1), (GEM, 1))
+    assert not should_blast("trap", _trap_context(dragon_row=1))  # no dynamite pair
+    assert should_blast("trap", replaced(_trap_context(dragon_row=1), private_cards=pair))
+    # A dragon already behind the figure is not a reason to blast.
+    assert not should_blast("trap", replaced(_trap_context(dragon_row=6), private_cards=pair))
+
+
+def test_behind_blast_mode_needs_an_opponent_in_front():
+    from agents import should_blast
+    from game_env import OpponentPublicView
+
+    armed = replaced(
+        _trap_context(dragon_row=None),
+        private_cards=((DYNAMITE, 1), (DYNAMITE, 1)),
+    )
+    assert not should_blast("behind", armed)
+    rival = OpponentPublicView(
+        player_index=1,
+        position=4,
+        column=1,
+        cage_index=None,
+        escaped=False,
+        dead=False,
+        score=3,
+        collected_backsides=(),
+        card_count=3,
+        blast_pending=False,
+    )
+    assert should_blast("behind", replaced(armed, opponents=(rival,)))
