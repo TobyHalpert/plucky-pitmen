@@ -202,13 +202,16 @@ def _can_displace(ctx: PlayerActionContext, row: int, column: int) -> bool:
 
 
 def _find_displacement_raid(
-    ctx: PlayerActionContext, legal_actions: list[int]
+    ctx: PlayerActionContext, legal_actions: list[int], *, trust_sitter: bool = True
 ) -> int | None:
     """Find a raid on an opponent sitting on a known/inferred gem.
 
-    A player who sits stably on their own home column has effectively
-    revealed the card is safe (they would not sit on a dragon). We can
-    steal that card by displacement and knock them back to the pit cage.
+    With ``trust_sitter`` the policy treats a player who sits stably on their
+    own home column as having revealed that the card is safe — a behavioural
+    inference, not a reading of the backside. ``trust_sitter=False`` is the
+    backside-honest policy: the only evidence is the backside and the cards
+    already known off it, so a sitter on a fresh backside is raided only when
+    that backside's diluted dragon risk is low.
     """
     my_column = ctx.player_index
     best_raid: int | None = None
@@ -242,10 +245,14 @@ def _find_displacement_raid(
                 is_gem = True
                 confidence = 1.0
         else:
-            # Inference: occupant sits stably on their own column, so it
-            # is very unlikely a dragon.
             dragon_risk = _estimate_dragon_risk(ctx, card_entry[1])
-            adjusted_risk = dragon_risk * 0.1
+            if trust_sitter:
+                # Behavioural inference: the occupant sits stably on their own
+                # column, so by assumption the card is not a dragon.
+                adjusted_risk = dragon_risk * 0.1
+            else:
+                # Read the backside and nothing else.
+                adjusted_risk = dragon_risk
             if adjusted_risk < 0.15:
                 is_gem = True
                 confidence = 1.0 - adjusted_risk
@@ -270,8 +277,16 @@ def _find_displacement_raid(
 # ----------------------------------------------------------------------
 
 
-def deterministic_policy(ctx: PlayerActionContext) -> int:
-    """Choose a legal action from a cheat-safe context."""
+def deterministic_policy(
+    ctx: PlayerActionContext, *, trust_sitter: bool = True
+) -> int:
+    """Choose a legal action from a cheat-safe context.
+
+    ``trust_sitter`` decides how a rival standing quietly on its own column is
+    read. ``True`` (the historical baseline) infers "safe, so steal it";
+    ``False`` reads only the backside, so a fresh backside stays too risky to
+    raid no matter how confident the rival looks.
+    """
     original_legal_actions = list(ctx.legal_actions)
 
     if not original_legal_actions:
@@ -329,7 +344,9 @@ def deterministic_policy(ctx: PlayerActionContext) -> int:
 
     # --- 2.5. DISPLACEMENT RAID (STEAL KNOWN/INFERRED GEMS) ---
     if not must_escape and not signaled_threat:
-        raid_action = _find_displacement_raid(ctx, legal_actions)
+        raid_action = _find_displacement_raid(
+            ctx, legal_actions, trust_sitter=trust_sitter
+        )
         if raid_action is not None:
             return int(raid_action)
 

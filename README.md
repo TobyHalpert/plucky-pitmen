@@ -4,6 +4,13 @@ This project turns **Plucky Pitmen** into a Gymnasium environment for testing st
 
 **Feel free to contribute!** I appreciate your feedback.
 
+**Is the game balanced?** Mostly yes, and the interesting part is *why* it is
+hard to measure: leaving the mine early looks dominant against fixed bots, but
+is worth exactly zero against a player who collects loot and then leaves. The
+measurements, the confidence intervals and the reproduction commands are in
+**[BALANCE.md](BALANCE.md)**; the agents that produced them are in this
+repository and can play any of the rule variants.
+
 ## Rules
 
 The winner of a haul is the player who **leaves the mine with the most gems**.
@@ -64,6 +71,7 @@ A haul **ends**
 *   if only one player remains in the mine after the execution phase. This player leaves the mine automatically.
 *   if a complete row cannot be formed after an execution phase. The remaining players leave the mine automatically.
 *   if there are no treasures left in the mine.
+*   if **all players still in the mine stand on their lorry** at the end of a planning phase. Standing on a lorry collects nothing, so such a haul can never progress: the haul ends and the players still inside leave the mine automatically, taking part in the scoring with the loot they are holding (just like "only one player remains" or "a full row cannot be formed").
 
 Now, the **scoring** takes place:
 *   Players who left the mine reveal their collected cards. The player with the **most gems** receives **+3 points** (+4 points in the final haul). If only one player has left the mine, they receive these points even without having any gems. In the event of a **tie** for gems, each player with the highest number of gems receives **+1 point**.
@@ -87,6 +95,10 @@ In the event of a **tie**, the contenders for victory take turns - starting with
 * Is there a dominant strategy? Is blasting too weak? Should the victory points be tweaked?
 * Would the game be better with n-1 passes instead of n passes?
 
+These are not rhetorical any more: `train_selfplay.py` and
+`evaluate_balance.py` turn them into experiments (see
+[Self-improving AI players](#self-improving-ai-players-self-play)).
+
 ## Setup
 
 Use a Python 3.11+ interpreter in VS Code, then run:
@@ -104,6 +116,86 @@ python mine_gui.py --policy random
 
 Use **Take action** to choose the learner's destination, or **Autoplay** to run the simulation automatically. The viewer shows card backs only; opponent gems and dynamite remain hidden.
 
+### Watching the trained agents
+
+Any checkpoint in `checkpoints/` shows up in the **Policy** dropdown as
+`neural:<name>`, and the autoplay driver then hands every decision to the
+network — including whether to announce a blast and which of the three blast
+cards to keep.
+
+`checkpoints/selfplay4.npz` (40 KB) is the one exception to the git-ignore rule
+and ships with the repository, so `neural:selfplay4` is in the dropdown of a
+fresh clone. It is a fresh 60-generation league run on this commit — 48.1% wins
+against three `rule` bots and 38.0% against three `reader` bots over 800 and 400
+games — i.e. a playable network and not the tuned snapshot behind the tables in
+BALANCE.md, which is not distributed.
+
+Every other checkpoint is local to whichever machine trained it, which is why
+the dropdown can be empty. Then the window says so in its message pane, and
+training one (about four minutes on a laptop CPU) adds it on the next **New
+game** — the list is rebuilt every time a game starts, so no restart is needed:
+
+```powershell
+python train_selfplay.py --players 4 --generations 60 --games-per-generation 64 --out checkpoints/selfplay4.npz
+python mine_gui.py --opponents 3 --policy neural:selfplay4 --all-seats
+```
+
+`--policy` also takes a path (`--policy checkpoints/selfplay4.npz`) and a
+checkpoint that was trained **after** the viewer was installed, and it names the
+training command instead of dying on `invalid choice` when the network is not
+there.
+
+A checkpoint saved before a feature was added is refused rather than listed
+(it has no place in today's encoder); the message pane names it and
+`python migrate_checkpoint.py <file>` widens it with zero-weight columns, which
+leaves its play bit-identical until it is trained again.
+
+The `blaster*` policies are the rule bot's movement with a fixed
+blast trigger, which is the only way to see the mechanic on screen: the trained
+learner fires a blast about once every thirty games.
+
+| policy | blasts when |
+| :-- | :-- |
+| `blaster` | every dynamite pair it can cash in |
+| `blaster:trap` | it can see a dragon in its own column, still ahead of it |
+| `blaster:behind` | another player is ahead on gems |
+
+```powershell
+# the 4-player self-play learner against three rule bots
+python mine_gui.py --opponents 3 --policy neural:selfplay4
+
+# ... or the same network in every seat, which is the clearest view of its habits
+python mine_gui.py --opponents 3 --policy neural:selfplay4 --all-seats
+
+# play the argmax instead of sampling at temperature 0.7 (what the benchmarks do)
+python mine_gui.py --opponents 3 --policy neural:selfplay4 --deterministic
+
+# ... and baselines that really do blast, for comparison
+python mine_gui.py --opponents 3 --policy blaster
+python mine_gui.py --opponents 3 --policy blaster --all-seats
+# the "a dragon is waiting for me anyway" rule, which measures *worse* (§5)
+python mine_gui.py --opponents 3 --policy blaster:trap --all-seats
+```
+
+The **AI POLICY** panel lists the network's top actions for the seat on turn
+with their probabilities, marking the action it actually took, so a surprising
+move can be traced back to the distribution that produced it. Every candidate
+carries the reason the *deciding seat* had for it ("own column, gem", "back v
+(20% dragon)", "raid P2, back o (11% dragon)"), because the board only ever
+draws backsides: only the owner of a column sees the fronts in it. A line under
+the list says whether the plan currently standing is **locked** or still
+**tentative** — planning is sequential, so a figure parked on a card can move
+again before the phase ends. The panel is empty for scripted policies, during a
+tie-break, and while a blast is waiting on a card.
+
+What to look for, given the measurements in [BALANCE.md](BALANCE.md): it should
+rarely blast (0.02-0.05 per game *fired*, for two reasons — it seldom holds two
+dynamite, and most blasts it announces are cancelled by its own next move, §5),
+it should walk to a pit cage as soon as it holds loot, and it should *not*
+visibly change its mind when an opponent announces a blast (§6) — that missing
+reaction is the finding, not a bug in the viewer. Watch `blaster` once to see
+what blasting looks like, including the dragon it wakes roughly half the time.
+
 Try each opponent model:
 
 ```powershell
@@ -113,3 +205,257 @@ python train_q_learning.py --policy greedy
 ```
 
 A strategy is evidence of dominance only if it remains strong across opponent policies, player counts, and random seeds. Compare the printed `mean_reward`, `escape_rate`, and `dragon_rate`; repeat with several `--seed` values.
+
+---
+
+## Self-improving AI players (self-play)
+
+`train_q_learning.py` learns **one seat** against a **fixed** opponent policy.
+That is a good smoke test, but it cannot answer the questions above: the
+opponents never improve, the observation is a coarse 65-number vector, and a
+single `mean_reward` has no confidence interval.
+
+This repository also ships a league-based self-play stack. It is numpy-only,
+uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
+**every seat**:
+
+| module | purpose |
+| :-- | :-- |
+| `features.py` | fixed-size, seat-invariant state + action features; no hidden information |
+| `agents.py` | `Agent` interface, scripted baselines (incl. `rusher`, `leaver`, `threat`, and `reader` — `rule` without the "a quiet rival means a safe card" inference), `NeuralAgent` |
+| `learning.py` | masked-softmax MLP policy + value baseline, REINFORCE, Adam, save/load |
+| `selfplay.py` | full-game driver: every seat controlled, blasts, tie-breaks, per-player returns |
+| `train_selfplay.py` | league self-play trainer with checkpoints and a learning curve |
+| `evaluate_balance.py` | benchmarks, pairwise dominance, luck analysis, markdown report |
+| `analyze_blasts.py` | is a blast worth it, does the learner threaten, does it react, and is the threat real |
+| `probe_blast_value.py` | what a single blast is worth from a real position (forked rollouts), and whether backside knowledge improves the blind choice |
+| `probe_blast_strategy.py` | is "blast while a dragon is waiting for me" a good rule? paired arms over the blast trigger and the keeper choice |
+| `probe_bait_value.py` | what a move onto a dragon the player can see is worth, forked per opponent (rule bots vs readers vs its own peers) |
+| `probe_backside_reading.py` | does the learner read a backside? risk of the card it takes, against the risk it was offered |
+| `migrate_checkpoint.py` | widen a checkpoint saved before a feature was added (zero columns, behaviour unchanged) |
+| `profile_agent.py` | what a checkpoint actually does: digs, front-row digs, passes, retreats, blasts, escapes — side by side for two checkpoints |
+| `gui_controller.py` | Tk-free viewer logic: moves, blasts, tie-breaks, the AI POLICY snapshot |
+| `mine_gui.py` | the Tk viewer itself |
+
+### Train
+
+```powershell
+python -m pip install -r requirements.txt
+python train_selfplay.py --generations 60 --games-per-generation 64
+```
+
+This writes `checkpoints/selfplay.npz`, older snapshots to
+`checkpoints/league/`, and the learning curve to
+`checkpoints/selfplay.history.json`.
+
+To train an existing network further, resume it and keep the old one for the
+comparison:
+
+```powershell
+python train_selfplay.py --players 4 --resume checkpoints/selfplay4.npz `
+    --generations 120 --games-per-generation 64 --seed 7001 --out checkpoints/selfplay4_long.npz
+
+# what changed, in habits rather than points
+python profile_agent.py --checkpoints checkpoints/selfplay4.npz,checkpoints/selfplay4_long.npz --games 300
+```
+
+Useful flags:
+
+| flag | meaning |
+| :-- | :-- |
+| `--players 3\|4\|5` | number of seats |
+| `--hidden 0` / `--hidden 64` | linear policy / one hidden layer |
+| `--epochs`, `--batch-size`, `--lr` | optimisation budget |
+| `--mirror-prob` | fraction of games in which every seat is the current learner |
+| `--league-prob`, `--league-size` | how often opponents are older snapshots |
+| `--eval-opponent rule` | benchmark used during training |
+| `--no-solo-escape-bonus` | play the rules variant without the free bonus for a sole escapee with zero gems |
+| `--blind-blast-choice` | choose blast cards face down, as the printed rules say |
+| `--pass-rule {n-1,n}` | play the "n passes" variant instead of the printed "n-1" |
+| `--league-blast-mode {never,rich,always}` | how the scripted league blasts (default `rich`) |
+| `--league-blast-prob` | fraction of that league that uses the blast mode in the chosen proportion (default 0.15; set `1.0 --league-blast-mode always` for a league that blasts on sight) |
+
+Each game gives the learner one rotating seat while the other seats are filled
+from a league of the hand-tuned rule policy, simple bots and older snapshots of
+the learner itself. A quarter of games are pure mirror self-play. Decisions are
+scored with REINFORCE against a learned value baseline, with the entropy bonus
+keeping some exploration alive.
+
+### Evaluate
+
+```powershell
+python evaluate_balance.py --agents rule,greedy,random,cautious,checkpoints/selfplay.npz --games 300
+```
+
+The report (`reports/balance.md`, plus a JSON file) contains:
+
+1. **Leaderboard** – each policy in one rotating seat against `n-1` benchmark
+   agents, with bootstrap confidence intervals for the score and the margin.
+2. **Pairwise head-to-head** – A alone against `n-1` copies of B and the mirror
+   image, which is what "dominance" actually requires.
+3. **Game dynamics** – dragon rate, stall rate, blast usage, game length.
+4. **Seat effects** – mean score per seat; column ownership is not symmetric.
+5. **Luck vs skill** – mirror matches where every seat runs the same policy, so
+   any spread is pure luck plus seat position.
+
+Seats are rotated every game on purpose: a policy that only wins from seat 0 is
+not a dominant strategy.
+
+### What the agents see
+
+The encoder reads only `PlayerActionContext`, which already hides opponent card
+fronts, opponent collections and private blast draws. The state block covers the
+public situation (scores, seats, deck size, visible own-column fronts, inferred
+dragon risk per backside, per-opponent public facts including how often each
+opponent has displaced somebody this game — displacement is made in the open,
+and it is the one read on whether a table takes bait). Each of the 53 primitive
+actions gets an action block (row/column, backside, visible front, risk, whether
+the occupant can be displaced). The grid covers every row a deck can produce —
+ten at three players, seven at four — because the mine keeps growing rows and
+an action space sized by the opening board cannot name the front of a deep
+mine. Blast announcements are a separate half of the
+action space, so the learner also decides **when to blast** instead of receiving
+a hand-coded rule. A checkpoint stores its own weight shapes; if a feature is
+added, an older file is widened once with `python migrate_checkpoint.py` rather
+than retrained from scratch.
+
+### Findings
+
+The full write-up, with confidence intervals and reproduction commands, is in
+**[BALANCE.md](BALANCE.md)**. The short version:
+
+* **There is no dominant strategy — and early leaves are a trap.** An
+  empty-handed escape only earns the +3 haul bonus while the other players fail
+  to leave; the moment someone leaves with gems, the rules compare gems and the
+  rusher scores **0.00**. With the lorry stand-off rule in place, a `rusher` that
+  walks to the pit cage on turn one is now worth **+0.26 points [-0.23, +0.77]**
+  against the scripted bots — indistinguishable from noise — and it loses its
+  seat the moment it meets players who collect loot.
+* **Collect and leave is the strongest policy in the pool.** `leaver` takes one
+  gem and walks out: it is the best row on the leaderboard (**+1.19 [+0.68,
+  +1.75]** at three players, **+1.30 [+0.84, +1.78]** at four), it beats the
+  rusher **+8.37 points with a 100% top score**, and it beats the trained agent
+  **+3.10** (whose own score drops to -1.68). A lone rusher against two leavers
+  tops the scoreboard only 35.0% of the time with a *negative* margin.
+* **Four players is more mine, not more coin-flip.** The same benchmark with
+  four seats makes the mine more lethal (61% of hauls end on a dragon, against
+  53% at three) while the luck band stays put (mirror spread 4.63 points, 15%
+  tied top scores). The leaver is still the best scripted seat, the rusher still
+  a parasite, and the learner **trained on four players is genuinely better**
+  (+1.65 [+1.24, +2.07], top of the four-player table) than the same learner
+  trained on three (-0.31). Training it another 120 generations took it from
+  35% to 45% wins against three rule bots and taught it to camp a pit cage
+  instead of leaving (BALANCE.md §4).
+* **A leaderboard against fixed bots cannot tell these apart.** Against the
+  scripted bots the ranking is selfplay > rusher > leaver; against a leaver it
+  inverts. The report therefore always includes `rusher` and `leaver`, plus a
+  "where the points come from" split, so a policy that farms opponents' mistakes
+  is visible instead of looking skilful.
+* **Blasting is not too weak, but the engine was cheating.** The blast rule says
+  to draw three cards face down and choose two before looking. `MineEnv` showed
+  the chooser all three fronts, which makes blasting dominant (+1.71 points at
+  three players, +1.00 at four). With the printed rule (`--blind-blast-choice`)
+  it is neutral (+0.39 at three players, +0.38 at four), a blast haul is worth
+  the same as a normal one (+0.41 vs +0.40 points), and against a field that
+  banks loot it is a losing move (-0.52).
+* **The blast threat is real; the AI ignores it.** A pending blast costs the
+  blaster's rivals **-0.43 points [-0.81, -0.06]** and 11 points of win rate, and
+  the cheapest counter — walk to the pit cage while the blast is pending —
+  recovers **+0.37 [+0.12, +0.63]** of it. The trained network moves its action
+  distribution by **0.65%** when a blast is pending and never learns to blast
+  itself (0.02–0.05 per game), even after 180 generations against a league in
+  which 60% of opponents blast on sight. That is a training-budget finding, not
+  a rules finding.
+* **`n-1` passes is better than `n`.** Shortens games (65 vs 79 decisions per
+  game) and punishes the early leaver harder under `n` than `n-1` once the lorry
+  rule is in place (-3.15 vs -0.39 points for the rusher). This also uncovered a
+  real bug:
+  `step_one_player()` ignored `--pass-rule` entirely, so the variant only worked
+  in the single-learner API.
+* **The lorry stand-off rule is what closes the exploit.** Replacing the old
+  "no collection for 8 rounds" valve with "everyone still inside leaves when the
+  haul ends" does two things: it stops paying the escapee while voiding the
+  campers' loot, and it hands the campers' gems into the scoring. The trained
+  agent's margin against the scripted bots fell from +4.14 to -0.31 (parity),
+  the rusher's from +2.69 to +0.26, and the games that used to be farmed now
+  end with the campers banking what they collected.
+* **Luck dominates a single game.** Identical agents playing each other spread
+  **4.5–5.0 points** within a game, far more than any between-policy margin here.
+  Use the confidence intervals.
+* **Two engine bugs were found by watching the agents, not by testing the
+  rules.** A dead blaster could hold a haul open until the game was abandoned
+  and scored all-zero, and the action grid was sized by the opening board, so
+  rows 5 and deeper of a grown mine could neither be seen nor played (10-13% of
+  dealt cards). Both are fixed, both have regression tests, every checkpoint was
+  retrained, and every report now prints its abandoned-game count.
+* **An engine bug was silently scoring whole games as zero.** A player killed by
+  a dragon while a blast was pending left the haul unable to finish, so the game
+  was recorded `aborted` with every score at 0 (36 of 60 always-blaster games).
+  Fixed, and every report now prints how many games the engine abandoned. A
+  second bug reported alongside it — a tie-break with no dragons left to draw —
+  does not exist: the card economy always leaves enough, and
+  [BALANCE.md](BALANCE.md) §7 records the withdrawal.
+
+### Testing the rules variants
+
+```powershell
+# remove the free bonus for a sole, empty-handed escapee and retrain
+python train_selfplay.py --no-solo-escape-bonus --escape-shaping 0 --out checkpoints/selfplay_no_bonus.npz
+
+# the printed rules, and the fixed ones, with both hand-written controls
+python evaluate_balance.py --agents rule,greedy,random,cautious,rusher,leaver,checkpoints/selfplay.npz --games 300 --out reports/balance_default_rules.md
+python evaluate_balance.py --agents rule,greedy,random,cautious,rusher,leaver,checkpoints/selfplay_no_bonus.npz --no-solo-escape-bonus --games 300 --out reports/balance_fixed_rules.md
+
+# blast: peek vs the printed face-down rule
+python evaluate_balance.py --agents rule,rule:rich,rule:always --games 200 --skip-mirror --out reports/balance_blast.md
+python evaluate_balance.py --agents rule,rule:rich,rule:always --games 200 --skip-mirror --blind-blast-choice --out reports/balance_blast_blind.md
+
+# n-1 vs n passes on otherwise identical runs
+python evaluate_balance.py --agents rule,greedy,random,rusher --games 200 --pass-rule n --out reports/pass_n.md
+
+# four players: leaderboard, and the learner trained on four seats
+python evaluate_balance.py --players 4 --agents rule,greedy,random,cautious,rusher,leaver,checkpoints/selfplay4.npz --games 300 --out reports/balance4_default_rules.md
+python train_selfplay.py --players 4 --generations 60 --games-per-generation 64 --out checkpoints/selfplay4.npz
+
+# blast value, threat learning, threat reaction, and whether the threat is real
+python analyze_blasts.py --checkpoint checkpoints/selfplay4.npz --players 4 --games 240 --out reports/blasts4_noblastleague.md
+```
+
+Two rule gaps surfaced while building this, plus one bug. The gaps are
+switchable so you can measure them instead of guessing:
+
+| gap | behaviour | switch |
+| :-- | :-- | :-- |
+| free solo-escape bonus | +3/+4 for leaving alone with zero gems | `--no-solo-escape-bonus` |
+| blast peek | the blaster sees all three draws before choosing | `--blind-blast-choice` (the printed rule) |
+| pass count | `step_one_player()` ignored `--pass-rule` and always used `n` | fixed; both variants now work |
+
+The lorry deadlock used to be patched with a `stall_rounds` valve, which paid the
+player who had escaped while voiding the campers' loot. That valve is gone: the
+haul now simply ends when everybody still in the mine stands on their lorry,
+which is the rule the game was missing (see the rules section above).
+
+The defaults keep the historical environment behaviour, so old scripts
+reproduce. For balance work, pass `--blind-blast-choice` and decide explicitly
+what to do about the other two; [BALANCE.md](BALANCE.md) has the measured effect
+of each.
+
+The open questions map directly onto the tooling:
+
+| question | experiment |
+| :-- | :-- |
+| skill vs luck | mirror matches (always in the report) |
+| dominant strategy? | pairwise head-to-head with the `rusher` **and** `leaver` controls |
+| is blasting too weak? | `rule:rich` / `rule:always`, with and without `--blind-blast-choice`; `analyze_blasts.py` for the 4-player money question |
+| does the AI learn to threaten, and does it react? | `analyze_blasts.py` (paired counterfactual on the network, plus the scripted `threat` reaction in a four-condition experiment) |
+| n-1 vs n passes | `--pass-rule n` on otherwise identical runs, at 3 and 4 players |
+| victory-point tweaks | `--solo-escape-bonus` / `--no-solo-escape-bonus`, or edit `_score_haul` |
+
+### Development
+
+The original test suite still runs, plus tests for the self-play stack:
+
+```powershell
+python -m pip install pytest
+python -m pytest -q
+```

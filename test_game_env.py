@@ -8,18 +8,26 @@ from game_env import (
     DRAGON,
     DYNAMITE,
     GEM,
+    DECK_SIZE,
     LORRY,
+    MAX_COLUMNS,
+    MAX_ROWS,
     MineEnv,
     PASS,
     PIT_CAGE,
 )
+
+# The observation is 15 state values, then one backside per mine cell, then one
+# front per cell. The mine block is sized by the deepest board a deck can build.
+CELLS = MAX_ROWS * MAX_COLUMNS
+FRONT_OFFSET = 15 + CELLS
 
 
 def test_random_game_terminates():
     env = MineEnv(opponents=2)
     observation, _ = env.reset(seed=3)
     env.starting_player = 0
-    assert observation.shape == (65,)
+    assert observation.shape == env.observation_space.shape
     for _ in range(300):
         if env._game_over():
             break
@@ -149,7 +157,7 @@ def test_observation_exposes_backsides_but_not_fronts():
     observation, _ = env.reset(seed=12)
 
     visible_backsides = [
-            observation[15 + row_index * 5 + player_index]
+            observation[15 + row_index * MAX_COLUMNS + player_index]
         for row_index, row in enumerate(env.rows)
         for player_index, _card in enumerate(row)
     ]
@@ -157,7 +165,7 @@ def test_observation_exposes_backsides_but_not_fronts():
 
     assert visible_backsides == expected_backsides
     assert all(value in (BACKSIDE_A, BACKSIDE_B, BACKSIDE_C) for value in visible_backsides)
-    assert BACKSIDE_UNKNOWN in observation[[15 + row_index * 5 + 4 for row_index in range(3)]]
+    assert BACKSIDE_UNKNOWN in observation[[15 + row_index * MAX_COLUMNS + 4 for row_index in range(3)]]
 
 
 def test_observation_reveals_only_p1_column_fronts():
@@ -165,7 +173,7 @@ def test_observation_reveals_only_p1_column_fronts():
     observation, _ = env.reset(seed=12)
 
     own_fronts = [
-        observation[40 + row_index * 5]
+        observation[FRONT_OFFSET + row_index * MAX_COLUMNS]
         for row_index in range(3)
     ]
     expected_fronts = [env.rows[row_index][0][0] + 4 for row_index in range(3)]
@@ -173,7 +181,7 @@ def test_observation_reveals_only_p1_column_fronts():
     assert own_fronts == expected_fronts
     assert observation[15] == env.rows[0][0][1]
     assert all(
-        observation[40 + row_index * 5 + column] == BACKSIDE_UNKNOWN
+        observation[FRONT_OFFSET + row_index * MAX_COLUMNS + column] == BACKSIDE_UNKNOWN
         for row_index in range(3)
         for column in range(1, 3)
     )
@@ -364,6 +372,46 @@ def test_player_can_displace_occupant_in_that_players_own_column():
     assert env.displacement_events == [(1, 0)]
 
 
+def test_a_seat_can_count_how_often_a_rival_displaces_somebody():
+    """Displacement is performed in the open, so it is public history.
+
+    It is also the one readable signal about whether a rival takes bait: a seat
+    that never displaces cannot be counted on to push a figure off a dragon it
+    cannot see. The learner gets the count as a feature.
+    """
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    env.players[0].position = 2
+    env.players[0].column = None
+    env.players[1].position = 0
+    env.players[1].column = 1
+    env._displace(0, 1, 0)
+
+    victim = env.player_action_context(1)
+    displacer = [o for o in victim.opponents if o.player_index == 0][0]
+    assert displacer.displacements == 1
+    assert [o for o in victim.opponents if o.player_index == 2][0].displacements == 0
+    assert env.player_view(1)["opponents"][0]["displacements"] == 1
+
+    from features import N_OPPONENT_FEATURES, N_STATE_FEATURES, state_features
+
+    row = state_features(victim)
+    assert row.shape == (N_STATE_FEATURES,)
+    slot_base = N_STATE_FEATURES - 4 * N_OPPONENT_FEATURES
+    ordered = sorted(victim.opponents, key=lambda o: (o.player_index - 1) % 3)
+    pusher_slot = [i for i, o in enumerate(ordered) if o.player_index == 0][0]
+    quiet_slot = 1 - pusher_slot
+    last = N_OPPONENT_FEATURES - 1
+    import pytest
+
+    assert row[slot_base + pusher_slot * N_OPPONENT_FEATURES + last] == pytest.approx(1 / 3)
+    assert row[slot_base + quiet_slot * N_OPPONENT_FEATURES + last] == 0.0
+
+    env._start_next_haul()
+    assert env.players[1].displacements == 0
+    assert env.players[0].displacements == 1
+
+
 def test_pit_cage_is_planned_before_the_player_leaves():
     env = MineEnv(opponents=2)
     env.reset(seed=4)
@@ -513,7 +561,8 @@ def test_lorry_player_stays_in_the_mine_for_the_next_round():
     assert len(env.rows) == initial_row_count + 1
 
 
-def test_lorry_players_can_continue_after_two_additional_rows():
+def test_everybody_on_the_lorry_ends_the_haul_at_once():
+    """Nobody can collect a card, so no new row is dealt and the haul is over."""
     env = MineEnv(opponents=2)
     env.reset(seed=4)
     env.starting_player = 0
@@ -521,16 +570,16 @@ def test_lorry_players_can_continue_after_two_additional_rows():
         player.position = LORRY
     env.planning_turns = 1
     env.planned_players = [True] * env.n_players
+    rows_before = len(env.rows)
 
-    for _ in range(2):
-        for player in env.players:
-            player.position = LORRY
-        env.step(PASS)
-        env.planning_turns = 1
-        env.planned_players = [True] * env.n_players
+    _observation, _reward, terminated, _truncated, info = env.step(PASS)
 
-    assert env.haul == 1
-    assert len(env.rows) == 5
+    assert not terminated
+    assert info["outcome"] == "lorry"
+    assert env.haul == 2
+    # No extra row is dealt: the haul ended instead of growing the mine.
+    assert len(env.haul_history) == 1
+    assert rows_before == 3
 
 
 def test_players_leave_when_no_cards_remain_in_the_mine():
@@ -657,21 +706,27 @@ def test_one_player_passes_advance_lorry_and_pit_cage_positions():
     assert all(player.position == 3 for player in env.players)
 
 
-def test_pit_cage_player_does_not_end_haul_while_lorry_players_remain():
+def test_haul_continues_while_someone_is_still_in_the_mine():
+    """One escaped player must not end the haul for the two still digging."""
     env = MineEnv(opponents=2)
     env.reset(seed=4)
     env.starting_player = 0
     env.players[0].position = PIT_CAGE
     env.players[0].escaped = True
-    env.players[1].position = LORRY
-    env.players[2].position = LORRY
+    env.players[1].position = 1
+    env.players[1].column = 1
+    env.players[2].position = 2
+    env.players[2].column = 2
     env.planning_player = 1
     env.planning_turns = 2
     env.planned_players = [True] * env.n_players
 
-    _observation, _reward, terminated, _truncated, info = env.step_one_player()
-    if not terminated:
+    info = {"outcome": "planning"}
+    terminated = False
+    for _ in range(10):
         _observation, _reward, terminated, _truncated, info = env.step_one_player()
+        if terminated or info["outcome"] != "planning":
+            break
 
     assert not terminated
     assert env.haul == 1
@@ -714,3 +769,63 @@ def test_deck_has_thirty_cards_with_three_backside_sets():
     for backside in (BACKSIDE_A, BACKSIDE_B, BACKSIDE_C):
         fronts = Counter(front for front, card_backside in deck if card_backside == backside)
         assert fronts == Counter({DRAGON: 2, GEM: 4, DYNAMITE: 4})
+
+
+# ----------------------------------------------------------------------
+# The action grid must cover every row the deck can produce. A haul grows a row
+# every round, so sizing the grid by the three-row opening board left the front
+# rows with no action at all: agents could neither see them nor name them and
+# had to fall back to a shallower row, abandoning the cards below them.
+# ----------------------------------------------------------------------
+def _deep_mine(opponents: int = 2, depth: int = 7) -> MineEnv:
+    env = MineEnv(opponents=opponents)
+    env.reset(seed=0)
+    while len(env.rows) < depth:
+        env.rows.extend(env._deal_next_rows(1))
+        env.round += 1
+    for player in env.players:
+        player.position = len(env.rows)
+        player.cage_index = None
+    return env
+
+
+def test_action_grid_covers_the_deepest_board_any_deck_can_produce():
+    for opponents in (2, 3, 4):
+        n_players = opponents + 1
+        deepest_board = DECK_SIZE // n_players
+        assert deepest_board <= MAX_ROWS
+        assert n_players <= MAX_COLUMNS
+    # The last card action must stay below the special actions, or a card would
+    # be indistinguishable from "leave via pit cage".
+    assert PIT_CAGE == MAX_ROWS * MAX_COLUMNS
+    assert PIT_CAGE > (MAX_ROWS - 1) * MAX_COLUMNS + (MAX_COLUMNS - 1)
+
+
+def test_front_row_is_visible_and_playable_when_the_mine_grows_past_opening_depth():
+    env = _deep_mine(depth=7)
+    front = len(env.rows) - 1
+    column = (env.players[0].column or 0)
+    action = front * MAX_COLUMNS + column
+
+    assert front >= 5, "the test needs a board deeper than the old five-row grid"
+    assert env.rows[front][column] is not None
+    assert env._legal(action, 0)
+    assert action < PIT_CAGE, "a card action must never collide with pit cage"
+
+    view = env.player_view(0)
+    assert len(view["rows"]) == len(env.rows)
+    assert view["rows"][front][column] is not None
+    assert len(env.player_action_context(0).public_rows) == len(env.rows)
+    assert env._observation().shape == env.observation_space.shape
+
+
+def test_every_row_of_a_grown_mine_has_a_reachable_card_action():
+    env = _deep_mine(depth=8)
+    context = env.player_action_context(0)
+    legal = [action for action, allowed in enumerate(env.action_mask(0)) if allowed]
+    legal_card_rows = {action // MAX_COLUMNS for action in legal if action < PIT_CAGE}
+
+    assert legal_card_rows == set(range(len(env.rows)))
+    assert {
+        action // MAX_COLUMNS for action in context.legal_actions if action < PIT_CAGE
+    } == legal_card_rows
