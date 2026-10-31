@@ -233,6 +233,7 @@ uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
 | `probe_bait_value.py` | what a move onto a dragon the player can see is worth, forked per opponent (rule bots vs readers vs its own peers) |
 | `probe_backside_reading.py` | does the learner read a backside? risk of the card it takes, against the risk it was offered |
 | `probe_lorry.py` | how often a seat parks on its lorry, and how often a haul is lost to a stand-off because every seat did |
+| `probe_escape.py` | escape rules side by side: how often a haul is thrown away by a herd of empty-handed cage moves, and what each variant is worth |
 | `migrate_checkpoint.py` | widen a checkpoint saved before a feature was added (zero columns, behaviour unchanged) |
 | `profile_agent.py` | what a checkpoint actually does: digs, front-row digs, passes, retreats, blasts, escapes — side by side for two checkpoints |
 | `gui_controller.py` | Tk-free viewer logic: moves, blasts, tie-breaks, the AI POLICY snapshot |
@@ -359,6 +360,12 @@ The full write-up, with confidence intervals and reproduction commands, is in
   it is neutral (+0.39 at three players, +0.38 at four), a blast haul is worth
   the same as a normal one (+0.41 vs +0.40 points), and against a field that
   banks loot it is a losing move (-0.52).
+* **Nobody throws a haul away any more.** The three exits that cost a round and
+  buy nothing — parking on a lorry, fleeing into a cage with no loot and nothing
+  to flee from, and paying more for a face-down card than one you walk past — are
+  masked, with the measurement behind each in BALANCE.md §4. Before them, 40% of
+  hauls in four-net games ended with three or more seats in cages and no gems
+  collected; now 2.9% do.
 * **The blast threat is real; the AI ignores it.** A pending blast costs the
   blaster's rivals **-0.43 points [-0.81, -0.06]** and 11 points of win rate, and
   the cheapest counter — walk to the pit cage while the blast is pending —

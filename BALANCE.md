@@ -629,13 +629,66 @@ Three things in that table are worth reading carefully.
    Seed 7 under the rule: haul 1 ends normally with 4 gems on the table instead
    of nobody collecting anything.
 
-The pit cage keeps its own rule (a cage does remove the figure from the haul and
-it banks the loot, so fleeing with something to flee *from* stays legal). It was
-worth checking whether the same cascade was hiding there: removing "a rival is
-queued in a pit cage" as a reason to flee as well costs 3.5 points against
-`rule` and 4.0 against `reader`, and at four players it changes almost nothing
-(3+ seats leaving the first haul empty-handed: 0.3% → 0.2%), so the cage rule
-stays as measured.
+Closing the lorry was the right fix for the lorry and the wrong fix for the
+habit: the next seed the viewer opened had all four figures in **pit cages**
+instead, which is the subject of the next subsection.
+
+### An escape has to bank something
+
+The lorry rule closes one way of throwing a round away, and the viewer found the
+next one immediately: **seed 7, network in every seat, every figure in a pit cage
+at the end of the first planning phase, not one gem collected**, and the game
+scored 3–3–3–3 — one haul (the dragon in haul 2) decided the whole thing, which
+is exactly the "skill becomes luck" outcome the design is supposed to avoid.
+
+The chain is worth reading in the log. Seat 3 was **displaced** into a cage by a
+raid in the first planning phase — ordinary, aggressive play — and the escape
+rule of the previous section counted "somebody is already in a cage" as a
+*threat*: seat 2 read it as danger and left, seat 1 read two caged seats, seat 0
+read three. Four figures in cages, no cards turned, +1 each. It is the same class
+of mistake as the lorry: a rule that was written about danger, applied to a table
+state that is not dangerous.
+
+What an escape is actually worth: the cage is the only exit that takes the figure
+out of the haul *before* the cards are turned and banks the gems in hand. So it
+is worth a round for exactly two reasons — there is loot to bank, or there is
+something to escape from (a blast is charged, or the seat can see a dragon about
+to be turned: the card under its own figure, or a card in its column with a rival
+standing on it). Everything else is a wasted round, and "somebody is in a cage"
+is not on the list. That is `features.cage_banks_nothing`, applied in
+`action_mask`.
+
+Measured on the viewer's own harness (`gui_controller.GameController`, four
+neural seats, temperature 0.7, 150 games = 450 hauls; `probe_escape.py`):
+
+| escape rule | hauls thrown away | games with one | gems collected per haul | seed 7 |
+| :-- | --: | --: | --: | :-- |
+| as first written (a cage is a reason to flee) | **40.0%** | 76.0% | 0.89 | 0 gems, all four out, 3–3–3–3 |
+| without the cage/herd clause | 4.9% | 13.3% | **1.91** | haul 1 collects 7 gems |
+| only a rival who has *left* counts | 5.8% | 16.7% | 1.52 | 5 gems, real play |
+| **an escape must bank a gem (shipped)** | **2.9%** | **8.0%** | 1.63 | 5 gems, real play |
+
+"Thrown away" is a haul where at least three seats escaped and the table
+collected no gems at all. A third of all hauls were being thrown away before
+this, and three quarters of games contained one.
+
+The price, against scripted fields (4 players, learner in seat 0, 1,600 games per
+cell, seed-paired):
+
+| field | as first written | shipped rule | paired difference |
+| :-- | :-- | :-- | :-- |
+| 3 × `rule` | 56.0% · +2.89 | 52.3% · +2.68 | -0.21 points (se 0.06), -3.7pp wins |
+| 3 × `reader` | 44.1% · +1.79 | 40.3% · +1.70 | -0.09 (se 0.06), -3.8pp |
+| 3 × `leaver` (800) | 22.6% · +0.77 | 25.6% · +0.81 | wins more |
+
+So the old rule was **worth about a fifth of a point per game**, and it earned
+them by joining herds of empty-handed escapes: the printed scoring gives a sole
+escapee +3 even with no gems, and a tie for most gems +1 each, so being the
+fourth seat into a cage is cheap insurance against a haul other seats were going
+to end anyway. That is not skill and it is not what the game is about — it is a
+way to skip a third of the hauls — so the points are the cost of the fix, and
+they are small. In exchange, seed 7 plays a real haul 1 (2, 1, 2, 0 gems) and the
+last two hauls decide the game instead of deciding it by default.
 
 ## 5. Is blasting too weak? No — but it is not a free win either
 
@@ -1092,6 +1145,11 @@ python evaluate_balance.py --players 4 --agents rule,greedy,random,cautious,rush
 
 # how often a seat parks on its lorry, and how often a haul is lost to that
 python probe_lorry.py --games 200
+
+# escape rules: how often a haul is thrown away by a herd of empty escapes,
+# and what each variant is worth against scripted fields
+python probe_escape.py --games 150
+python probe_escape.py --field rule --strength-games 1600
 
 # what a bluff onto a dragon you can see is worth, per field (forked rollouts)
 python probe_bait_value.py --games 300 --fields rule,reader,selfplay4

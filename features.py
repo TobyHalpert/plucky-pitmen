@@ -458,31 +458,42 @@ def lorry_skips_a_card_worth_taking(ctx: PlayerActionContext) -> bool:
     return not own_card_is_known_dragon(ctx)
 
 
-def cage_has_no_visible_reason(ctx: PlayerActionContext) -> bool:
-    """True when fleeing the mine cannot answer any visible threat.
+def cage_banks_nothing(ctx: PlayerActionContext) -> bool:
+    """True when leaving through a pit cage would collect nothing and answer nothing.
 
-    That is: nobody is charging a blast, nobody has left or queued in a pit cage
-    yet, and no rival is standing on a dragon in the player's own column (the
-    one immediate danger the rules let a seat see coming). Voluntary flight also
-    *signals* danger to whoever stands in the fleeing player's column, which is
-    the bluff this predicate ignores on purpose: the mask it feeds is about
-    paying insurance against nothing visible.
+    The cage is the only exit that takes the figure out of the haul *before* the
+    cards are turned and banks the gems in hand, so it is worth a round for
+    exactly two reasons: there is loot to bank, or there is something to escape
+    from. Loot means a gem in hand (dynamite is not scored and survives an escape
+    either way). Something to escape from means a blast is charged — the blast
+    ends the haul if it turns a dragon — or a dragon the seat can see is about to
+    be turned: the card under its own figure, or a card in its column with a
+    rival standing on it.
+
+    Everything else is a wasted round, and this is the clause that gets that
+    wrong in the obvious implementation: **"somebody is already in a cage"** is
+    not a threat. Ordinary raiding displaces rivals into cages all the time, and
+    once one seat reads another's cage as a reason to flee, the whole table
+    follows: seed 7 of the viewer, four nets, haul 1 ended with every figure in a
+    cage and not one gem collected, and the same thing happened in 40% of sampled
+    four-net games. See BALANCE.md, "An escape has to bank something".
     """
+    if any(front == GEM for front, _ in ctx.private_cards):
+        return False
     if ctx.own_blast_pending or any(o.blast_pending for o in ctx.opponents):
         return False
-    if ctx.own_position == PIT_CAGE:
+    if own_card_is_known_dragon(ctx):
         return False
     for opponent in ctx.opponents:
-        if opponent.dead:
+        if opponent.dead or opponent.escaped or opponent.position == PIT_CAGE:
             continue
-        if opponent.escaped or opponent.position == PIT_CAGE:
-            return False
         if opponent.column != ctx.player_index:
             continue
-        if 0 <= opponent.position < len(ctx.public_rows):
-            entry = ctx.public_rows[opponent.position][ctx.player_index]
-            if entry is not None and entry[0] == DRAGON:
-                return False
+        if not 0 <= opponent.position < len(ctx.public_rows):
+            continue
+        entry = ctx.public_rows[opponent.position][ctx.player_index]
+        if entry is not None and entry[0] is not None and int(entry[0]) == DRAGON:
+            return False
     return True
 
 
@@ -530,20 +541,29 @@ def action_reason(ctx: PlayerActionContext, action: int) -> str:
 def action_mask(ctx: PlayerActionContext) -> np.ndarray:
     """Legal policy actions, including legal blast announcements.
 
-    Two narrow rules ride on top of the legal moves. A visible dragon with no
-    rival deep enough to punish the dig is pure loss, and fleeing to a pit cage
-    while nothing visible threatens buys nothing: no blast is pending, nobody
-    has left yet, and no rival stands on a dragon in this player's column. Both
-    are policies rather than rules of the game, which is why they live here and
-    not in the environment (see BALANCE.md).
+    Four narrow rules ride on top of the legal moves, all of them policies rather
+    than rules of the game, which is why they live here and not in the
+    environment (see BALANCE.md):
 
-    Planning onto a card the player can see is a dragon is usually *bait*, not a
-    blunder: while a rival stands deeper in the mine, that rival can displace
-    the bait into a pit cage — a safe exit that banks the gems — and then eats
-    the dragon itself. The mask keeps that option, and hides only the variant
-    with no rival deep enough to push: there the digger eats the dragon itself,
-    which is the one reading of the move that really is a pure loss. See
-    BALANCE.md, "The dragon in your own column is bait, not a blunder".
+    1. A dig onto a dragon the seat can see, with no rival deep enough to punish
+       it, is pure loss — hiding it costs nothing measured. The same dig *with* a
+       rival deep enough is bait and stays: the rival can displace the figure
+       into a pit cage, a safe exit that banks the loot, and then eats the dragon
+       itself. ``doomed_dragon_digs``.
+    2. A face-down card that pays more than a deeper free card is dominated — the
+       backside is the price and the position a round ends on buys nothing.
+       ``walks_past_a_free_card``.
+    3. The lorry collects nothing and does not protect the figure, so it is only
+       a way to refuse a dragon the seat can see under itself.
+       ``lorry_skips_a_card_worth_taking``.
+    4. The pit cage is the only exit that banks loot before the cards are turned,
+       so an escape has to bank something or answer a visible threat.
+       ``cage_banks_nothing``.
+
+    Rules 3 and 4 are about wasted rounds, and 4 in particular exists because
+    "somebody is already in a cage" is *not* a threat: a raid puts a rival there,
+    every seat then reads the herd as danger, and a haul ends with the whole
+    table in cages and nothing collected (seed 7 of the viewer, four nets).
     """
     mask = np.zeros(N_ACTIONS, dtype=bool)
     own_dynamite = sum(1 for front, _ in ctx.private_cards if front == DYNAMITE)
@@ -572,7 +592,7 @@ def action_mask(ctx: PlayerActionContext) -> np.ndarray:
         trial[int(LORRY)] = False
         if trial.any():
             mask = trial
-    if mask[int(PIT_CAGE)] and cage_has_no_visible_reason(ctx):
+    if mask[int(PIT_CAGE)] and cage_banks_nothing(ctx):
         trial = mask.copy()
         trial[int(PIT_CAGE)] = False
         trial[join_action(int(PIT_CAGE), True)] = False
@@ -591,7 +611,7 @@ __all__ = [
     "action_mask",
     "action_reason",
     "backside_stats",
-    "cage_has_no_visible_reason",
+    "cage_banks_nothing",
     "digs_face_up_dragon",
     "doomed_dragon_digs",
     "has_dragon_free_move",

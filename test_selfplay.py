@@ -991,15 +991,23 @@ def test_the_mask_forbids_parking_on_a_lorry_to_skip_an_ordinary_card():
     assert action_mask(only_lorry)[int(LORRY)]
 
 
-def test_the_mask_forbids_fleeing_with_nothing_visible():
-    """No blast, nobody out, no rival on our dragon: the cage answers nothing."""
-    from features import action_mask, cage_has_no_visible_reason
+def test_the_mask_forbids_an_escape_that_banks_nothing():
+    """Nothing collected, nothing to escape from: the cage buys nothing."""
+    from features import action_mask, cage_banks_nothing
 
     ctx = _cage_context()
-    assert cage_has_no_visible_reason(ctx)
+    assert cage_banks_nothing(ctx)
     mask = action_mask(ctx)
     assert not mask[int(PIT_CAGE)]
     assert mask[0 * MAX_COLUMNS + 0]
+
+
+def test_the_mask_keeps_the_cage_when_there_is_loot_to_bank():
+    from features import action_mask, cage_banks_nothing
+
+    carrying = replaced(_cage_context(), private_cards=((GEM, 0),))
+    assert not cage_banks_nothing(carrying)
+    assert action_mask(carrying)[int(PIT_CAGE)]
 
 
 def test_the_mask_keeps_the_cage_when_a_blast_is_charged():
@@ -1009,21 +1017,33 @@ def test_the_mask_keeps_the_cage_when_a_blast_is_charged():
     assert action_mask(_cage_context(opponents=(waiting,)))[int(PIT_CAGE)]
 
 
-def test_the_mask_keeps_the_cage_once_somebody_has_left():
-    from features import action_mask
+def test_the_mask_ignores_the_herd():
+    """Seed 7 of the viewer: four nets read each other's cages until a haul is lost.
+
+    A raid displaces a rival into a pit cage, so "somebody is in a cage" is the
+    ordinary state of an aggressive table, not a threat. Reading it as one makes
+    every seat flee and throws the haul away with no gems collected
+    (BALANCE.md, "An escape has to bank something").
+    """
+    from features import action_mask, cage_banks_nothing
+
+    queued = replaced(_rival(1, PIT_CAGE), position=PIT_CAGE)
+    ctx = _cage_context(opponents=(queued,))
+    assert cage_banks_nothing(ctx)
+    assert not action_mask(ctx)[int(PIT_CAGE)]
 
     gone = replaced(_rival(1, 4), escaped=True)
-    assert action_mask(_cage_context(opponents=(gone,)))[int(PIT_CAGE)]
-    in_cage = replaced(_rival(1, PIT_CAGE), position=PIT_CAGE)
-    assert action_mask(_cage_context(opponents=(in_cage,)))[int(PIT_CAGE)]
+    ctx = _cage_context(opponents=(gone,))
+    assert cage_banks_nothing(ctx)
+    assert not action_mask(ctx)[int(PIT_CAGE)]
 
 
-def test_the_mask_keeps_the_cage_when_a_rival_stands_on_our_dragon():
-    from features import action_mask, cage_has_no_visible_reason
+def test_the_mask_keeps_the_cage_when_a_rival_will_wake_our_dragon():
+    from features import action_mask, cage_banks_nothing
 
     sitting = replaced(_rival(1, 1), column=0)
     ctx = _cage_context(opponents=(sitting,))
-    assert not cage_has_no_visible_reason(ctx)
+    assert not cage_banks_nothing(ctx)
     assert action_mask(ctx)[int(PIT_CAGE)]
 
 
