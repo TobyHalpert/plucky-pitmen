@@ -408,6 +408,40 @@ Shipped: `selfplay4_reader.npz` is promoted to `checkpoints/selfplay4.npz`, the
 predecessor is kept as `checkpoints/selfplay4_blind.npz`, and `reader` is
 available everywhere a scripted policy is (`make_scripted_agent("reader")`).
 
+### "It climbed past two free cards"
+
+That is the next thing a viewer notices, and the first question is whether it is
+even a decision. It is not: planning is sequential, so what the viewer shows as
+a step is a *plan*, and the plan that counts is the one standing when the phase
+executes. In 300 four-player games with a network in every seat:
+
+| observation | count |
+| :-- | --: |
+| steps onto a card shallower than free cards still in the mine | 3,061 |
+| ...where the target card was in the mover's own column (its front visible to that seat alone) | 2,079 (68%) |
+| ...a raid on a rival standing on their own card | 79 (2.6%) |
+| ...no visible reason at all | 897 (29%) |
+| planning phases that actually **ended** on a hidden card while a free known gem sat deeper | 19 in 250 games (0.08/game) |
+
+The viewer draws nothing but backsides, so the 68% are invisible knowledge: the
+seat is digging a card it can see the front of, which is the one thing the rules
+keep private. For the rest, the depth of the card buys nothing — every figure is
+put back at the front of the mine at the start of each planning phase
+(`MineEnv._set_players_to_starting_positions`), and a player takes exactly one
+card per round either way, and a skipped card stays in the mine rather than
+being consumed — though it usually does not come back either: of 955 skips of a
+free known-safe card, 111 (12%) were taken later in the same haul. What the skip
+does *not* decide is the score: committing to the skipped gem instead is worth
+**+0.00 points (se 0.59)** over 19 forced forks, because one gem rarely decides a
+haul and the hidden card pays a gem or a dynamite often enough to cancel it.
+
+So the move is legal, informed, and roughly free — but it *looks* arbitrary, and
+that part was a real defect. The viewer now annotates every candidate with what
+the deciding seat knows, and whether the standing plan is locked or tentative
+(`features.action_reason`, `GameController.reason_for` / `plan_summary`). This is
+the same trap as the "92 blunders" audit in the previous section: everyone,
+including me, reads an intermediate planning step as a commitment.
+
 ## 5. Is blasting too weak? No — but it is not a free win either
 
 The printed blast rule: draw three cards **face down**, choose two, *then* look

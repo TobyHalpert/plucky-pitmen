@@ -23,7 +23,7 @@ from typing import Any, Callable
 import numpy as np
 
 from agents import ActionChoice, NeuralAgent, make_scripted_agent
-from features import action_mask, state_action_matrix
+from features import action_mask, action_reason, state_action_matrix
 from game_env import (
     BACKSIDE_A,
     BACKSIDE_B,
@@ -32,6 +32,7 @@ from game_env import (
     DYNAMITE,
     GEM,
     LORRY,
+    MAX_COLUMNS,
     PASS,
     PIT_CAGE,
     HAULS_PER_GAME,
@@ -548,6 +549,40 @@ class GameController:
             if probs[action] > 0
         ]
         return top[:limit]
+
+    def reason_for(self, action: int, seat: int = 0) -> str:
+        """Why ``action`` looks the way it does to ``seat`` (viewer annotation)."""
+        if not self.env.players:
+            return ""
+        return action_reason(self.env.player_action_context(seat), int(action))
+
+    def plan_summary(self, seat: int = 0) -> str:
+        """The plan that currently stands for ``seat``, and whether it is locked.
+
+        Planning is sequential: a seat moves, sees the others move, and may move
+        again. Only the last action before the phase executes is a commitment,
+        which is why a provisional step can look odd on its own.
+        """
+        player = self.env.players[seat]
+        if player.escaped or player.dead:
+            return f"P{seat + 1} is out of the mine"
+        pos, column = player.position, player.column
+        if pos == PIT_CAGE:
+            where = "in a pit cage"
+        elif pos == LORRY:
+            where = "on the lorry"
+        elif column is None or pos >= len(self.env.rows):
+            where = "not planned yet"
+        else:
+            card = self.env.rows[pos][column]
+            action = pos * MAX_COLUMNS + column
+            where = f"row {pos + 1}, column {column + 1}"
+            if card is not None and column == seat:
+                where += f" (own column, {action_reason(self.env.player_action_context(seat), action).split(', ')[-1]})"
+        need = self.env._pass_threshold()
+        done = self.env.consecutive_passes
+        state = "locked" if done >= need else f"tentative, {need - done} more pass(es) needed"
+        return f"P{seat + 1}: {where} - {state}"
 
     # -- tie-break ---------------------------------------------------------
 

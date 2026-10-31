@@ -599,7 +599,8 @@ class MineViewer:
         """Top action probabilities for the neural seat (feedback aid)."""
         self.policy_text.configure(state="normal")
         self.policy_text.delete("1.0", "end")
-        snapshot = self.controller.policy_snapshot(limit=6)
+        seat = self.controller.env.planning_player
+        snapshot = self.controller.policy_snapshot(seat, limit=6)
         if not snapshot and not self.controller.is_neural:
             self.policy_text.insert("end", "scripted policy\n(no network)")
         elif not snapshot:
@@ -609,15 +610,18 @@ class MineViewer:
             chosen_action = int(chosen.action) if chosen is not None else None
             for action, probability in snapshot:
                 marker = ">" if action == chosen_action else " "
+                reason = self.controller.reason_for(action, seat)
                 self.policy_text.insert(
                     "end",
-                    f"{marker} {probability * 100:5.1f}%  {self._action_label(action)}\n",
+                    f"{marker} {probability * 100:5.1f}%  {self._action_label(action)}"
+                    f"  - {reason}\n",
                 )
             if any(
-                self.controller.env.players[seat].blast_pending
-                for seat in range(self.controller.env.n_players)
+                self.controller.env.players[index].blast_pending
+                for index in range(self.controller.env.n_players)
             ):
                 self.policy_text.insert("end", "\nblast pending\n")
+            self.policy_text.insert("end", "\n" + self.controller.plan_summary(seat) + "\n")
         self.policy_text.configure(state="disabled")
 
     # -- action menu -------------------------------------------------------

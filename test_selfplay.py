@@ -765,6 +765,36 @@ def test_a_backside_dragon_risk_comes_from_the_backside():
     assert abs(unknown[16] + unknown[17] - 1.0) < 1e-6
 
 
+def test_action_reason_spells_out_what_the_deciding_seat_knows():
+    """The viewer draws only backsides, so the reason has to name the knowledge."""
+    from features import action_reason
+
+    from game_env import BACKSIDE_A
+    from features import N_BASE_ACTIONS
+
+    ctx = _trap_context(dragon_row=1)
+    assert action_reason(ctx, 0 * MAX_COLUMNS + 0) == "own column, gem"
+    assert action_reason(ctx, 1 * MAX_COLUMNS + 0) == "own column, dragon"
+    assert (
+        action_reason(ctx, 1 * MAX_COLUMNS + 0 + N_BASE_ACTIONS)
+        == "own column, dragon + blast"
+    )
+
+    rows = list(ctx.public_rows)
+    rows[1] = ((DRAGON, BACKSIDE_A), (None, BACKSIDE_A), None, None)
+    hidden = replaced(ctx, public_rows=tuple(rows))
+    reason = action_reason(hidden, 1 * MAX_COLUMNS + 1)
+    assert reason.startswith("back o ("), reason
+    assert reason.endswith("dragon)"), reason
+
+
+def test_action_reason_calls_a_raid_a_raid():
+    from features import action_reason
+
+    ctx = _backside_raid_context()
+    assert action_reason(ctx, 1 * MAX_COLUMNS + 1).startswith("raid P2")
+
+
 def _backside_raid_context():
     """A rival sits on a backside whose safe cards are all known.
 

@@ -70,8 +70,10 @@ def test_policy_snapshot_is_a_distribution_over_legal_actions(tiny_net):
     assert snapshot, "the opening position should be a decision point"
     total = sum(probability for _action, probability in snapshot)
     assert 0.99 <= total <= 1.01
+    from features import N_BASE_ACTIONS
+
     legal = set(controller.legal_actions())
-    allowed = legal | {action + 28 for action in legal}
+    allowed = legal | {action + N_BASE_ACTIONS for action in legal}
     assert {action for action, _probability in snapshot} <= allowed
     assert all(probability > 0 for _action, probability in snapshot)
 
@@ -340,3 +342,46 @@ def test_the_watchable_blast_rules_all_finish_and_trap_blasts_less():
             else:  # pragma: no cover - the driver must terminate
                 raise AssertionError("the game did not finish")
     assert announced["blaster"] > announced["blaster:trap"] > 0
+
+
+def test_the_viewer_names_what_the_deciding_seat_knows(tiny_net):
+    """Every offered move carries a reason, and the standing plan says if it is locked."""
+    from game_env import BACKSIDE_A, MAX_COLUMNS
+
+    policy = f"neural:{tiny_net}"
+    controller = GameController(3, policy, seed=7)
+    controller.reset(3, policy, seed=7)
+
+    snapshot = controller.policy_snapshot(limit=6)
+    assert snapshot
+    reasons = [controller.reason_for(action) for action, _probability in snapshot]
+    assert all(reason for reason in reasons)
+    assert any("own column" in reason or "back " in reason for reason in reasons)
+
+    plan = controller.plan_summary(0)
+    assert "P1:" in plan
+    assert "tentative" in plan or "locked" in plan
+
+    # The reason has to describe the *deciding* seat's knowledge, not seat 0's.
+    card = 0 * MAX_COLUMNS + 2
+    controller.env.rows[0][2] = (None, BACKSIDE_A)
+    assert "back " in controller.reason_for(card, 2)
+
+
+def test_a_deep_mine_still_offers_its_front_rows_to_the_viewer():
+    """The action grid must cover every row a deck can deal (BALANCE 7)."""
+    from game_env import BACKSIDE_A, MAX_COLUMNS, PIT_CAGE
+
+    controller = GameController(3, "simple", seed=3)
+    controller.reset(3, "simple", seed=3)
+    controller.env.rows = [
+        [(None, BACKSIDE_A) for _ in range(4)] for _ in range(6)
+    ]
+    for player in controller.env.players:
+        player.position = 6
+        player.column = None
+
+    legal = controller.legal_actions()
+    front_row = [action for action in legal if action // MAX_COLUMNS == 0]
+    assert front_row, "the front row must be nameable"
+    assert max(action // MAX_COLUMNS for action in legal if action < PIT_CAGE) == 5

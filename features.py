@@ -374,6 +374,47 @@ def doomed_dragon_digs(ctx: PlayerActionContext) -> set[int]:
     }
 
 
+_FRONT_NAMES = {GEM: "gem", DRAGON: "dragon", DYNAMITE: "dynamite"}
+_BACKSIDE_NAMES = {0: "o", 1: "v", 2: "~"}
+
+
+def action_reason(ctx: PlayerActionContext, action: int) -> str:
+    """One short sentence for *why* an action looks the way it does to its player.
+
+    The viewer draws nothing but backsides, so a move that is obviously right to
+    the seat that makes it can look arbitrary to the person watching: only the
+    owner of a column ever sees the fronts in it. This spells out what the
+    deciding seat knew.
+    """
+    primitive, announces_blast = split_action(int(action))
+    suffix = " + blast" if announces_blast else ""
+    if primitive == PIT_CAGE:
+        return "pit cage" + suffix
+    if primitive == LORRY:
+        return "lorry" + suffix
+    if primitive == PASS:
+        return "pass" + suffix
+    row, column = divmod(primitive, MAX_COLUMNS)
+    if row >= len(ctx.public_rows) or column >= len(ctx.public_rows[row]):
+        return "empty slot" + suffix
+    entry = ctx.public_rows[row][column]
+    if entry is None:
+        return "empty slot" + suffix
+    front, back = entry
+    _known_dragons, _known_safe, _unknown, risk = backside_stats(ctx)
+    chance = float(risk[int(back)])
+    occupant = _occupant(ctx, row, column)
+    raiding = occupant is not None and occupant != ctx.player_index and occupant == column
+
+    if raiding:
+        return f"raid P{int(occupant) + 1}, back {_BACKSIDE_NAMES.get(int(back), '?')} ({chance:.0%} dragon){suffix}"
+    if column == ctx.player_index and front is not None:
+        return f"own column, {_FRONT_NAMES.get(int(front), 'card')}{suffix}"
+    if column == ctx.player_index:
+        return f"own column, back {_BACKSIDE_NAMES.get(int(back), '?')} ({chance:.0%} dragon){suffix}"
+    return f"back {_BACKSIDE_NAMES.get(int(back), '?')} ({chance:.0%} dragon){suffix}"
+
+
 def action_mask(ctx: PlayerActionContext) -> np.ndarray:
     """Legal policy actions, including legal blast announcements.
 
@@ -411,6 +452,7 @@ __all__ = [
     "N_STATE_FEATURES",
     "action_features",
     "action_mask",
+    "action_reason",
     "digs_face_up_dragon",
     "doomed_dragon_digs",
     "has_dragon_free_move",

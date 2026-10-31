@@ -148,10 +148,16 @@ python mine_gui.py --opponents 3 --policy blaster --all-seats
 python mine_gui.py --opponents 3 --policy blaster:trap --all-seats
 ```
 
-The **AI POLICY** panel lists the network's top actions for Player 1 with their
-probabilities, marking the action it actually took, so a surprising move can be
-traced back to the distribution that produced it. It is empty for scripted
-policies, during a tie-break, and while a blast is waiting on a card.
+The **AI POLICY** panel lists the network's top actions for the seat on turn
+with their probabilities, marking the action it actually took, so a surprising
+move can be traced back to the distribution that produced it. Every candidate
+carries the reason the *deciding seat* had for it ("own column, gem", "back v
+(20% dragon)", "raid P2, back o (11% dragon)"), because the board only ever
+draws backsides: only the owner of a column sees the fronts in it. A line under
+the list says whether the plan currently standing is **locked** or still
+**tentative** — planning is sequential, so a figure parked on a card can move
+again before the phase ends. The panel is empty for scripted policies, during a
+tie-break, and while a blast is waiting on a card.
 
 What to look for, given the measurements in [BALANCE.md](BALANCE.md): it should
 rarely blast (0.02-0.05 per game *fired*, for two reasons — it seldom holds two
