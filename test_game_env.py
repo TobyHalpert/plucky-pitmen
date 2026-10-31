@@ -8,18 +8,26 @@ from game_env import (
     DRAGON,
     DYNAMITE,
     GEM,
+    DECK_SIZE,
     LORRY,
+    MAX_COLUMNS,
+    MAX_ROWS,
     MineEnv,
     PASS,
     PIT_CAGE,
 )
+
+# The observation is 15 state values, then one backside per mine cell, then one
+# front per cell. The mine block is sized by the deepest board a deck can build.
+CELLS = MAX_ROWS * MAX_COLUMNS
+FRONT_OFFSET = 15 + CELLS
 
 
 def test_random_game_terminates():
     env = MineEnv(opponents=2)
     observation, _ = env.reset(seed=3)
     env.starting_player = 0
-    assert observation.shape == (65,)
+    assert observation.shape == env.observation_space.shape
     for _ in range(300):
         if env._game_over():
             break
@@ -149,7 +157,7 @@ def test_observation_exposes_backsides_but_not_fronts():
     observation, _ = env.reset(seed=12)
 
     visible_backsides = [
-            observation[15 + row_index * 5 + player_index]
+            observation[15 + row_index * MAX_COLUMNS + player_index]
         for row_index, row in enumerate(env.rows)
         for player_index, _card in enumerate(row)
     ]
@@ -157,7 +165,7 @@ def test_observation_exposes_backsides_but_not_fronts():
 
     assert visible_backsides == expected_backsides
     assert all(value in (BACKSIDE_A, BACKSIDE_B, BACKSIDE_C) for value in visible_backsides)
-    assert BACKSIDE_UNKNOWN in observation[[15 + row_index * 5 + 4 for row_index in range(3)]]
+    assert BACKSIDE_UNKNOWN in observation[[15 + row_index * MAX_COLUMNS + 4 for row_index in range(3)]]
 
 
 def test_observation_reveals_only_p1_column_fronts():
@@ -165,7 +173,7 @@ def test_observation_reveals_only_p1_column_fronts():
     observation, _ = env.reset(seed=12)
 
     own_fronts = [
-        observation[40 + row_index * 5]
+        observation[FRONT_OFFSET + row_index * MAX_COLUMNS]
         for row_index in range(3)
     ]
     expected_fronts = [env.rows[row_index][0][0] + 4 for row_index in range(3)]
@@ -173,7 +181,7 @@ def test_observation_reveals_only_p1_column_fronts():
     assert own_fronts == expected_fronts
     assert observation[15] == env.rows[0][0][1]
     assert all(
-        observation[40 + row_index * 5 + column] == BACKSIDE_UNKNOWN
+        observation[FRONT_OFFSET + row_index * MAX_COLUMNS + column] == BACKSIDE_UNKNOWN
         for row_index in range(3)
         for column in range(1, 3)
     )
@@ -721,3 +729,63 @@ def test_deck_has_thirty_cards_with_three_backside_sets():
     for backside in (BACKSIDE_A, BACKSIDE_B, BACKSIDE_C):
         fronts = Counter(front for front, card_backside in deck if card_backside == backside)
         assert fronts == Counter({DRAGON: 2, GEM: 4, DYNAMITE: 4})
+
+
+# ----------------------------------------------------------------------
+# The action grid must cover every row the deck can produce. A haul grows a row
+# every round, so sizing the grid by the three-row opening board left the front
+# rows with no action at all: agents could neither see them nor name them and
+# had to fall back to a shallower row, abandoning the cards below them.
+# ----------------------------------------------------------------------
+def _deep_mine(opponents: int = 2, depth: int = 7) -> MineEnv:
+    env = MineEnv(opponents=opponents)
+    env.reset(seed=0)
+    while len(env.rows) < depth:
+        env.rows.extend(env._deal_next_rows(1))
+        env.round += 1
+    for player in env.players:
+        player.position = len(env.rows)
+        player.cage_index = None
+    return env
+
+
+def test_action_grid_covers_the_deepest_board_any_deck_can_produce():
+    for opponents in (2, 3, 4):
+        n_players = opponents + 1
+        deepest_board = DECK_SIZE // n_players
+        assert deepest_board <= MAX_ROWS
+        assert n_players <= MAX_COLUMNS
+    # The last card action must stay below the special actions, or a card would
+    # be indistinguishable from "leave via pit cage".
+    assert PIT_CAGE == MAX_ROWS * MAX_COLUMNS
+    assert PIT_CAGE > (MAX_ROWS - 1) * MAX_COLUMNS + (MAX_COLUMNS - 1)
+
+
+def test_front_row_is_visible_and_playable_when_the_mine_grows_past_opening_depth():
+    env = _deep_mine(depth=7)
+    front = len(env.rows) - 1
+    column = (env.players[0].column or 0)
+    action = front * MAX_COLUMNS + column
+
+    assert front >= 5, "the test needs a board deeper than the old five-row grid"
+    assert env.rows[front][column] is not None
+    assert env._legal(action, 0)
+    assert action < PIT_CAGE, "a card action must never collide with pit cage"
+
+    view = env.player_view(0)
+    assert len(view["rows"]) == len(env.rows)
+    assert view["rows"][front][column] is not None
+    assert len(env.player_action_context(0).public_rows) == len(env.rows)
+    assert env._observation().shape == env.observation_space.shape
+
+
+def test_every_row_of_a_grown_mine_has_a_reachable_card_action():
+    env = _deep_mine(depth=8)
+    context = env.player_action_context(0)
+    legal = [action for action, allowed in enumerate(env.action_mask(0)) if allowed]
+    legal_card_rows = {action // MAX_COLUMNS for action in legal if action < PIT_CAGE}
+
+    assert legal_card_rows == set(range(len(env.rows)))
+    assert {
+        action // MAX_COLUMNS for action in context.legal_actions if action < PIT_CAGE
+    } == legal_card_rows

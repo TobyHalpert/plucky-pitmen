@@ -12,6 +12,7 @@ from game_env import (
     BACKSIDE_A, BACKSIDE_B, BACKSIDE_C, DRAGON, DYNAMITE, GEM, LORRY,
     MineEnv, PASS, PIT_CAGE,
 )
+from features import N_BASE_ACTIONS
 from gui_controller import (
     GameController,
     StepResult,
@@ -33,8 +34,10 @@ BACKSIDE_SYMBOLS = {BACKSIDE_A: "o", BACKSIDE_B: "v", BACKSIDE_C: "~"}
 FRONT_LABELS = {GEM: "GEM", DRAGON: "DRAGON", DYNAMITE: "DYNAMITE"}
 POLICIES = agent_policies()
 BLAST_ACTION_PREFIX = "Blast: "
-# The action space is 28 primitives plus the same 28 "and announce a blast".
-ANNOUNCE_OFFSET = 28
+# The action space is the base primitives plus one "and announce a blast" copy
+# of each. Derive the split instead of hardcoding it: the grid grows with the
+# deepest board a deck can produce.
+ANNOUNCE_OFFSET = N_BASE_ACTIONS
 AUTOPLAY_DELAY_MS = 750
 RESIZE_DEBOUNCE_MS = 100
 

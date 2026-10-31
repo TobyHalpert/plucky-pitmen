@@ -13,11 +13,6 @@ from gymnasium import spaces
 GEM = 0
 DRAGON = 1
 DYNAMITE = 2
-MAX_ROWS = 5
-MAX_COLUMNS = 5
-PIT_CAGE = MAX_ROWS * MAX_COLUMNS
-LORRY = PIT_CAGE + 1
-PASS = LORRY + 1
 
 BACKSIDE_A = 0
 BACKSIDE_B = 1
@@ -26,12 +21,31 @@ BACKSIDE_UNKNOWN = 3
 FRONT_UNKNOWN = -1
 
 # Deck composition per backside pool.
+BACKSIDES_PER_DECK = 3
 DRAGONS_PER_BACKSIDE = 2
 GEMS_PER_BACKSIDE = 4
 DYNAMITES_PER_BACKSIDE = 4
 TOTAL_PER_BACKSIDE = (
     DRAGONS_PER_BACKSIDE + GEMS_PER_BACKSIDE + DYNAMITES_PER_BACKSIDE
 )
+DECK_SIZE = BACKSIDES_PER_DECK * TOTAL_PER_BACKSIDE
+
+# ``MineEnv`` seats three, four or five players, each with its own column.
+MAX_COLUMNS = 5
+MIN_PLAYERS = 3
+MAX_PLAYERS = 5
+# The rules never cap the depth of the mine: a new row is dealt at the bottom
+# end every round until a complete row can no longer be formed. The opening
+# board is three rows deep, but a haul can reach ``DECK_SIZE / n_players`` rows
+# (10 at three players, 7 at four, 6 at five), so the action grid has to cover
+# every row a deck can produce. Sizing it by the opening board instead (the
+# historical ``MAX_ROWS = 5``) made the front rows unrepresentable: neither
+# visible in the observations nor nameable as an action, which pushed agents
+# back to a shallower row and stranded the cards below it.
+MAX_ROWS = DECK_SIZE // MIN_PLAYERS
+PIT_CAGE = MAX_ROWS * MAX_COLUMNS
+LORRY = PIT_CAGE + 1
+PASS = LORRY + 1
 
 HAULS_PER_GAME = 3
 PIT_CAGE_REWARD = 0.0

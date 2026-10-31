@@ -250,7 +250,11 @@ def test_policy_net_can_learn_to_prefer_one_action():
     for _ in range(80):
         net.fit(fixed, epochs=1, batch_size=24, entropy_coef=0.0)
     after = float(net.masked_probs(matrix, mask)[target])
-    assert after > before + 0.05
+    # The head scores every action of the grid, so an absolute probability
+    # margin shrinks with the size of the grid (106 actions now). Assert a
+    # relative gain over the uniform-over-legal starting point instead.
+    assert after > before * 1.25
+    assert after > 1.0 / mask.sum()
 
 
 def test_lorry_standoff_leaves_the_haul_and_campers_keep_their_loot():
