@@ -157,10 +157,24 @@ def _figure_cell(
 
 
 def figure_dragon_risk(ctx: PlayerActionContext, player_index: int) -> float:
-    """The dragon risk of the card one figure is standing on, as this seat sees it."""
+    """The dragon risk of the card one figure is standing on, as this seat sees it.
+
+    A rival standing in **its own column** is the case that has to be read
+    carefully, and getting it wrong is what made the first version of this
+    feature useless: that rival can see the card under it, so it will step away
+    from a dragon rather than turn one -- to the cage, which is always available
+    from a card. Only a figure standing on a card *nobody at the table can see*
+    (a raid into somebody else's column) is a dragon risk to the rest of the
+    mine. Pricing the two the same way put seed 7's haul-1 round-1 table at a
+    61% hazard when no seat at that table was standing on anything it could not
+    see, and in 200 re-rolls from that position the haul ended on a dragon 1% of
+    the time.
+    """
     row, column = _figure_cell(ctx, player_index)
     if not 0 <= row < PIT_CAGE:
         return 0.0
+    if player_index != ctx.player_index and column == player_index:
+        return 0.0  # the sitter can see this card and will not turn a dragon
     risk = cell_dragon_risk(ctx, row, column)
     return 0.0 if risk is None else risk
 
@@ -171,9 +185,12 @@ def round_dragon_hazard(ctx: PlayerActionContext) -> float:
     This is the only thing a pit cage insures against: a dragon ends the haul and
     everybody still in the mine scores for a dead figure, loot and haul bonus
     gone with it.  A figure in front of the mine, in a cage or on a lorry is
-    standing on nothing and carries no risk; every figure still in the columns
-    carries the risk of the card under it, and a charged blast can wake a dragon
-    whatever the board says, so it reads as certain danger.
+    standing on nothing and carries no risk.  A figure standing on a card
+    *nobody at the table can see* carries the risk of that card -- and that is
+    the only way a dragon is woken in this game, because a seat can see its own
+    column and will step away from a dragon rather than turn it (see
+    ``figure_dragon_risk``).  A charged blast can wake one whatever the board
+    says, so it reads as certain danger.
 
     It is deliberately a *lower* bound on the truth: a rival is free to walk
     onto a card mid-round, so a table where nobody currently stands on a

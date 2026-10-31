@@ -785,7 +785,8 @@ The fix is in three parts, and each part is measured:
    `migrate_checkpoint.py --append-hazard` widens checkpoints that predate it.
    It is deliberately a *lower* bound: a rival is free to walk onto a card
    mid-round, so a table where nobody stands on a dragon-capable card is more
-   dangerous than zero.
+   dangerous than zero. (What it counts as dangerous was wrong at first — see
+   the correction at the end of this section.)
 2. **`cage_banks_nothing` reads it.** One gem in hand is no longer enough on its
    own: the cage needs a hazard above 0.15, or a charged blast, or a dragon the
    seat can see about to be turned. The reason this is right and not just
@@ -818,6 +819,44 @@ The residual is honest: about five escapes a game are still empty-handed. The
 rule allows them whenever a card or a blast can blow, and an empty escape still
 takes +3 when it is the only exit — that is the game's own bargain, insurance
 paid for with a round, not a defect in the model.
+
+#### Correction: the hazard was priced on the wrong cards
+
+The viewer came back with one case from seed 7: **haul 1, planning round 1**,
+P1 holding one gem and standing on the gem it could see in its own column, no
+blast charged, no dragon face up — and it walked to the cage at 89%. The rule
+above allowed it, because the table hazard read **0.61**: three rivals, each
+standing on a face-down card.
+
+That reading was wrong, and the game says why. A rival standing in **its own
+column** can see the card under it, and stepping away from a dragon is always
+legal — the pit cage is reachable from any card — so it will not turn one. The
+figures that can wake a dragon are the ones standing on a card *nobody at the
+table can see*: a raid into somebody else's column, plus a charged blast.
+Re-rolled from that exact position 200 times, the haul ended on a dragon **1%**
+of the time, against a believed 61%. The escape itself was worth −0.21 ± 0.24
+points against staying to collect: not a blunder, but insurance bought at a price
+eight times too pessimistic.
+
+`figure_dragon_risk` now charges only the raiders. That makes the same clause
+*safe*, which the earlier mask tests could not show — they were run with the
+miscalibrated hazard, and raising the bar then cost points (−0.19 at 0.45,
+−0.34 at 0.60) because those thresholds were forbidding escapes at tables that
+merely looked dangerous. With the raider-only hazard, 1,000 paired four-net games
+per row:
+
+| escape clause (hazard ≤ 0.15 masks the cage) | score | wins |
+| :-- | :-- | :-- |
+| the checkpoint before this change, off → on | −0.04 (se 0.07) | −0.3pp |
+| retrained under the corrected feature, off → on | −0.05 (se 0.08) | +2.9pp (se 1.7) |
+
+The checkpoint was retrained again, 20 generations under the corrected feature:
+**+0.03 points (se 0.09)** against the one it replaces in 800 paired four-net
+games — parity, because the point of the change is a truthful input rather than a
+stronger player — and 54.2% · +3.50 against three `rule` bots (1,000 games),
+38.5% · +2.21 against three readers (the predecessor's 41.0% is inside the noise,
+se 1.6). Seed 7 no longer contains an escape at a table where nothing visible can
+blow.
 
 ## 5. Is blasting too weak? No — but it is not a free win either
 

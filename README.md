@@ -404,7 +404,15 @@ The full write-up, with confidence intervals and reproduction commands, is in
   now a state feature (input 103 → 104) and the escape rule reads it. Seed 7's
   danger-free escapes were worth **−0.35** points and its dangerous ones **+0.53**;
   the retrained checkpoint is **+0.45 points** better than the one before it and
-  takes no escape at a table where nothing can blow (BALANCE.md §4.5).
+  takes no escape at a table where nothing can blow (BALANCE.md §4.5). The first
+  version of that feature charged a rival the risk of the card under it even when
+  the rival was standing in its own column — where it can see the card and will
+  step away from a dragon rather than turn one. Only figures on a card *nobody
+  can see* (a raid) can wake a dragon, plus blasts. Priced the old way, the
+  table the viewer flagged in seed 7 read 0.61; priced on the raiders it read
+  0.00, and re-rolled 200 times it ended on a dragon 1% of the time. The
+  correction is strength-neutral (+0.03 points, se 0.09, against the checkpoint
+  it replaces) and the escape rule costs nothing measurable with it.
 * **The blast threat is real; the AI ignores it.** A pending blast costs the
   blaster's rivals **-0.43 points [-0.81, -0.06]** and 11 points of win rate, and
   the cheapest counter — walk to the pit cage while the blast is pending —

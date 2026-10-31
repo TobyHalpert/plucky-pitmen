@@ -998,21 +998,18 @@ def test_the_state_says_how_likely_the_mine_is_to_blow_this_round():
     a seat cannot see the card under a rival's figure.  Without this feature the
     escape decision is blind to the one quantity that makes it right or wrong.
     """
-    from features import (
-        HAZARD_FEATURE,
-        round_dragon_hazard,
-        state_features,
-    )
+    from features import HAZARD_FEATURE, round_dragon_hazard, state_features
 
     # Nobody is in the columns: no card can be turned, so no dragon this round.
     empty = _board_context({}, legal=(0,), own_position=5)
     assert round_dragon_hazard(empty) == 0.0
     assert state_features(empty)[HAZARD_FEATURE] == 0.0
 
-    # A rival on a face-down card carries that backside's remaining dragons:
-    # two dragons behind ten cards is 0.2.
+    # A rival *raiding* a column it cannot see carries that backside's remaining
+    # dragons: two dragons behind ten cards is 0.2.
+    raider = replaced(_rival(1, 2), column=0)
     rival = replaced(
-        _board_context({(2, 1): (None, 0)}, legal=(0,)), opponents=(_rival(1, 2),)
+        _board_context({(2, 0): (None, 0)}, legal=(0,)), opponents=(raider,)
     )
     assert round_dragon_hazard(rival) == pytest.approx(0.2)
     assert state_features(rival)[HAZARD_FEATURE] == pytest.approx(0.2)
@@ -1021,10 +1018,10 @@ def test_the_state_says_how_likely_the_mine_is_to_blow_this_round():
     # seat's own column: the card cannot be one, and the hazard is zero again.
     spent = replaced(
         _board_context(
-            {(0, 0): (DRAGON, 0), (1, 0): (DRAGON, 0), (2, 1): (None, 0)},
-            legal=(2 * MAX_COLUMNS + 1,),
+            {(0, 0): (DRAGON, 0), (1, 0): (DRAGON, 0), (2, 0): (None, 0)},
+            legal=(2 * MAX_COLUMNS + 0,),
         ),
-        opponents=(_rival(1, 2),),
+        opponents=(raider,),
     )
     assert round_dragon_hazard(spent) == 0.0
 
@@ -1032,10 +1029,20 @@ def test_the_state_says_how_likely_the_mine_is_to_blow_this_round():
     standing = _board_context({(2, 0): (None, 0)}, legal=(0,), own_position=2)
     assert round_dragon_hazard(standing) == pytest.approx(0.2)
 
+    # A rival standing in its own column is no hazard at all: it can see the
+    # card, and stepping away from a dragon is always available -- seed 7's
+    # haul-1 round-1 table, where every seat stood on a card it could see and
+    # the haul ended on a dragon 1% of 200 re-rolls.
+    sitter = replaced(
+        _board_context({(2, 2): (None, 0)}, legal=(0,)),
+        opponents=(replaced(_rival(2, 2), column=2),),
+    )
+    assert round_dragon_hazard(sitter) == 0.0
+
     # A charged blast can wake a dragon whatever the board says.
     charged = replaced(
         _board_context({(2, 1): (None, 0)}, legal=(0,)),
-        opponents=(replaced(_rival(1, 2), blast_pending=True),),
+        opponents=(replaced(_rival(1, 2), column=0, blast_pending=True),),
     )
     assert round_dragon_hazard(charged) == 1.0
 
@@ -1078,12 +1085,12 @@ def test_the_mask_keeps_the_cage_when_something_can_blow():
 
     threatened = replaced(
         _board_context(
-            {(2, 1): (None, 0)},
+            {(2, 0): (None, 0)},
             legal=(0, int(PIT_CAGE)),
             own_position=5,
         ),
         private_cards=((GEM, 0),),
-        opponents=(_rival(1, 2),),
+        opponents=(replaced(_rival(1, 2), column=0),),
     )
     # The gem in hand nudges the backside's risk (one known-safe card fewer).
     assert round_dragon_hazard(threatened) > CAGE_ANSWERS_A_HAZARD
