@@ -877,6 +877,31 @@ empty escape taken while *any* card is reachable — including a card the seat
 cannot see — costs **−0.11 points (se 0.04)**, so stepping onto an unknown card
 instead of leaving is a real trade rather than a wasted round.
 
+#### Whose escape you are watching
+
+Three reports in a row (this section, its predecessor, and #15) said the trained
+AI leaves the mine through the cage with no danger on the table, and each time the
+all-neural game of that seed had no such move. The reason is the viewer's table.
+It is mixed unless "AI in every seat" is ticked: `--policy neural:selfplay4` puts
+the network on P1 and leaves P2–P4 on the built-in `simple` bot, and with no
+`--policy` every seat is that bot. The scripted bot escapes far more often, and
+now that every escape prints what it banks and what it runs from, it says why:
+over 60 default-viewer games it takes **1,362 escapes, 444 of them with no gem in
+hand, 158 of those in a haul's first planning phase**, and every one of them now
+carries its reason — *`pit cage, banks 0g (P2 is on my dragon)`*, a dragon in its
+own column with a rival standing on it, a card only that seat can see.
+
+Those gem-less escapes are not a bug either. Removing them from the bot (an
+escape banks nothing, so stay and dig) costs it **0.76 points a seat and wins 32.8%
+of tables against a 50% null** over 400 paired games, because fleeing before a
+dragon it can see turns a sure −1 into 0 or, as sole escapee, +3. What looked arbitrary
+is a private read. The all-neural table has no gem-less escape at all: seed 7
+plays 71 decisions with five escapes, one gem banked each, at hazards 0.25–1.00.
+
+Both the player list and `analyze_game.py` now name the policy behind every seat,
+and `--viewer` replays the mixed table, so a report can be matched to the game it
+came from.
+
 The viewer also stops being the only one who cannot see the danger: `action_reason`
 now spells out what an escape banks and what it is running from —
 `pit cage, banks 0g (the dragon under me)`, `pit cage, banks 1g (a rival's blast)`,

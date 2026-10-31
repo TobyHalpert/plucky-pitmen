@@ -339,6 +339,26 @@ class GameController:
             f"episodes_{TRAINING_EPISODES}_v{TRAINING_CACHE_VERSION}.pkl"
         )
 
+    def seat_policies(self) -> list[str]:
+        """Name the policy driving each seat, in seat order.
+
+        The viewer runs mixed tables: by default only P1 is the chosen policy
+        and the other seats are the environment's built-in opponent.  A report
+        like "P3 walks to the pit cage" is unreadable without this, because the
+        reader cannot tell whose policy it was.
+        """
+        env_policy = self._environment_policy()
+        labels: list[str] = []
+        for seat in range(len(self.agents)):
+            agent = self.agents[seat]
+            if agent is None:
+                labels.append(env_policy)
+            elif self.is_neural:
+                labels.append(self.policy)
+            else:
+                labels.append(getattr(agent, "name", "scripted"))
+        return labels
+
     def _environment_policy(self) -> str:
         """Built-in opponent policy for the seats the controller does not own."""
         if self.policy == "training":

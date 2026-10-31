@@ -99,6 +99,25 @@ def test_all_seats_neural_plays_itself(tiny_net):
     assert controller.env.game_finished
 
 
+def test_the_viewer_names_who_plays_each_seat(tiny_net):
+    """"P3 walks to the cage" is unreadable unless the table says who P3 is.
+
+    The viewer is a mixed table by default: the chosen policy drives P1 only and
+    the rest are the environment's built-in opponent.  Reading a rule bot's move
+    as the trained network's is exactly how a fixed behaviour keeps getting
+    reported, so the seat list carries the policy.
+    """
+    policy = f"neural:{tiny_net}"
+    mixed = GameController(3, policy, seed=7)
+    assert mixed.seat_policies() == [policy, "simple", "simple", "simple"]
+
+    seated = GameController(3, policy, seed=7, all_seats=True)
+    assert seated.seat_policies() == [policy] * 4
+
+    scripted = GameController(3, "simple", seed=7)
+    assert scripted.seat_policies() == ["simple"] * 4
+
+
 def test_autoplay_picks_and_resolves_a_blast_card(tiny_net):
     """The viewer must never wait for a click when an AI seat is blasting."""
     policy = f"neural:{tiny_net}"

@@ -144,10 +144,21 @@ def probabilities(net: PolicyNet, ctx) -> np.ndarray | None:
     )
 
 
-def transcript(seed: int, policy: str, opponents: int, greedy: bool):
+def transcript(
+    seed: int, policy: str, opponents: int, greedy: bool, *, all_seats: bool = True
+):
+    """Replay a game decision by decision.
+
+    ``all_seats=True`` is the all-neural table used for every measurement in
+    BALANCE.md.  ``all_seats=False`` is what the viewer does by default: the
+    chosen policy drives P1 and the environment's built-in ``simple`` bot plays
+    the rest.  The two are different games, so the header names each seat's
+    policy and ``--viewer`` reproduces the viewer's table.
+    """
     controller = GameController(opponents, policy, seed)
     controller.reset(
-        opponents, policy, seed, all_seats=True, deterministic=greedy, advance=False
+        opponents, policy, seed,
+        all_seats=all_seats, deterministic=greedy, advance=False,
     )
     env = controller.env
     net = controller.policy_net()
@@ -160,19 +171,26 @@ def transcript(seed: int, policy: str, opponents: int, greedy: bool):
         if controller.in_tie_breaker or not ctx.legal_actions:
             controller.step_one_player_auto()
             continue
-        probs = probabilities(net, ctx)
+        owned = seat < len(controller.agents) and controller.agents[seat] is not None
+        probs = probabilities(net, ctx) if owned else None
         before = [len(player.collected_cards) for player in env.players]
         state = (board_text(env), positions_text(env))
         haul_before, round_before = env.haul, env.round
+        turns_before = env.planning_turns
         controller.step_one_player_auto()
-        choice = controller.last_choice
-        if choice is None or controller.last_choice_seat != seat:
-            continue
+        if owned:
+            choice = controller.last_choice
+            if choice is None or controller.last_choice_seat != seat:
+                continue
+            action, blast = int(choice.action), bool(choice.announce_blast)
+        else:
+            if env.planning_turns != turns_before + 1:
+                continue
+            action, blast = int(env.last_action), False
         reveals = []
         for index, player in enumerate(env.players):
             for card in player.collected_cards[before[index]:]:
                 reveals.append((index, card[0], card[1]))
-        action = int(choice.action)
         events.append(
             {
                 # The phase the decision was made in, not the one it advanced to:
@@ -184,7 +202,7 @@ def transcript(seed: int, policy: str, opponents: int, greedy: bool):
                 "board": state[0],
                 "figures": state[1],
                 "action": action,
-                "blast": bool(choice.announce_blast),
+                "blast": blast,
                 "reason": action_reason(ctx, action),
                 "p": None if probs is None else float(probs[action]),
                 "top": []
@@ -201,6 +219,10 @@ def transcript(seed: int, policy: str, opponents: int, greedy: bool):
 
 def print_game(events: list[dict], controller: GameController, policy: str, seed: int) -> None:
     print(f"policy {policy}, seed {seed}, {len(events)} planning decisions")
+    seated = ", ".join(
+        f"P{seat + 1} {name}" for seat, name in enumerate(controller.seat_policies())
+    )
+    print(f"  seated: {seated}")
     current = None
     for record in events:
         if (record["haul"], record["round"]) != current:
@@ -422,13 +444,20 @@ def main() -> None:
     parser.add_argument("--policy", default=f"{NEURAL_PREFIX}selfplay4")
     parser.add_argument("--opponents", type=int, default=3)
     parser.add_argument("--greedy", action="store_true")
+    parser.add_argument(
+        "--viewer",
+        action="store_true",
+        help="play the viewer's default table: the policy on P1, the built-in "
+        "`simple` bot on the other seats",
+    )
     parser.add_argument("--forks", action="store_true")
     parser.add_argument("--forks-max", type=int, default=40)
     parser.add_argument("--fork-samples", type=int, default=60)
     args = parser.parse_args()
 
     controller, events = transcript(
-        args.seed, args.policy, args.opponents, args.greedy
+        args.seed, args.policy, args.opponents, args.greedy,
+        all_seats=not args.viewer,
     )
     print_game(events, controller, args.policy, args.seed)
     print(f"\n  decisions worth checking: {len(decisions_worth_checking(events))}")

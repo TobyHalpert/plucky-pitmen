@@ -171,13 +171,24 @@ Every escape in the log names what it banks and what it is running from
 (`pit cage, banks 0g (the dragon under me)`), which matters because a dragon in a
 seat's own column is a card only that seat can see.
 
+The seat list matters as much as the log: the viewer is a **mixed table** unless
+you ask for otherwise. `--policy` drives P1 only — P2–P4 stay on the environment's
+built-in `simple` bot — and with no `--policy` at all every seat is that bot. Each
+seat's policy now shows in the player list (`P2 [simple]`), the analysis header
+names all four, and `--viewer` replays exactly the table the viewer draws:
+
+```powershell
+python analyze_game.py --seed 7 --viewer     # P1 neural, P2-P4 the built-in bot
+python analyze_game.py --seed 7 --viewer --policy simple   # the all-bot default table
+```
+
 ```powershell
 python analyze_game.py --seed 7              # every decision of the game you just watched
 python analyze_game.py --seed 7 --forks      # what each flagged move was worth, re-rolled
 python analyze_game.py --seed 7 --greedy     # the same seed, argmax only
 ```
 
-One such game — seed 7, four neural seats, scored **5–4–0–1** with the shipped
+One such game — seed 7, four neural seats, scored **1–0–3–4** with the shipped
 checkpoint — is read in full in **[SEED7.md](SEED7.md)**: which moves were the
 policy's own first choice, which were 10% samples, where the network is genuinely
 blind (displacement), and what the argmax game of the same seed looks like

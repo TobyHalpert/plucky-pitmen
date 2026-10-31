@@ -593,6 +593,7 @@ class MineViewer:
 
     def _update_player_list(self) -> None:
         env = self.controller.env
+        seated = self.controller.seat_policies()
         self.players_text.configure(state="normal")
         self.players_text.delete("1.0", "end")
         for i, player in enumerate(env.players):
@@ -607,12 +608,16 @@ class MineViewer:
                     BACKSIDE_SYMBOLS[b] for f, b in player.collected_cards if f == DYNAMITE
                 ) or "-"
                 self.players_text.insert(
-                    "end", f"P{i + 1} (you){status}{starting}\t{player.score} VP\n"
+                    "end",
+                    f"P{i + 1} (you, {seated[i]}){status}{starting}\n"
+                    f"\t{player.score} VP\n",
                 )
                 self.players_text.insert("end", f"gems: {gems}  dynamite: {dyn}\n\n")
             else:
                 self.players_text.insert(
-                    "end", f"P{i + 1}{status}{starting}\t{player.score} VP\nbacks: {collected}\n\n"
+                    "end",
+                    f"P{i + 1} [{seated[i]}]{status}{starting}\t{player.score} VP\n"
+                    f"backs: {collected}\n\n",
                 )
         if env.used_blast_backsides:
             used = ", ".join(BACKSIDE_SYMBOLS[b] for b in env.used_blast_backsides)
