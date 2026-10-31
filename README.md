@@ -121,7 +121,25 @@ Use **Take action** to choose the learner's destination, or **Autoplay** to run 
 Any checkpoint in `checkpoints/` shows up in the **Policy** dropdown as
 `neural:<name>`, and the autoplay driver then hands every decision to the
 network — including whether to announce a blast and which of the three blast
-cards to keep. The `blaster*` policies are the rule bot's movement with a fixed
+cards to keep.
+
+**`checkpoints/` is git-ignored, so a fresh clone has no `neural:` entry in the
+dropdown.** That is the whole reason `neural:selfplay4` is "missing": nothing
+has been trained in that checkout yet. Train one (about four minutes on a
+laptop CPU) and press **New game** — the dropdown is rebuilt every time a game
+starts, so no restart is needed:
+
+```powershell
+python train_selfplay.py --players 4 --generations 60 --games-per-generation 64 --out checkpoints/selfplay4.npz
+python mine_gui.py --opponents 3 --policy neural:selfplay4 --all-seats
+```
+
+A checkpoint saved before a feature was added is refused rather than listed
+(it has no place in today's encoder); the message pane names it and
+`python migrate_checkpoint.py <file>` widens it with zero-weight columns, which
+leaves its play bit-identical until it is trained again.
+
+The `blaster*` policies are the rule bot's movement with a fixed
 blast trigger, which is the only way to see the mechanic on screen: the trained
 learner fires a blast about once every thirty games.
 

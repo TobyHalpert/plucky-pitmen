@@ -23,7 +23,7 @@ from typing import Any, Callable
 import numpy as np
 
 from agents import ActionChoice, NeuralAgent, make_scripted_agent
-from features import action_mask, action_reason, state_action_matrix
+from features import N_INPUT_FEATURES, action_mask, action_reason, state_action_matrix
 from game_env import (
     BACKSIDE_A,
     BACKSIDE_B,
@@ -69,11 +69,49 @@ NEURAL_TEMPERATURE = 0.7
 # ---------------------------------------------------------------------------
 
 def available_checkpoints(directory: Path | None = None) -> list[Path]:
-    """Checkpoints the viewer can load, newest name first."""
+    """Every checkpoint file on disk, by name."""
     directory = Path(directory if directory is not None else CHECKPOINT_DIR)
     if not directory.is_dir():
         return []
     return sorted(directory.glob("*.npz"))
+
+
+def checkpoint_problem(path: Path) -> str | None:
+    """Why the viewer cannot offer this checkpoint, or ``None`` if it can.
+
+    A checkpoint stores its own input width, so a network saved before a feature
+    was added has no place in today's encoder. Offering it in the dropdown only
+    to fail on "New game" wastes the user's time, so the viewer lists it in the
+    message pane with the tool that fixes it instead.
+    """
+    try:
+        with np.load(Path(path), allow_pickle=False) as data:
+            width = int(data["W1"].shape[0])
+    except (OSError, KeyError, ValueError) as error:  # not a checkpoint at all
+        return f"{Path(path).name} is not readable as a checkpoint ({error})"
+    if width != N_INPUT_FEATURES:
+        return (
+            f"{Path(path).name} was trained on {width} input features, this build "
+            f"uses {N_INPUT_FEATURES}: widen it with `python migrate_checkpoint.py "
+            f"{path}`"
+        )
+    return None
+
+
+def usable_checkpoints(directory: Path | None = None) -> list[Path]:
+    """Checkpoints this build can actually load, by name."""
+    return [
+        path for path in available_checkpoints(directory) if checkpoint_problem(path) is None
+    ]
+
+
+def stale_checkpoints(directory: Path | None = None) -> list[str]:
+    """One line per checkpoint on disk that this build has to skip."""
+    return [
+        problem
+        for problem in (checkpoint_problem(path) for path in available_checkpoints(directory))
+        if problem is not None
+    ]
 
 
 def agent_policies(directory: Path | None = None) -> list[str]:
@@ -81,7 +119,26 @@ def agent_policies(directory: Path | None = None) -> list[str]:
     return (
         list(SCRIPTED_STRATEGIES)
         + list(BLAST_STRATEGIES)
-        + [f"{NEURAL_PREFIX}{path.stem}" for path in available_checkpoints(directory)]
+        + [f"{NEURAL_PREFIX}{path.stem}" for path in usable_checkpoints(directory)]
+    )
+
+
+def checkpoint_hint(directory: Path | None = None) -> str | None:
+    """What to tell the user when there is no network to put in a seat.
+
+    ``checkpoints/`` is git-ignored, so a fresh clone has nothing in it and the
+    dropdown offers no ``neural:`` entry at all. That is the commonest reason a
+    viewer asks for "neural:selfplay4" and cannot find it.
+    """
+    directory = Path(directory if directory is not None else CHECKPOINT_DIR)
+    if usable_checkpoints(directory):
+        return None
+    return (
+        "No network to play: "
+        f"{directory} has no usable checkpoint. Train one (about four minutes) with "
+        "`python train_selfplay.py --players 4 --generations 60 "
+        "--games-per-generation 64 --out checkpoints/selfplay4.npz`, then press "
+        "New game — the list is read again every time a game starts."
     )
 
 

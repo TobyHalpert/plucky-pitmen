@@ -17,6 +17,8 @@ from gui_controller import (
     GameController,
     StepResult,
     agent_policies,
+    checkpoint_hint,
+    stale_checkpoints,
 )
 
 
@@ -316,8 +318,11 @@ class MineViewer:
                     textvariable=self.opponents_var).grid(row=0, column=1, padx=4)
         tk.Label(settings, text="Policy", fg="#b7c8cc", bg="#182832",
                  font=ui_font(10)).grid(row=0, column=2, padx=4)
-        ttk.Combobox(settings, textvariable=self.policy_var, values=POLICIES,
-                     state="readonly", width=18).grid(row=0, column=3, padx=4)
+        self.policy_menu = ttk.Combobox(
+            settings, textvariable=self.policy_var, values=POLICIES,
+            state="readonly", width=18,
+        )
+        self.policy_menu.grid(row=0, column=3, padx=4)
         tk.Label(settings, text="Seed", fg="#b7c8cc", bg="#182832",
                  font=ui_font(10)).grid(row=0, column=4, padx=4)
         ttk.Entry(settings, textvariable=self.seed_var, width=7).grid(row=0, column=5, padx=4)
@@ -437,9 +442,22 @@ class MineViewer:
 
     # -- lifecycle ---------------------------------------------------------
 
+    def _refresh_policy_list(self) -> None:
+        """Re-read ``checkpoints/`` so a net trained in another window shows up.
+
+        ``checkpoints/`` is git-ignored, so the list is usually empty on a fresh
+        clone; it also grows whenever the user finishes a training run, which is
+        why it is rebuilt on every new game rather than only at startup.
+        """
+        policies = agent_policies()
+        self.policy_menu["values"] = policies
+        if self.policy_var.get() not in policies:
+            self.policy_var.set(policies[0])
+
     def reset_game(self) -> None:
         self.stop_autoplay()
         self._clear_messages()
+        self._refresh_policy_list()
         try:
             self.controller.reset(
                 opponents=self.opponents_var.get(),
@@ -454,6 +472,11 @@ class MineViewer:
             return
         self._update_action_options()
         self._post_message("Choose a destination. Opponents move automatically after your action.")
+        hint = checkpoint_hint()
+        if hint:
+            self._post_message(hint)
+        for problem in stale_checkpoints():
+            self._post_message(problem)
         self.step_button.state(["!disabled"])
         self.draw_scene()
 

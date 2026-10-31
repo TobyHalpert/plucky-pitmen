@@ -8,13 +8,20 @@ actually finish?
 
 from __future__ import annotations
 
+import json
+
+import numpy as np
 import pytest
 
+from features import N_INPUT_FEATURES
 from gui_controller import (
     GameController,
     agent_policies,
     available_checkpoints,
+    checkpoint_hint,
+    checkpoint_problem,
     resolve_checkpoint,
+    stale_checkpoints,
 )
 from learning import PolicyNet
 
@@ -167,6 +174,43 @@ def test_policy_list_includes_checkpoints_on_disk(tmp_path, tiny_net):
     assert resolve_checkpoint("simple", tmp_path) is None
     with pytest.raises(FileNotFoundError):
         resolve_checkpoint("neural:missing", tmp_path)
+
+
+def test_the_viewer_says_how_to_train_a_network_when_there_is_none(tmp_path):
+    """``checkpoints/`` is git-ignored, so a fresh clone offers no ``neural:`` entry.
+
+    The dropdown then simply has no network in it, and "there is no
+    neural:selfplay4 to choose" is the expected outcome rather than a bug. The
+    viewer has to say what to run instead of leaving the user guessing.
+    """
+    assert checkpoint_hint(tmp_path) is not None
+    hint = checkpoint_hint(tmp_path)
+    assert "train_selfplay.py" in hint and "checkpoints/selfplay4.npz" in hint
+    assert not [name for name in agent_policies(tmp_path) if name.startswith("neural:")]
+
+
+def test_a_usable_checkpoint_silences_the_hint(tiny_net):
+    directory = tiny_net.parent
+    assert checkpoint_hint(directory) is None
+    assert available_checkpoints(directory) == [tiny_net]
+    assert checkpoint_problem(tiny_net) is None
+    assert stale_checkpoints(directory) == []
+
+
+def test_a_checkpoint_from_an_older_feature_layout_is_named_with_its_fix(tmp_path):
+    """Offering it in the dropdown only to fail on "New game" wastes the click."""
+    stale = tmp_path / "selfplay4_legacy.npz"
+    np.savez(
+        stale,
+        meta=json.dumps({"hidden": 8, "value_hidden": 4, "name": "legacy"}),
+        W1=np.zeros((N_INPUT_FEATURES - 4, 8), dtype=np.float32),
+    )
+
+    problem = checkpoint_problem(stale)
+    assert problem is not None
+    assert "migrate_checkpoint.py" in problem and "selfplay4_legacy.npz" in problem
+    assert "neural:selfplay4_legacy" not in agent_policies(tmp_path)
+    assert stale_checkpoints(tmp_path) == [problem]
 
 
 def test_neural_seats_agree_bit_for_bit_on_the_same_seed(tiny_net):
