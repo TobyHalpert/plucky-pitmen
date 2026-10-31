@@ -19,8 +19,8 @@ from dataclasses import dataclass, field
 
 from agents import NeuralAgent, _card_actions, make_scripted_agent, owns_dynamite_pair
 from evaluate_balance import summarise
-from features import N_BASE_ACTIONS
-from game_env import DRAGON, LORRY, MAX_COLUMNS, PASS, PIT_CAGE
+from features import N_BASE_ACTIONS, digs_face_up_dragon
+from game_env import LORRY, MAX_COLUMNS, PASS, PIT_CAGE
 from learning import PolicyNet
 from selfplay import play_series
 
@@ -74,14 +74,7 @@ class Habits:
         self.own_column_digs += int(column == ctx.player_index)
         # Only the player's own column shows fronts, so only a dig there can be
         # a dragon the player can *see*.
-        if (
-            column == ctx.player_index
-            and row < len(ctx.public_rows)
-            and column < len(ctx.public_rows[row])
-        ):
-            entry = ctx.public_rows[row][column]
-            if entry is not None and entry[0] == DRAGON:
-                self.known_dragon_digs += 1
+        self.known_dragon_digs += int(digs_face_up_dragon(ctx, primitive))
 
 
 @dataclass
@@ -90,6 +83,7 @@ class Profile:
     blasts_fired: int = 0
     blast_dragons: int = 0
     dragons: int = 0
+    revealed: int = 0
     hauls: int = 0
     rounds: int = 0
 
@@ -128,8 +122,10 @@ def profile_checkpoint(path: str, games: int, players: int, seed: int, opponents
     stats = summarise(series, path.split("/")[-1])
 
     for game in series:
+        seat = game.policy_of_seat.index(0)
         for haul in game.result.hauls:
             profile.hauls += 1
+            profile.revealed += int(haul.dragon_player == seat)
             profile.rounds += int(getattr(haul, "rounds", 0) or 0)
             profile.blasts_fired += len(haul.blasts)
             profile.blast_dragons += int(haul.outcome == "blast_dragon")
@@ -154,6 +150,7 @@ def profile_checkpoint(path: str, games: int, players: int, seed: int, opponents
         "blasts_fired": profile.blasts_fired / games,
         "blast_dragons": profile.blast_dragons / games,
         "dragons": profile.dragons / profile.hauls if profile.hauls else 0.0,
+        "revealed": profile.revealed / games,
         "rounds": profile.rounds / profile.hauls if profile.hauls else 0.0,
     }
 
@@ -204,6 +201,7 @@ def main() -> None:
         ("blasts fired / game", lambda r: f"{r['blasts_fired']:.2f}"),
         ("blasts that woke a dragon", lambda r: f"{r['blast_dragons']:.2f}"),
         ("hauls ended by a dragon", lambda r: f"{100 * r['dragons']:.0f}%"),
+        ("dragon revealed by this seat", lambda r: f"{r['revealed']:.2f}"),
         ("rounds per haul", lambda r: f"{r['rounds']:.1f}"),
     ]
     for label, getter in habits:

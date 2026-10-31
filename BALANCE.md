@@ -296,7 +296,67 @@ One habit did not improve and is worth watching in the viewer: it still steps
 onto a **face-up dragon in its own column 0.46 times per game** (down from
 0.54), where the `rule` bot does it 0.00 times. In a 100-game sample of that
 habit, all 41 cases had at least one other legal action available, so it is a
-policy choice rather than a forced move.
+policy choice rather than a forced move. What that choice is worth is the next
+question, and the answer is not the one the count suggests.
+
+### The dragon in your own column is bait, not a blunder
+
+The habit looks suicidal and is not. The rule that decides it is displacement:
+
+* only the **owner** of a column knows the front of a card in it — everyone else
+  sees a backside, so nobody else can know the card is a dragon;
+* anyone standing **deeper in the mine** may displace an opponent who occupies a
+  card in that opponent's own column, and the displaced figure goes to the
+  nearest pit cage *towards the lorries*;
+* a figure in a pit cage **leaves the mine at the start of the execution phase**,
+  before the cards are turned. It is safe from the dragon and it banks the gems
+  it is carrying. The rival who pushed it is now standing on the card.
+
+So a known dragon in your own column is a lever: stand on it, and the first
+rival who gambles on that backside pushes you into a free, safe exit and then
+eats the dragon himself. Ask the engine rather than the intuition — 600 games,
+learner in seat 0 against three `rule` bots, temperature 0.7:
+
+| measurement | value |
+| :-- | --: |
+| hauls where the learner named its own face-up dragon | 254 of 1,800 (0.42/game) |
+| ...of those, hauls where some rival stood deep enough to push | 251 |
+| times a rival did push it off a dragon card | 248 |
+| in those hauls: the rival took the dragon | 228 of 242 (94%) |
+| in those hauls: the learner escaped (in the cage) | 173 of 242 (71%) |
+| times the learner ended up eating the dragon itself | 3 of 251 (1.2%) |
+| hauls where **no** rival was deep enough to push | 6 |
+| ...of those, the learner took the card and died | 3 of 6 |
+
+The last two rows are the only real mistake in the whole pattern: with nobody
+deep enough, there is nothing to bait, so stepping on the card means eating it.
+That variant is now filtered out (`features.doomed_dragon_digs`, applied in
+`action_mask`), and it costs nothing measurable — 400 games, guard on vs off:
+
+| | win % | score | doomed digs | ate the dragon |
+| :-- | --: | --: | --: | --: |
+| guard on | 43.2% | +2.08 | 0 | 0 |
+| guard off | 43.5% | +2.08 | 10 | 2 |
+
+What is *not* filtered is the bait itself, because it is not a mistake. An
+earlier attempt did mask every dig onto a visible dragon; it cost the 4-player
+learner **8.7 points of win rate** (29.8% with, 38.5% without, 400 games) by
+forbidding a legal move that pays. That mask is gone.
+
+Two honest limits on the table above. First, it measures the `rule` bot, which
+picks uniformly among the cards it can reach and therefore pushes without
+looking at the backside at all — precisely the opponent a bluff is designed for.
+Against three copies of the same network the same plan appears (86 of 600 hauls)
+but a rival takes the dragon in only 16 of them and the learner eats it itself
+13 times. Second, this is why "the points come from opponents' graves" is a
+statement about this field, not a law: the trap works while the field is naive,
+and a field that respects backside odds walks away from it.
+
+What changed, in one line: the learner was not talked out of the move, the
+measurement around it was fixed — the "blunder" counted every intermediate
+planning decision as a commitment — and the one genuinely losing variant, the
+dig nobody can punish, is now removed from the action space instead of being
+argued about.
 
 ## 5. Is blasting too weak? No — but it is not a free win either
 

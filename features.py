@@ -314,8 +314,73 @@ def state_action_matrix(
     return matrix
 
 
+def digs_face_up_dragon(ctx: PlayerActionContext, primitive: int) -> bool:
+    """True when ``primitive`` digs a card the player can already see is a dragon.
+
+    Only the player's own column shows its fronts, so only a dig there can be a
+    *known* dragon. Rivals see nothing but the backside, which makes the card a
+    lever rather than a mistake: ``rival_can_push`` tells the two cases apart.
+    """
+    primitive = int(primitive)
+    if primitive < 0 or primitive >= PIT_CAGE:
+        return False
+    row, column = divmod(primitive, MAX_COLUMNS)
+    if column != ctx.player_index:
+        return False
+    if row >= len(ctx.public_rows) or column >= len(ctx.public_rows[row]):
+        return False
+    entry = ctx.public_rows[row][column]
+    return entry is not None and entry[0] == DRAGON
+
+
+def rival_can_push(ctx: PlayerActionContext, primitive: int) -> bool:
+    """Whether a rival is deep enough to displace the player off ``primitive``.
+
+    A rival standing on row ``p`` may name any card in rows ``< p``, and may
+    displace an opponent who occupies a card in that opponent's own column. So
+    sitting on an own-column dragon is only *bait* while somebody is deeper in
+    the mine: the push sends the bait into a pit cage, which is a safe exit that
+    banks the gems already collected, and hands the dragon to the rival.
+    """
+    primitive = int(primitive)
+    if primitive < 0 or primitive >= PIT_CAGE:
+        return False
+    row, _column = divmod(primitive, MAX_COLUMNS)
+    return any(
+        not opponent.escaped
+        and not opponent.dead
+        and row < opponent.position < MAX_ROWS
+        for opponent in ctx.opponents
+    )
+
+
+def has_dragon_free_move(ctx: PlayerActionContext) -> bool:
+    """Whether any legal action avoids a dragon the player can already see."""
+    return any(
+        not digs_face_up_dragon(ctx, int(action)) for action in ctx.legal_actions
+    )
+
+
+def doomed_dragon_digs(ctx: PlayerActionContext) -> set[int]:
+    """Face-up-dragon digs that no rival can punish: the digger eats it itself."""
+    return {
+        int(action)
+        for action in ctx.legal_actions
+        if digs_face_up_dragon(ctx, action) and not rival_can_push(ctx, action)
+    }
+
+
 def action_mask(ctx: PlayerActionContext) -> np.ndarray:
-    """Legal policy actions, including legal blast announcements."""
+    """Legal policy actions, including legal blast announcements.
+
+    Planning onto a card the player can see is a dragon is usually *bait*, not a
+    blunder: while a rival stands deeper in the mine, that rival can displace
+    the bait into a pit cage — a safe exit that banks the gems — and then eats
+    the dragon itself. The mask keeps that option, and hides only the variant
+    with no rival deep enough to push: there the digger eats the dragon itself,
+    which is the one reading of the move that really is a pure loss. See
+    BALANCE.md, "The dragon in your own column is bait, not a blunder".
+    """
     mask = np.zeros(N_ACTIONS, dtype=bool)
     own_dynamite = sum(1 for front, _ in ctx.private_cards if front == DYNAMITE)
     can_blast = own_dynamite >= 2 and not ctx.own_blast_pending
@@ -326,6 +391,11 @@ def action_mask(ctx: PlayerActionContext) -> np.ndarray:
         mask[primitive] = True
         if can_blast and primitive < PIT_CAGE:
             mask[join_action(primitive, True)] = True
+    doomed = doomed_dragon_digs(ctx)
+    if doomed and any(int(a) not in doomed for a in ctx.legal_actions):
+        for primitive in doomed:
+            mask[primitive] = False
+            mask[join_action(primitive, True)] = False
     return mask
 
 
@@ -337,6 +407,10 @@ __all__ = [
     "N_STATE_FEATURES",
     "action_features",
     "action_mask",
+    "digs_face_up_dragon",
+    "doomed_dragon_digs",
+    "has_dragon_free_move",
+    "rival_can_push",
     "backside_stats",
     "join_action",
     "split_action",

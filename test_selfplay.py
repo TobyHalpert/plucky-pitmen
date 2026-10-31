@@ -29,6 +29,7 @@ from game_env import (
     FRONT_UNKNOWN,
     GEM,
     LORRY,
+    MAX_COLUMNS,
     PASS,
     PIT_CAGE,
     MineEnv,
@@ -723,3 +724,84 @@ def test_profile_reports_habits_of_a_checkpoint(tmp_path):
     assert 0.0 <= row["front_row_share"] <= 1.0
     assert 0.0 <= row["own_column_share"] <= 1.0
     assert row["blasts_fired"] >= 0.0
+
+
+def test_a_face_up_dragon_in_the_own_column_is_recognised():
+    from features import digs_face_up_dragon, has_dragon_free_move
+
+    ctx = _trap_context(dragon_row=1)  # own column holds a dragon at row 1
+    assert digs_face_up_dragon(ctx, 1 * MAX_COLUMNS + 0)  # column 0 = own
+    assert not digs_face_up_dragon(ctx, 1 * MAX_COLUMNS + 1)  # another column
+    assert not digs_face_up_dragon(ctx, 0 * MAX_COLUMNS + 0)  # own column, a gem
+    assert not digs_face_up_dragon(ctx, int(PASS))
+    assert has_dragon_free_move(ctx)
+
+
+def _rival(player_index: int, position: int):
+    from game_env import OpponentPublicView
+
+    return OpponentPublicView(
+        player_index=player_index,
+        position=position,
+        column=1,
+        cage_index=None,
+        escaped=False,
+        dead=False,
+        score=0,
+        collected_backsides=(),
+        card_count=1,
+        blast_pending=False,
+    )
+
+
+def test_the_action_mask_keeps_a_visible_dragon_as_bait():
+    """A rival deeper in the mine can push the bait into a cage, so it stays (BALANCE §4)."""
+    from features import N_BASE_ACTIONS, action_mask, rival_can_push
+
+    ctx = replaced(
+        _trap_context(dragon_row=1, own_row=5, opponents=(_rival(1, 4),)),
+        legal_actions=(1 * MAX_COLUMNS + 0, 4 * MAX_COLUMNS + 0),
+        private_cards=((DYNAMITE, 1), (DYNAMITE, 1)),
+    )
+    assert rival_can_push(ctx, 1 * MAX_COLUMNS + 0)
+    mask = action_mask(ctx)
+    assert mask[1 * MAX_COLUMNS + 0], "the trap stays legal"
+    assert mask[1 * MAX_COLUMNS + 0 + N_BASE_ACTIONS], "its blast twin stays legal"
+    assert mask[4 * MAX_COLUMNS + 0]
+
+
+def test_the_action_mask_hides_a_visible_dragon_nobody_can_punish():
+    """With no rival deep enough, the digger eats the dragon itself: pure loss."""
+    from features import action_mask, doomed_dragon_digs, rival_can_push
+
+    ctx = replaced(
+        _trap_context(dragon_row=1, own_row=5, opponents=(_rival(1, 0),)),
+        legal_actions=(1 * MAX_COLUMNS + 0, 4 * MAX_COLUMNS + 0),
+        private_cards=((DYNAMITE, 1), (DYNAMITE, 1)),
+    )
+    assert not rival_can_push(ctx, 1 * MAX_COLUMNS + 0), "a rival at row 0 cannot reach row 1"
+    assert doomed_dragon_digs(ctx) == {1 * MAX_COLUMNS + 0}
+    mask = action_mask(ctx)
+    assert not mask[1 * MAX_COLUMNS + 0]
+    assert mask[4 * MAX_COLUMNS + 0], "another move must stay available"
+
+
+def test_the_action_mask_never_empties_itself():
+    from features import action_mask
+
+    ctx = replaced(
+        _trap_context(dragon_row=1, own_row=5, opponents=(_rival(1, 0),)),
+        legal_actions=(1 * MAX_COLUMNS + 0,),
+    )
+    assert action_mask(ctx)[1 * MAX_COLUMNS + 0], "the only legal move always stays"
+
+
+def test_the_action_mask_stays_legal_when_every_move_is_a_dragon():
+    from features import action_mask
+
+    ctx = replaced(
+        _trap_context(dragon_row=1, own_row=5),
+        legal_actions=(1 * MAX_COLUMNS + 0,),
+    )
+    mask = action_mask(ctx)
+    assert mask[1 * MAX_COLUMNS + 0], "the mask must never be empty"
