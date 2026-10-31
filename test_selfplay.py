@@ -253,14 +253,16 @@ def test_policy_net_can_learn_to_prefer_one_action():
     assert after > before + 0.05
 
 
-def test_lorry_standoff_ends_the_haul_and_pays_nobody_inside():
-    """No card can be collected, so the haul is over: campers score nothing."""
+def test_lorry_standoff_leaves_the_haul_and_campers_keep_their_loot():
+    """The haul is over, so the players still inside leave and take part in scoring."""
     env = MineEnv(opponents=2)
     env.reset(seed=4)
     env.players[0].escaped = True
     env.players[0].collected_cards = [(GEM, 0), (GEM, 1)]
     env.players[1].position = LORRY
+    env.players[1].collected_cards = [(GEM, 0), (GEM, 1), (GEM, 2)]
     env.players[2].position = LORRY
+    env.players[2].collected_cards = [(GEM, 0)]
 
     info: dict = {"outcome": "continued"}
     _reward, terminated = env._finish_round(0.0, info)
@@ -269,11 +271,10 @@ def test_lorry_standoff_ends_the_haul_and_pays_nobody_inside():
     assert env.haul == 2
     record = env.haul_history[-1]
     assert record["outcome"] == "lorry"
-    assert record["escaped"] == [0]
-    assert record["dead"] == []
-    # The sole escapee keeps the haul bonus, the campers get nothing.
-    assert env.players[0].score == 3
-    assert env.players[1].score == 0
+    # Everybody left the mine, so everybody is scored: two gems beat one.
+    assert record["escaped"] == [0, 1, 2]
+    assert env.players[1].score == 3
+    assert env.players[0].score == 0
     assert env.players[2].score == 0
 
 
@@ -351,20 +352,57 @@ def test_blind_blast_choice_hides_the_drawn_fronts():
     assert [back for _front, back in context.own_blast_cards] == [0, 1, 2]
 
 
-def test_rusher_beats_the_rule_policy_under_the_printed_rules():
-    """The suspected dominant strategy, as a hand-written policy."""
+def test_rusher_no_longer_beats_the_rule_policy():
+    """Standing on the lorry ends the haul, so the campers' loot still counts."""
     from agents import RusherAgent
 
-    rusher, others = [], []
-    for seed in range(30):
+    margins = []
+    for seed in range(60):
         result = play_game([RusherAgent(), RuleAgent(), RuleAgent()], seed=seed)
-        rusher.append(result.scores[0])
-        others.extend(result.scores[1:])
+        margins.append(
+            result.scores[0] - float(np.mean(result.scores[1:]))
+        )
         assert 0 in result.hauls[0].escaped
         assert result.hauls[0].gems[0] == 0
 
-    assert float(np.mean(rusher)) > float(np.mean(others)) + 1.0
-    assert float(np.mean(rusher)) > 2.0
+    # The empty-handed escape used to be worth +2.69 a game; it is now worth
+    # nothing, because the campers leave with their loot when the haul ends.
+    assert float(np.mean(margins)) < 1.0
+
+
+def test_empty_escape_loses_the_bonus_to_a_camper_holding_gems():
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    env.players[0].escaped = True  # left with nothing
+    env.players[1].position = LORRY
+    env.players[1].collected_cards = [(GEM, 0), (GEM, 1)]
+    env.players[2].position = LORRY
+
+    info: dict = {"outcome": "continued"}
+    env._finish_round(0.0, info)
+
+    assert env.haul_history[-1]["outcome"] == "lorry"
+    assert env.players[0].score == 0
+    assert env.players[1].score == 3
+
+
+def test_rushing_beats_camping_but_not_collecting():
+    """Leaving early still beats doing nothing; it loses to collecting and leaving."""
+    from agents import LeaverAgent, RusherAgent
+
+    campers, collecting = [], []
+    for seed in range(40):
+        result = play_game(
+            [RusherAgent(), RuleAgent(), RuleAgent()], seed=seed
+        )
+        campers.append(result.scores[0])
+        result = play_game(
+            [RusherAgent(), LeaverAgent(1), LeaverAgent(1)], seed=seed
+        )
+        collecting.append(result.scores[0])
+
+    assert float(np.mean(campers)) > 0.5
+    assert float(np.mean(collecting)) < float(np.mean(campers))
 
 
 def test_rusher_loses_its_edge_without_the_solo_bonus():

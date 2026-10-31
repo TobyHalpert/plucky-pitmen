@@ -7,7 +7,9 @@ trap. Against opponents who collect loot and then leave — which the printed
 rules let them do — an empty-handed escape is worth **exactly zero**. The
 rusher's big margins came from opponents who *stayed in the mine and died*, and
 from a stall valve that voided those opponents' loot while still paying the
-escaping player.
+escaping player. With that valve replaced by a real rule (a lorry stand-off ends
+the haul and the players still inside leave and are scored), the rusher is worth
+**+0.26 points [-0.23, +0.77]** against the scripted bots — noise.
 
 The supportable conclusions are:
 
@@ -16,7 +18,7 @@ The supportable conclusions are:
   simply takes a gem and walks out.
 * The best policy in this repository is the opposite of rushing: **collect loot,
   then leave**. It beats the rusher **+8.72 points, 100% top score** and beats
-  the trained self-play agent **+3.36 points**.
+  the trained self-play agent **+2.99 points**.
 * A leaderboard against fixed bots cannot detect this on its own, because the
   ranking depends on what the bots do. Head-to-head against a leaver is the test
   that matters.
@@ -33,13 +35,13 @@ Against the shipped benchmarks it looks strong:
 
 | policy | win % | mean score | margin vs 2 × rule [95% CI] | escapes (0 gems) |
 | :-- | --: | --: | :-- | --: |
-| rusher | 59.0% | +4.93 | **+3.29 [+2.75, +3.86]** | 100% (100%) |
-| leaver (collect + leave) | 52.3% | +4.08 | +2.27 [+1.72, +2.82] | 99% (94%) |
-| random | 43.7% | +2.17 | +1.04 [+0.55, +1.51] | 57% (69%) |
-| selfplay (60 gens) | 42.3% | +2.29 | +0.80 [+0.36, +1.24] | 70% (78%) |
-| rule | 33.7% | +1.88 | -0.16 [-0.57, +0.25] | 61% (21%) |
-| cautious | 32.0% | +0.86 | -0.37 [-0.74, +0.00] | 45% (56%) |
-| greedy | 23.3% | +0.16 | -1.00 [-1.34, -0.68] | 30% (54%) |
+| **leaver (collect + leave)** | 46.7% | +3.26 | **+1.19 [+0.68, +1.75]** | 99% (94%) |
+| random | 37.3% | +1.66 | +0.33 [-0.15, +0.77] | 57% (69%) |
+| rusher | 35.7% | +2.79 | +0.26 [-0.23, +0.77] | 100% (100%) |
+| rule | 33.0% | +1.87 | -0.14 [-0.53, +0.24] | 71% (22%) |
+| selfplay (60 gens) | 35.3% | +1.52 | -0.15 [-0.59, +0.28] | 72% (80%) |
+| cautious | 29.7% | +0.72 | -0.57 [-0.93, -0.23] | 47% (55%) |
+| greedy | 20.0% | +0.00 | -1.20 [-1.51, -0.90] | 30% (54%) |
 
 Now split the rusher's points by what its opponents did (200 games, rusher vs
 2 × rule, per haul):
@@ -50,10 +52,9 @@ Now split the rusher's points by what its opponents did (200 games, rusher vs
 | woke the dragon, still inside | 29.0% | +3.29 |
 | parked on their lorries, still inside | 13.2% | +3.24 |
 
-(Measured before the lorry rule replaced the stall valve; the shares shift
-slightly under the new rule but the mechanism is unchanged — in the report's
-"Where the points come from" table the rusher still scores 0.00 in every haul
-where a rival banks loot.)
+(The mechanism is unchanged by the lorry rule and is still visible in every
+report: the rusher scores **0.00** in every haul where a rival banks loot. What
+changed is that campers now get to bank theirs.)
 
 **Every single point the rusher earns comes from hauls where nobody else
 banked loot.** When the other players leave with gems, the rules compare gems
@@ -73,23 +74,29 @@ escaped kept the bonus**. That is not a rule, it is a subsidy: it converts "the
 campers might still have left and beaten me" into "their loot is void and I keep
 the +3".
 
-It is now replaced by an actual rule, contributed in review:
+It is replaced by an actual rule, contributed in review:
 
 > If all players still in the mine stand on their lorry at the end of a planning
 > phase, the haul is over.
 
-This is the natural reading of the game — a lorry collects nothing, so such a
-haul can never progress — and it changes the incentives rather than papering
-over them. Measured effect on self-play, same budget, same seeds:
+A lorry collects nothing, so such a haul can never progress. Crucially, ending
+the haul means the remaining players **leave the mine automatically and take
+part in the scoring** with the loot they are holding — the same treatment the
+rules already give "only one player remains" and "a full row cannot be formed".
+Standing on a lorry costs a turn; it does not cost you the haul.
 
-| metric | old valve | lorry rule |
+That second half is what closes the exploit. Measured over the same benchmark:
+
+| metric | old valve (campers voided) | lorry rule (campers scored) |
 | :-- | --: | --: |
-| trained agent's escapes carrying gems | 0.01 | **0.28** |
-| trained agent's escapes with zero gems | 99% | 78% |
-| trained agent's margin vs 2 × rule | +4.14 | **+0.80** |
+| rusher margin vs 2 × rule | **+2.69 [+2.13, +3.27]** | **+0.26 [-0.23, +0.77]** |
+| trained agent margin vs 2 × rule | +4.14 [+3.54, +4.70] | -0.15 [-0.59, +0.28] |
+| trained agent's escape rate | 99% | 72% |
+| hauls ended by a lorry stand-off | 20.8% | 20.5% |
 
-The learner stops farming campers and starts escorting loot out of the mine.
-The valve had been paying it to keep opponents parked.
+The escapee's empty +3 now competes with campers who hold two or three gems, so
+the free ride disappears. Self-play notices immediately: the retrained agent is
+at parity with the scripted bots instead of far ahead.
 
 ## 2. The counter: collect loot, then leave
 
@@ -100,9 +107,9 @@ and leaves once it holds loot.
 | A | B | A top-score % | A margin [95% CI] | B top-score % | B margin [95% CI] |
 | :-- | :-- | --: | :-- | --: | :-- |
 | **leaver** | **rusher** | **100.0%** | **+8.72 [+8.20, +9.20]** | 41.7% | -0.41 [-1.28, +0.48] |
-| **leaver** | **selfplay** | 70.0% | **+3.36 [+2.48, +4.29]** | 10.0% | -2.35 [-2.85, -1.82] |
-| rusher | selfplay | 68.3% | +1.68 [+0.93, +2.47] | 61.7% | +0.70 [-0.07, +1.52] |
-| rusher | rule | 68.3% | +2.90 [+1.81, +4.06] | 31.7% | -1.13 [-1.57, -0.65] |
+| **leaver** | **selfplay** | 65.0% | **+2.99 [+1.99, +4.04]** | 18.3% | -1.92 [-2.52, -1.24] |
+| selfplay | rusher | 80.0% | +1.58 [+0.82, +2.37] | 55.0% | +0.59 [-0.02, +1.31] |
+| rusher | rule | 45.0% | +0.42 [-0.61, +1.54] | 100.0% | +1.08 [+0.70, +1.53] |
 
 * A single rusher against two leavers tops the scoreboard 41.7% of the time
   with a **negative** margin: it is a losing seat.
@@ -110,13 +117,14 @@ and leaves once it holds loot.
   games) with a **+8.68** margin, because the rushers leave, no further rows are
   dealt, and the leaver then picks up loot unopposed before walking out with
   more gems than the empty-handed pair.
-* The trained self-play agent loses to the leaver as well (−3.00 as the lone
-  seat, +3.36 for the leaver). Self-play converged on the exploit because its
-  opponent pool — scripted bots and its own snapshots — did not punish it.
+* The trained self-play agent loses to the leaver as well (−1.92 as the lone
+  seat, +2.99 for the leaver). Self-play converged on an empty-handed escape
+  because its opponent pool — scripted bots and its own snapshots — kept giving
+  it away.
 
 Under the fixed scoring (`--no-solo-escape-bonus`) the ordering is the same
 where it matters: leaver vs rusher **+8.72**, leaver vs the retrained agent
-**+2.71** at 78.3% top score.
+**+2.79** at 75.0% top score, and every policy loses to `rule`.
 
 ## 3. Why the leaderboard lied
 
@@ -124,14 +132,13 @@ Two things made the rusher look dominant, and neither is about the game's
 quality:
 
 1. **The benchmark population decides the ranking.** Against the scripted bots
-   the order is selfplay > rusher > leaver. Against a leaver it inverts
-   completely. A margin measured against a fixed, exploitable opponent says
+   the order used to be selfplay > rusher > leaver. Against a leaver it inverts
+   completely — the leaver is now the top row. A margin measured against a fixed, exploitable opponent says
    nothing about whether a strategy is strong — only that it is strong *there*.
 2. **The old stall valve paid the parasite** — see above. It voided the
    campers' loot while the escapee kept the bonus, so a policy that made other
-   players park was rewarded twice over. The lorry stand-off rule removes that
-   subsidy; the rusher's remaining +3.29 against the scripted bots comes from
-   those bots' own camping, which is their mistake to make.
+   players park was rewarded twice over. With campers scored instead, the rusher
+   falls from +2.69 to +0.26 and the trained agent from +4.14 to -0.15.
 
 The methodological fix that is now built in: always include a `rusher` **and** a
 `leaver` in `--agents`, and read the "Where the points come from" table. A
@@ -161,16 +168,15 @@ dynamite a blast needs), not of the blast payoff.
 The printed rule is "as many players pass in a row as there are players in the
 mine, minus one". `--pass-rule n` plays the alternative.
 
-| rule | rusher win % | rusher margin | dragon endings | decisions / game | mirror spread |
-| :-- | --: | --: | --: | --: | --: |
-| **n-1 (printed)** | 56.0% | +3.10 [+2.44, +3.77] | 55.0% | **66.9** | 4.97 |
-| n | 88.5% | +6.75 [+6.21, +7.26] | 38.1% | 79.9 | 4.77 |
+| rule | rusher win % | rusher margin [95% CI] | lorry endings | decisions / game | mirror spread |
+| :-- | --: | :-- | --: | --: | --: |
+| **n-1 (printed)** | 29.0% | -0.39 [-1.05, +0.26] | 23.4% | **67.1** | 4.50 |
+| n | 4.0% | **-3.15 [-3.36, -2.92]** | 47.9% | 80.4 | 4.53 |
 
-`n-1` is still the better rule, but less dramatically than before the lorry
-rule: the 27.6% deadlock rate that used to make `n` unusable is gone, because a
-haul now ends as soon as everybody inside is parked. What remains is that `n`
-lets the early-leaver run away with the game far more easily (88.5% vs 56%
-wins), because requiring an extra pass gives the miners more chances to waste.
+`n-1` is still the better rule: fewer decisions per game, half as many lorry
+stand-offs, and a dragon ending rather than a stalemate. It is also gentler —
+under `n` the early leaver is punished far harder, because the extra pass gives
+the miners time to fill their lorries with loot before the haul is closed.
 
 While measuring this, a bug surfaced: `step_one_player()` — the API the
 self-play driver uses — compared the pass count against `len(active_players)`
@@ -192,15 +198,16 @@ seat position only.
 
 | rules | mean within-game spread | games with a tied top score |
 | :-- | --: | --: |
-| printed | **5.08 points** | 8% |
-| fixed | 4.24 points | 16% |
-| `n` passes | 4.77 points | 12% |
+| printed | **4.63 points** | 15% |
+| fixed | 3.99 points | 20% |
+| `n` passes | 4.53 points | 17% |
 
 The largest skill margin measured here is the leaver's +8.72 head-to-head, which
-dwarfs the luck band. But the between-policy margins that a leaderboard reports
-(0.2-4 points) are the same order as pure luck between identical agents, so
-`win %` alone is not evidence of anything. Seat position is not a big factor
-(mean score by seat 1.83 / 1.70 / 1.71).
+dwarfs the luck band. But the leaderboard margins (+1.19 down to -1.20) are the
+same order as pure luck between identical agents, so `win %` alone is not
+evidence of anything. Seat position is not a big factor. Note also that the
+*only* policy with a leaderboard margin whose interval excludes zero is the
+leaver — every other difference in the table is inside the noise.
 
 ## 7. What is actually worth changing
 
@@ -210,7 +217,10 @@ dwarfs the luck band. But the between-policy margins that a leaderboard reports
    tuning can be gamed the same way this report was.
 2. **Adopt the lorry stand-off rule** (already implemented here): if everyone
    left in the mine is on a lorry at the end of a planning phase, the haul is
-   over. It removes the "wait it out" option without inventing a subsidy.
+   over and those players leave automatically and are scored. Ending the haul
+   *without* scoring them (the first version of this patch) is just the old
+   subsidy in a new coat: it took the rusher from +2.69 to +0.26 only once the
+   campers' loot counted too.
 3. **Then reconsider the empty-escape bonus.** It is a free-ride payoff in weak
    fields, and removing it costs the game little — but it is no longer the
    headline problem it looked like.

@@ -71,7 +71,7 @@ A haul **ends**
 *   if only one player remains in the mine after the execution phase. This player leaves the mine automatically.
 *   if a complete row cannot be formed after an execution phase. The remaining players leave the mine automatically.
 *   if there are no treasures left in the mine.
-*   if **all players still in the mine stand on their lorry** at the end of a planning phase. Standing on a lorry collects nothing, so such a haul can never progress; it ends and only players who actually left the mine score.
+*   if **all players still in the mine stand on their lorry** at the end of a planning phase. Standing on a lorry collects nothing, so such a haul can never progress: the haul ends and the players still inside leave the mine automatically, taking part in the scoring with the loot they are holding (just like "only one player remains" or "a full row cannot be formed").
 
 Now, the **scoring** takes place:
 *   Players who left the mine reveal their collected cards. The player with the **most gems** receives **+3 points** (+4 points in the final haul). If only one player has left the mine, they receive these points even without having any gems. In the event of a **tie** for gems, each player with the highest number of gems receives **+1 point**.
@@ -215,17 +215,18 @@ a hand-coded rule.
 The full write-up, with confidence intervals and reproduction commands, is in
 **[BALANCE.md](BALANCE.md)**. The short version:
 
-* **There is no dominant strategy — but there is a parasite.** An empty-handed
-  escape earns the full +3 haul bonus whenever the other players fail to leave.
-  A `rusher` that walks to the pit cage on turn one beats the scripted bots 54%
-  of the time for +2.69 points, and a self-play agent finds the same policy by
-  itself. But split those points by what the opponents did: **every point comes
-  from hauls where nobody else banked loot.** In the 50.7% of hauls where the
-  others left with gems, the rusher scores **0.00**.
-* **The counter is to collect and leave.** `leaver` takes one gem and walks out:
-  it beats the rusher **+8.72 points with a 100% top score**, and beats the
-  trained agent **+3.36** (the agent's own score goes to -2.35). A lone rusher
-  against two leavers tops the scoreboard only 41.7% of the time with a
+* **There is no dominant strategy — and early leaves are a trap.** An
+  empty-handed escape only earns the +3 haul bonus while the other players fail
+  to leave; the moment someone leaves with gems, the rules compare gems and the
+  rusher scores **0.00**. With the lorry stand-off rule in place, a `rusher` that
+  walks to the pit cage on turn one is now worth **+0.26 points [-0.23, +0.77]**
+  against the scripted bots — indistinguishable from noise — and it loses its
+  seat the moment it meets players who collect loot.
+* **Collect and leave is the strongest policy in the pool.** `leaver` takes one
+  gem and walks out: it is the best row on the leaderboard (**+1.19 [+0.68,
+  +1.75]**), it beats the rusher **+8.72 points with a 100% top score**, and it
+  beats the trained agent **+2.99** (whose own score drops to -1.92). A lone
+  rusher against two leavers tops the scoreboard only 41.7% of the time with a
   *negative* margin.
 * **A leaderboard against fixed bots cannot tell these apart.** Against the
   scripted bots the ranking is selfplay > rusher > leaver; against a leaver it
@@ -237,19 +238,20 @@ The full write-up, with confidence intervals and reproduction commands, is in
   the chooser all three fronts, which makes blasting dominant (+1.65 points).
   With the printed rule (`--blind-blast-choice`) it is neutral (+0.62).
 * **`n-1` passes is better than `n`.** Shortens games (67 vs 80 decisions per
-  game) and keeps the early-leaver's payoff down (56% vs 88% wins for the
-  rusher). Most of the old difference was deadlock, which the lorry rule now
-  resolves on its own. This also uncovered a real bug:
+  game) and punishes the early leaver harder under `n` than `n-1` once the lorry
+  rule is in place (-3.15 vs -0.39 points for the rusher). This also uncovered a
+  real bug:
   `step_one_player()` ignored `--pass-rule` entirely, so the variant only worked
   in the single-learner API.
-* **The lorry stand-off rule changes what self-play learns.** Merely ending the
-  haul when everyone left in the mine is parked (instead of the old
-  "no collection for 8 rounds" valve) took the trained agent from "escapes 99%
-  of hauls empty-handed" to "escapes 70% of hauls carrying 0.28 gems", and its
-  margin against the scripted bots fell from +4.14 to +0.80. The valve had been
-  paying it to keep opponents camping.
+* **The lorry stand-off rule is what closes the exploit.** Replacing the old
+  "no collection for 8 rounds" valve with "everyone still inside leaves when the
+  haul ends" does two things: it stops paying the escapee while voiding the
+  campers' loot, and it hands the campers' gems into the scoring. The trained
+  agent's margin against the scripted bots fell from +4.14 to -0.15 (parity),
+  the rusher's from +2.69 to +0.26, and the games that used to be farmed now
+  end with the campers banking what they collected.
 * **Luck dominates a single game.** Identical agents playing each other spread
-  **5.1 points** within a game, more than most between-policy margins here. Use
+  **4.6 points** within a game, far more than any between-policy margin here. Use
   the confidence intervals.
 
 ### Testing the rules variants

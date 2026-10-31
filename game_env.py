@@ -526,12 +526,18 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         # victim is already flagged dead, so there is nothing left to assign.
         if info.get("outcome") in ("dragon", "blast_dragon"):
             return
-        # A lorry stand-off ends without anyone leaving: the players still in
-        # the mine were paid nothing for standing on their lorries, exactly as
-        # the rules treat a wasted turn. Only real escapees score.
+        active = [
+            player for player in self.players
+            if not player.escaped and not player.dead
+        ]
+        # A lorry stand-off ends the haul, so the players still inside leave the
+        # mine right there and take part in the scoring with the loot they are
+        # holding - the same treatment as "only one player remains" or "a full
+        # row cannot be formed". Standing on a lorry costs a turn, not the game.
         if info.get("outcome") == "lorry":
+            for player in active:
+                player.escaped = True
             return
-        active = [player for player in self.players if not player.escaped and not player.dead]
         if info.get("mine_empty") or len(active) <= 1:
             for player in active:
                 player.escaped = True
