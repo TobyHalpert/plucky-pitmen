@@ -70,6 +70,9 @@ class OpponentPublicView:
     collected_backsides: tuple[int, ...]
     card_count: int
     blast_pending: bool
+    #: How often this seat has displaced somebody this game (public: the
+    #: displacement is performed in front of everybody).
+    displacements: int = 0
 
 
 @dataclass(frozen=True)
@@ -121,6 +124,8 @@ class Player:
     score: int = 0
     blast_pending: bool = False
     blast_cards: list[tuple[int, int]] = field(default_factory=list)
+    #: Displacements this seat has made this game, carried across hauls.
+    displacements: int = 0
 
     @property
     def collected_backsides(self) -> list[int]:
@@ -604,10 +609,14 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             for player in self.players
         ]
         scores = [player.score for player in self.players]
+        # Displacement history is a read on the table, not on the haul: keep it.
+        pushes = [player.displacements for player in self.players]
         self.haul += 1
         self.players = [
-            Player(collected_cards=dynamite_cards, score=score)
-            for dynamite_cards, score in zip(retained_dynamite_cards, scores)
+            Player(collected_cards=dynamite_cards, score=score, displacements=made)
+            for dynamite_cards, score, made in zip(
+                retained_dynamite_cards, scores, pushes
+            )
         ]
         self.cards_remaining = self._new_deck()
         self.rng.shuffle(self.cards_remaining)
@@ -757,6 +766,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             return
         occupant = self._card_occupant(row, column)
         if occupant is not None:
+            self.players[player_index].displacements += 1
             cage_index = min(self.players[occupant].position, len(self.rows) - 1)
             self.players[occupant].position = PIT_CAGE
             self.players[occupant].column = None
@@ -1200,6 +1210,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                 "collected_backsides": list(other.collected_backsides),
                 "card_count": len(other.collected_cards),
                 "blast_pending": other.blast_pending,
+                "displacements": other.displacements,
             }
             for idx, other in enumerate(self.players)
             if idx != player_index
@@ -1269,6 +1280,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                 collected_backsides=tuple(back for _, back in other.collected_cards),
                 card_count=len(other.collected_cards),
                 blast_pending=other.blast_pending,
+                displacements=other.displacements,
             )
             for idx, other in enumerate(self.players)
             if idx != player_index

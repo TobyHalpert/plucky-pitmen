@@ -18,8 +18,8 @@ from game_env import (
     BACKSIDE_A,
     BACKSIDE_B,
     BACKSIDE_C,
-    DRAGONS_PER_BACKSIDE,
     DRAGON,
+    DRAGONS_PER_BACKSIDE,
     DYNAMITE,
     GEM,
     HAULS_PER_GAME,
@@ -41,7 +41,7 @@ N_ACTIONS = 2 * N_BASE_ACTIONS
 BACKSIDES = (BACKSIDE_A, BACKSIDE_B, BACKSIDE_C)
 _FRONT_SLOT = {GEM: 0, DRAGON: 1, DYNAMITE: 2}
 MAX_TRACKED_OPPONENTS = 4
-N_OPPONENT_FEATURES = 11
+N_OPPONENT_FEATURES = 12
 N_STATE_FEATURES = 25 + 9 + MAX_TRACKED_OPPONENTS * N_OPPONENT_FEATURES
 N_ACTION_FEATURES = 21
 N_INPUT_FEATURES = N_STATE_FEATURES + N_ACTION_FEATURES
@@ -224,6 +224,9 @@ def state_features(ctx: PlayerActionContext) -> np.ndarray:
             and opponent.column == opponent.player_index
         )
         values[base + 10] = float(opponent.player_index in displaced)
+        # How keen this opponent is on displacing is the one read a seat has on
+        # whether standing on a home-column dragon will be taken as bait.
+        values[base + 11] = min(opponent.displacements, 3) / 3.0
 
     return values
 
@@ -374,6 +377,34 @@ def doomed_dragon_digs(ctx: PlayerActionContext) -> set[int]:
     }
 
 
+def cage_has_no_visible_reason(ctx: PlayerActionContext) -> bool:
+    """True when fleeing the mine cannot answer any visible threat.
+
+    That is: nobody is charging a blast, nobody has left or queued in a pit cage
+    yet, and no rival is standing on a dragon in the player's own column (the
+    one immediate danger the rules let a seat see coming). Voluntary flight also
+    *signals* danger to whoever stands in the fleeing player's column, which is
+    the bluff this predicate ignores on purpose: the mask it feeds is about
+    paying insurance against nothing visible.
+    """
+    if ctx.own_blast_pending or any(o.blast_pending for o in ctx.opponents):
+        return False
+    if ctx.own_position == PIT_CAGE:
+        return False
+    for opponent in ctx.opponents:
+        if opponent.dead:
+            continue
+        if opponent.escaped or opponent.position == PIT_CAGE:
+            return False
+        if opponent.column != ctx.player_index:
+            continue
+        if 0 <= opponent.position < len(ctx.public_rows):
+            entry = ctx.public_rows[opponent.position][ctx.player_index]
+            if entry is not None and entry[0] == DRAGON:
+                return False
+    return True
+
+
 _FRONT_NAMES = {GEM: "gem", DRAGON: "dragon", DYNAMITE: "dynamite"}
 _BACKSIDE_NAMES = {0: "o", 1: "v", 2: "~"}
 
@@ -418,6 +449,13 @@ def action_reason(ctx: PlayerActionContext, action: int) -> str:
 def action_mask(ctx: PlayerActionContext) -> np.ndarray:
     """Legal policy actions, including legal blast announcements.
 
+    Two narrow rules ride on top of the legal moves. A visible dragon with no
+    rival deep enough to punish the dig is pure loss, and fleeing to a pit cage
+    while nothing visible threatens buys nothing: no blast is pending, nobody
+    has left yet, and no rival stands on a dragon in this player's column. Both
+    are policies rather than rules of the game, which is why they live here and
+    not in the environment (see BALANCE.md).
+
     Planning onto a card the player can see is a dragon is usually *bait*, not a
     blunder: while a rival stands deeper in the mine, that rival can displace
     the bait into a pit cage — a safe exit that banks the gems — and then eats
@@ -441,6 +479,12 @@ def action_mask(ctx: PlayerActionContext) -> np.ndarray:
         for primitive in doomed:
             mask[primitive] = False
             mask[join_action(primitive, True)] = False
+    if mask[int(PIT_CAGE)] and cage_has_no_visible_reason(ctx):
+        trial = mask.copy()
+        trial[int(PIT_CAGE)] = False
+        trial[join_action(int(PIT_CAGE), True)] = False
+        if trial.any():
+            mask = trial
     return mask
 
 
@@ -453,12 +497,13 @@ __all__ = [
     "action_features",
     "action_mask",
     "action_reason",
+    "backside_stats",
+    "cage_has_no_visible_reason",
     "digs_face_up_dragon",
     "doomed_dragon_digs",
     "has_dragon_free_move",
-    "rival_can_push",
-    "backside_stats",
     "join_action",
+    "rival_can_push",
     "split_action",
     "state_action_matrix",
     "state_features",

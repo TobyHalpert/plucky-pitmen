@@ -396,6 +396,13 @@ class PolicyNet:
             )
             for key in net.params:
                 net.params[key] = np.asarray(data[key], dtype=np.float32)
+            if net.params["W1"].shape[0] != N_INPUT_FEATURES:
+                raise ValueError(
+                    f"{path} was trained on {net.params['W1'].shape[0]} input "
+                    f"features but this build has {N_INPUT_FEATURES}: the feature "
+                    "layout changed. Widen it with `python migrate_checkpoint.py "
+                    f"{path}`."
+                )
             net.trained_generations = int(meta.get("trained_generations", 0))
             net.metadata = {
                 key: value

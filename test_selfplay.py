@@ -167,7 +167,10 @@ def test_feature_encoder_is_seat_invariant():
     assert state0.min() >= -2.0 and state0.max() <= 2.0
 
 
-def test_action_mask_matches_environment_legality():
+def test_action_mask_never_widens_the_rules():
+    """The mask may narrow the rules for two documented policies, never widen them."""
+    from features import digs_face_up_dragon
+
     env = MineEnv(opponents=2)
     env.reset(seed=2)
     for _ in range(6):
@@ -175,7 +178,12 @@ def test_action_mask_matches_environment_legality():
         ctx = env.player_action_context(player_index)
         mask = action_mask(ctx)
         for action in range(N_BASE_ACTIONS):
-            assert bool(mask[action]) == env._legal(action, player_index)
+            if mask[action]:
+                assert env._legal(action, player_index)
+            elif env._legal(action, player_index):
+                assert action == int(PIT_CAGE) or digs_face_up_dragon(ctx, action), (
+                    "only the two documented policy rules may hide a legal move"
+                )
         dynamite = sum(
             1 for front, _ in ctx.private_cards if front == DYNAMITE
         )
@@ -847,6 +855,59 @@ def test_the_reader_refuses_a_backside_whose_unknowns_are_all_dragons():
     safe = 3 * MAX_COLUMNS + 0
     assert deterministic_policy(ctx) == raid, "the baseline trusts the sitter"
     assert deterministic_policy(ctx, trust_sitter=False) == safe, "the reader does not"
+
+
+def _cage_context(**overrides):
+    """A context where fleeing is offered next to an ordinary dig."""
+    base = dict(
+        legal_actions=(0 * MAX_COLUMNS + 0, int(PIT_CAGE)),
+        opponents=(),
+    )
+    base.update(overrides)
+    return replaced(_trap_context(dragon_row=1), **base)
+
+
+def test_the_mask_forbids_fleeing_with_nothing_visible():
+    """No blast, nobody out, no rival on our dragon: the cage answers nothing."""
+    from features import action_mask, cage_has_no_visible_reason
+
+    ctx = _cage_context()
+    assert cage_has_no_visible_reason(ctx)
+    mask = action_mask(ctx)
+    assert not mask[int(PIT_CAGE)]
+    assert mask[0 * MAX_COLUMNS + 0]
+
+
+def test_the_mask_keeps_the_cage_when_a_blast_is_charged():
+    from features import action_mask
+
+    waiting = replaced(_rival(1, 4), blast_pending=True)
+    assert action_mask(_cage_context(opponents=(waiting,)))[int(PIT_CAGE)]
+
+
+def test_the_mask_keeps_the_cage_once_somebody_has_left():
+    from features import action_mask
+
+    gone = replaced(_rival(1, 4), escaped=True)
+    assert action_mask(_cage_context(opponents=(gone,)))[int(PIT_CAGE)]
+    in_cage = replaced(_rival(1, PIT_CAGE), position=PIT_CAGE)
+    assert action_mask(_cage_context(opponents=(in_cage,)))[int(PIT_CAGE)]
+
+
+def test_the_mask_keeps_the_cage_when_a_rival_stands_on_our_dragon():
+    from features import action_mask, cage_has_no_visible_reason
+
+    sitting = replaced(_rival(1, 1), column=0)
+    ctx = _cage_context(opponents=(sitting,))
+    assert not cage_has_no_visible_reason(ctx)
+    assert action_mask(ctx)[int(PIT_CAGE)]
+
+
+def test_the_mask_keeps_the_cage_as_the_only_move():
+    from features import action_mask
+
+    ctx = _cage_context(legal_actions=(int(PIT_CAGE),))
+    assert action_mask(ctx)[int(PIT_CAGE)]
 
 
 def _escape_reward(gems: int):

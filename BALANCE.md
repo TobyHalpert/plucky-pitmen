@@ -410,6 +410,59 @@ under its own name), the predecessor is `checkpoints/selfplay4_blind.npz`, and
 `reader` is available everywhere a scripted policy is
 (`make_scripted_agent("reader")`).
 
+### Pricing the bluff, per table
+
+"The field matters" is a claim until it is a number per decision, so
+`probe_bait_value.py` forks it. Every time the learner names a move onto a
+dragon it can see, one copy of the game plays that move and the other copy makes
+the same policy choose again with face-up-dragon digs removed; a dragon in a
+column is visible only to its owner, and the fork diverges from that one
+decision alone, so the difference in the seat's final score is what the move was
+worth there.
+
+| field (3 opponents) | forked decisions | worth of the bait | forks it helped / hurt |
+| :-- | --: | :-- | --: |
+| `rule` | 122 | **+1.16** (se 0.24) | 42% / 14% |
+| `reader` | 140 | **+0.64** (se 0.31) | 43% / 31% |
+| the same net in all four seats | 156 | **-0.78** (se 0.16) | 15% / 40% |
+
+Every fork here has a rival deep enough to push, because the variant without one
+is already masked (`doomed_dragon_digs`). So the move is worth more than a point
+against a bot that raids on confidence, half that against a bot that reads the
+backside, and it is a loss against its own peers. The flow of the same decision
+says why: over 200 games the learner is pushed off a dragon card in
+**0.00** cases per game against peers — nobody takes the bait — and instead eats
+the dragon itself **0.45** times a game, against **0.01** against `rule` bots.
+
+What the learner cannot do is tell the two tables apart: nothing in its input
+says whether the field punishes a bluff, and until now nothing in the engine
+recorded the evidence either. That is the change. Displacements are made in the
+open, so every seat can see them; the engine now counts them per player, carries
+the count across hauls, and the state encoding carries each tracked opponent's
+count (capped at three). "Has this table ever taken a bait?" is now answerable
+from `PlayerActionContext` alone. The counter adds one feature per opponent
+(82 state features, 103 inputs), so checkpoints trained before it need
+`migrate_checkpoint.py`, which inserts zero columns — the migrated net behaves
+exactly like the original until it is retrained.
+
+Two interventions were then measured and **not** shipped:
+
+| intervention | vs 3 × `rule` | vs 3 × `reader` | vs 3 × itself |
+| :-- | :-- | :-- | :-- |
+| hide the bait while no rival has ever displaced (rule) | -2.5pp, -0.25 | -0.2pp, -0.08 | -9.5pp, -0.74 |
+| 60 more generations with the count in the input | 40.9% (was 54.9%) | 44.0% (was 44.1%) | 32.0% (was 43.0%) |
+
+The mask turns a read into a rule and pays for it everywhere — including the
+peer field, where switching it off for *all four* seats is worth 9.5 points:
+at a table that bluffs back, the bluffs are load-bearing, and taking them away
+from everybody helps nobody. The retrain did learn something real (it names a
+bait four times less often, 0.09 against 0.41 per game, and each one is worth
++2.81 instead of +1.16) but it paid 14 points of win rate against `rule` bots
+for it, so the promoted checkpoint stays `selfplay4.npz` and the run is kept as
+`checkpoints/league/selfplay4_dispfeat-gen0060.npz`. The information is now in
+the input; 4,800 games were not enough to make the network use it, and the
+honest reading is that a rule cannot stand in for the read.
+
 ### The training signal was paying for empty-handed exits
 
 A viewer reported seats walking into a pit cage "with no present danger
@@ -942,6 +995,15 @@ python evaluate_balance.py --players 4 --agents rule,greedy,random,rusher --game
 # four players: the leaderboard, and the learner trained on four players
 python evaluate_balance.py --players 4 --agents rule,greedy,random,cautious,rusher,leaver,checkpoints/selfplay4.npz --games 300 --out reports/balance4_default_rules.md
 
+# what a bluff onto a dragon you can see is worth, per field (forked rollouts)
+python probe_bait_value.py --games 300 --fields rule,reader,selfplay4
+
+# does the learner read a backside when it picks among unknown cards?
+python probe_backside_reading.py checkpoints/selfplay4.npz --games 600
+
+# widen a checkpoint saved before the per-opponent displacement feature
+python migrate_checkpoint.py checkpoints/selfplay4_reader.npz
+
 # is blasting worth it, does the AI threaten, does it react, is the threat real
 python analyze_blasts.py --checkpoint checkpoints/selfplay4.npz --players 4 --games 240 --out reports/blasts4_noblastleague.md
 python analyze_blasts.py --checkpoint checkpoints/selfplay4_blast.npz --players 4 --games 240 --out reports/blasts4_blastleague.md
@@ -956,10 +1018,14 @@ python profile_agent.py --checkpoints checkpoints/selfplay4_g060.npz,checkpoints
 python train_selfplay.py --players 4 --generations 60 --games-per-generation 64 --league-blast-mode always --league-blast-prob 0.6 --out checkpoints/selfplay4_blast.npz
 ```
 
-**A checkpoint is only valid for the action grid it was trained on.** The row
+**A checkpoint is only valid for the feature layout it was trained on.** The row
 features are normalised by `MAX_ROWS` and the observation carries one cell per
-row, so any change to the board geometry means retraining every checkpoint
-before re-running the measurements — the numbers above were all produced after
+row, so any change to the board geometry means retraining every checkpoint; a
+change to the *encoding* (as with the per-opponent displacement count) can be
+bridged once with `migrate_checkpoint.py`, which zero-pads the added inputs and
+leaves the behaviour bit-identical until the net is trained again —
+`PolicyNet.load` names that tool in its error rather than failing on a shape
+mismatch. The numbers above were all produced after
 the §7 grid fix, on nets retrained from scratch. `reports/` is git-ignored and
 holds the generated leaderboards plus the JSON behind every table.
 

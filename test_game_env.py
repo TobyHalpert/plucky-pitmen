@@ -372,6 +372,46 @@ def test_player_can_displace_occupant_in_that_players_own_column():
     assert env.displacement_events == [(1, 0)]
 
 
+def test_a_seat_can_count_how_often_a_rival_displaces_somebody():
+    """Displacement is performed in the open, so it is public history.
+
+    It is also the one readable signal about whether a rival takes bait: a seat
+    that never displaces cannot be counted on to push a figure off a dragon it
+    cannot see. The learner gets the count as a feature.
+    """
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    env.players[0].position = 2
+    env.players[0].column = None
+    env.players[1].position = 0
+    env.players[1].column = 1
+    env._displace(0, 1, 0)
+
+    victim = env.player_action_context(1)
+    displacer = [o for o in victim.opponents if o.player_index == 0][0]
+    assert displacer.displacements == 1
+    assert [o for o in victim.opponents if o.player_index == 2][0].displacements == 0
+    assert env.player_view(1)["opponents"][0]["displacements"] == 1
+
+    from features import N_OPPONENT_FEATURES, N_STATE_FEATURES, state_features
+
+    row = state_features(victim)
+    assert row.shape == (N_STATE_FEATURES,)
+    slot_base = N_STATE_FEATURES - 4 * N_OPPONENT_FEATURES
+    ordered = sorted(victim.opponents, key=lambda o: (o.player_index - 1) % 3)
+    pusher_slot = [i for i, o in enumerate(ordered) if o.player_index == 0][0]
+    quiet_slot = 1 - pusher_slot
+    last = N_OPPONENT_FEATURES - 1
+    import pytest
+
+    assert row[slot_base + pusher_slot * N_OPPONENT_FEATURES + last] == pytest.approx(1 / 3)
+    assert row[slot_base + quiet_slot * N_OPPONENT_FEATURES + last] == 0.0
+
+    env._start_next_haul()
+    assert env.players[1].displacements == 0
+    assert env.players[0].displacements == 1
+
+
 def test_pit_cage_is_planned_before_the_player_leaves():
     env = MineEnv(opponents=2)
     env.reset(seed=4)

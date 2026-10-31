@@ -116,6 +116,11 @@ def preferred_blast_choice(
     )
 
 
+def behind_on_score(ctx: PlayerActionContext) -> bool:
+    """True when some rival is ahead of this player on points."""
+    return any(opponent.score > ctx.own_score for opponent in ctx.opponents)
+
+
 def safe_tie_break(
     ctx: PlayerActionContext,
 ) -> tuple[str, int | None, int | None]:
@@ -442,7 +447,7 @@ def should_blast(mode: str, ctx: PlayerActionContext) -> bool:
     if mode == "trap":
         return visible_dragon_ahead(ctx) is not None
     if mode == "behind":
-        return any(opponent.score > ctx.own_score for opponent in ctx.opponents)
+        return behind_on_score(ctx)
     if mode in ("never", "", None):
         return False
     if not owns_dynamite_pair(ctx):

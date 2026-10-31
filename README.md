@@ -201,6 +201,9 @@ uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
 | `analyze_blasts.py` | is a blast worth it, does the learner threaten, does it react, and is the threat real |
 | `probe_blast_value.py` | what a single blast is worth from a real position (forked rollouts), and whether backside knowledge improves the blind choice |
 | `probe_blast_strategy.py` | is "blast while a dragon is waiting for me" a good rule? paired arms over the blast trigger and the keeper choice |
+| `probe_bait_value.py` | what a move onto a dragon the player can see is worth, forked per opponent (rule bots vs readers vs its own peers) |
+| `probe_backside_reading.py` | does the learner read a backside? risk of the card it takes, against the risk it was offered |
+| `migrate_checkpoint.py` | widen a checkpoint saved before a feature was added (zero columns, behaviour unchanged) |
 | `profile_agent.py` | what a checkpoint actually does: digs, front-row digs, passes, retreats, blasts, escapes — side by side for two checkpoints |
 | `gui_controller.py` | Tk-free viewer logic: moves, blasts, tie-breaks, the AI POLICY snapshot |
 | `mine_gui.py` | the Tk viewer itself |
@@ -274,14 +277,18 @@ not a dominant strategy.
 The encoder reads only `PlayerActionContext`, which already hides opponent card
 fronts, opponent collections and private blast draws. The state block covers the
 public situation (scores, seats, deck size, visible own-column fronts, inferred
-dragon risk per backside, per-opponent public facts). Each of the 53 primitive
+dragon risk per backside, per-opponent public facts including how often each
+opponent has displaced somebody this game — displacement is made in the open,
+and it is the one read on whether a table takes bait). Each of the 53 primitive
 actions gets an action block (row/column, backside, visible front, risk, whether
 the occupant can be displaced). The grid covers every row a deck can produce —
 ten at three players, seven at four — because the mine keeps growing rows and
 an action space sized by the opening board cannot name the front of a deep
 mine. Blast announcements are a separate half of the
 action space, so the learner also decides **when to blast** instead of receiving
-a hand-coded rule.
+a hand-coded rule. A checkpoint stores its own weight shapes; if a feature is
+added, an older file is widened once with `python migrate_checkpoint.py` rather
+than retrained from scratch.
 
 ### Findings
 
