@@ -1101,6 +1101,46 @@ decisions** over seeds 0–11, and the network takes a dragon it can see in **13
 of them (most are still the bait case, where a rival deep enough is invited to
 push the figure into a cage and eat the dragon itself).
 
+#### The escape the hazard rightly authorises
+
+Seed 7, haul 1, planning phase 2, P4 (its first decision of the round): it has a
+gem in hand and takes the cage at 70%. The board shows no dragon anywhere — every
+front but P4's own column is face down — and the hazard reads **0.22**. Where it
+comes from, seat by seat:
+
+| figure | standing on | its own column? | risk |
+| :-- | :-- | :-- | --: |
+| P4 (self) | the front of the mine | — | 0.00 |
+| P1 | row 3, column 1 — its own, and it can read it | yes | 0.00 |
+| P2 | row 3, column 2 — its own, and it can read it | yes | 0.00 |
+| P3 | **row 2, column 1 — P1's column** | no | **0.22** |
+
+That is the one danger the rule is for, and it is the inverse of the mistake fixed
+in "the hazard was priced on the wrong cards": P1 and P2 stand on their own cards,
+so they can see them and will step away from a dragon rather than turn one — priced
+at zero. P3 **raided into P1's column**, so it is standing on a card nobody
+standing there can read, and the deck still leaves 22% of that backside a dragon.
+If it turns, every figure still in the mine dies.
+
+The card was, in this deal, a gem — 78% of the time it is — so no dragon turned in
+200 re-rolls of the rest of that round. That is a fact about the deal, not about
+the price: the seat's 22% is the honest number before the card is turned.
+
+What the numbers say about the move itself, 200 paired re-rolls from that
+position: cage **+1.84 ± 0.15**, the gem P4 can see in its own column **+1.88 ±
+0.16**, a face-down card in a rival's column **+1.98 ± 0.16**. The escape is the
+worst of the three, and inside the noise of all of them. There is no rule to write
+here, and the reason is worth stating: taking the certain gem first and escaping at
+the next decision is a real trade, not a free improvement, because P4's dig resets
+the pass count and the other three seats can then pass in a row and resolve the
+round with P4 still in the mine — the same mechanics that make a dragon a waiting
+square for a seat that acts early in the order.
+
+So this is the one configuration where a cage with no visible danger is not a
+modelling defect: the danger is a rival's raid on an unreadable card, it is priced
+from the seat's own information, and escaping at 22% with a gem in hand is worth
+what staying is worth.
+
 The viewer also stops being the only one who cannot see the danger: `action_reason`
 now spells out what an escape banks and what it is running from —
 `pit cage, banks 0g (the dragon under me)`, `pit cage, banks 1g (a rival's blast)`,
