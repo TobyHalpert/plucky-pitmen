@@ -171,6 +171,7 @@ def test_action_mask_never_widens_the_rules():
     """The mask may narrow the rules for documented policies, never widen them."""
     from features import (
         digs_face_up_dragon,
+        digs_past_a_known_gem,
         lorry_skips_a_card_worth_taking,
         strands_the_figure,
         walks_past_a_free_card,
@@ -193,6 +194,7 @@ def test_action_mask_never_widens_the_rules():
                     or digs_face_up_dragon(ctx, action)
                     or action in walks_past_a_free_card(ctx)
                     or action in strands_the_figure(ctx)
+                    or action in digs_past_a_known_gem(ctx)
                 ), "only the documented policy rules may hide a legal move"
         dynamite = sum(
             1 for front, _ in ctx.private_cards if front == DYNAMITE
@@ -982,6 +984,61 @@ def _board_context(cards, *, legal=None, own_position=5):
         displacement_events=(),
         tie_breaker_contenders=(),
     )
+
+
+def test_a_face_down_dig_is_not_a_trade_against_a_gem_you_can_see():
+    """Same one card a round, and only one of the two can be a dragon.
+
+    Seed 7 of the viewer, haul 1, planning phase 1: P1 has gems at r0 and r1 of its
+    own column and takes r1c1 -- an empty cell in P2's column, backside "~", 25%
+    dragon -- while P2 was standing in P3's column, so nothing was displaced. That
+    is weak dominance in every branch: gem equal, dynamite (unscored) worse,
+    dragon -2 and the haul over.
+    """
+    from features import action_mask, digs_past_a_known_gem
+
+    has_gem = _board_context(
+        {(1, 0): (GEM, 2), (1, 1): (None, 2)},
+        legal=(1 * MAX_COLUMNS + 0, 1 * MAX_COLUMNS + 1),
+        own_position=2,
+    )
+    assert digs_past_a_known_gem(has_gem) == {1 * MAX_COLUMNS + 1}
+    mask = action_mask(has_gem)
+    assert mask[1 * MAX_COLUMNS + 0]
+    assert not mask[1 * MAX_COLUMNS + 1]
+
+    # A rival sitting on its own column can still be raided: the push is worth
+    # something the card is not.
+    raid = _board_context(
+        {(1, 0): (GEM, 2), (1, 1): (None, 2)},
+        legal=(1 * MAX_COLUMNS + 0, 1 * MAX_COLUMNS + 1),
+        own_position=2,
+    )
+    raid = replaced(
+        raid,
+        opponents=(replaced(_rival(1, 1), column=1),),
+    )
+    assert digs_past_a_known_gem(raid) == set()
+    assert action_mask(raid)[1 * MAX_COLUMNS + 1]
+
+    # With no gem in sight the face-down card is the best thing on the table.
+    no_gem = _board_context(
+        {(1, 1): (None, 2)},
+        legal=(1 * MAX_COLUMNS + 1,),
+        own_position=2,
+    )
+    assert digs_past_a_known_gem(no_gem) == set()
+    assert action_mask(no_gem)[1 * MAX_COLUMNS + 1]
+
+    # A face-down card in the seat's own column is the same lottery.
+    own_hidden = _board_context(
+        {(1, 0): (GEM, 2), (0, 0): (None, 1)},
+        legal=(1 * MAX_COLUMNS + 0, 0 * MAX_COLUMNS + 0),
+        own_position=2,
+    )
+    assert digs_past_a_known_gem(own_hidden) == {0 * MAX_COLUMNS + 0}
+    assert not action_mask(own_hidden)[0 * MAX_COLUMNS + 0]
+    assert action_mask(own_hidden)[1 * MAX_COLUMNS + 0]
 
 
 def test_the_deeper_of_two_own_column_gems_is_taken_first():

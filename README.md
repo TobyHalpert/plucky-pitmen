@@ -188,7 +188,7 @@ python analyze_game.py --seed 7 --forks      # what each flagged move was worth,
 python analyze_game.py --seed 7 --greedy     # the same seed, argmax only
 ```
 
-One such game — seed 7, four neural seats, scored **−1–−1–−1–7** with the shipped
+One such game — seed 7, four neural seats, scored **0–6–0–1** with the shipped
 checkpoint — is read in full in **[SEED7.md](SEED7.md)**: which moves were the
 policy's own first choice, which were 10% samples, where the network is genuinely
 blind (displacement), and what the argmax game of the same seed looks like

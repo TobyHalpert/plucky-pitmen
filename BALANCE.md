@@ -895,8 +895,8 @@ Those gem-less escapes are not a bug either. Removing them from the bot (an
 escape banks nothing, so stay and dig) costs it **0.76 points a seat and wins 32.8%
 of tables against a 50% null** over 400 paired games, because fleeing before a
 dragon it can see turns a sure −1 into 0 or, as sole escapee, +3. What looked arbitrary
-is a private read. The all-neural table escapes far less often: seed 7 plays 106
-decisions with ten escapes, nine of them banking a gem.
+is a private read. The all-neural table escapes far less often: seed 7 plays 146
+decisions with thirty-one, most of them answers to a charged blast.
 
 Both the player list and `analyze_game.py` now name the policy behind every seat,
 and `--viewer` replays the mixed table, so a report can be matched to the game it
@@ -969,6 +969,55 @@ little on average and the rule cannot be justified by its score. It is shipped o
 the argument instead: the mask should not hand the network a move that is
 dominated inside the position it is in, and a network that has not learned the
 engine's cage-index rule cannot be relied on to see the difference itself.
+
+#### A face-down card is not a trade against a gem you can see
+
+Seed 7, haul 1, planning phase 1: P1 stands at row 2 of its own column, whose
+fronts read gem (r0), gem (r1), dynamite (r2). It takes **r1c1** — an empty cell
+in P2's column, face down, backside "~", **25% dragon** — at 4%, while the gem at
+r1c0 is legal and was the model's own first choice at 59%.
+
+Two facts decide this, and neither needs a simulation.
+
+The first is what the move *buys*: nothing. Displacement only touches a figure
+standing on its own column, and P2 was standing in **P3's** column at the time, so
+r1c1 was an empty cell — no raid, no push, no sabotage. The move is a card and
+nothing else.
+
+The second is the branch structure. A front in the seat's own column is
+information nobody else has: it is a gem or a dynamite, never a dragon. A card
+still face down may be a dragon — two per backside — and the seat that turns it is
+the dragon player. Take the gem and walk the branches of the alternative:
+
+| the face-down card turns out | against taking the known gem |
+| :-- | :-- |
+| a gem (~40%) | equal — one card either way |
+| dynamite (~35–40%) | worse: unscored, and worth only blast material (≈0.2 points, §5) |
+| a dragon (25% here) | far worse: −2 for the turner and the haul ends |
+
+Weak dominance in every branch, so it holds at every table: the rule needs **no
+threshold**, unlike everything else in this file. It fires only when the seat has
+a gem it can see in its own column, and only against face-down digs that displace
+nobody — a raid on a rival sitting on its own column stays legal, because pushing
+that rival is worth something the card is not (``strands_the_figure`` and the
+displacement section cover that). It is the same argument as
+"walking past a free card", with the one card whose price cannot go wrong:
+the card the seat can see the front of.
+
+The rule that resulted is ``digs_past_a_known_gem``. What it changes about the
+*policy* is nothing — the model already preferred the gem 59% to 4% — and that is
+the point: the six rules above exist because a sampler at temperature 0.7 turns a
+4% tail into a visible move several times a game, and a dominated action left in
+the mask is a dominated action the viewer will eventually watch.
+
+**What this costs on screen, honestly.** The seed-7 game reshuffles: 146 decisions
+against 106, scored 0–6–0–1, and haul 2 becomes a four-way escape at zero gems
+(a rival's blast puts three seats in cages, they park on their lorries, the haul
+ends as a standoff, and the four-way gem tie pays **+1 each**). Without the rule
+that haul is an instant dragon instead, and the same four-way tie is paid from a
+different table. Both versions squander the haul; the scoring that pays a
+zero-gem mass escape +1 apiece is a separate defect, listed here rather than
+patched quietly.
 
 The viewer also stops being the only one who cannot see the danger: `action_reason`
 now spells out what an escape banks and what it is running from —

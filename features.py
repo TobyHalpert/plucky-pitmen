@@ -790,10 +790,69 @@ def strands_the_figure(ctx: PlayerActionContext) -> set[int]:
     return {action for row, action in own_gems.items() if row < deepest}
 
 
+def digs_past_a_known_gem(ctx: PlayerActionContext) -> set[int]:
+    """Face-down digs that a gem the seat can see makes pointless.
+
+    A front of the seat's **own** column is information the rest of the table
+    does not have: a card there is a gem or a dynamite, never a dragon. A card
+    still face down may be a dragon — two of them per backside — and the seat
+    that turns it is the dragon player. So the two are not a trade. Take the
+    known gem and compare the branch each way:
+
+    - the face-down card turns out a gem: equal to the gem that was there;
+    - it turns out dynamite: it is not scored at all, so worse;
+    - it turns out a dragon: the hull is over and its turner scores -2.
+
+    That is weak dominance in every branch, and it holds whether the face-down
+    card is in the seat's own column or a rival's. The one thing that could
+    outweigh it is a **displacement** — pushing a rival who stands on its own
+    column into the cage costs that rival its position — so a dig that displaces
+    is left alone, and only an unoccupied face-down cell is hidden. Seed 7 of the
+    viewer, haul 1, planning phase 1: P1 has gems at r0 and r1 of its own column
+    and takes **r1c1**, an empty cell in P2's column, at 25% dragon risk — P2 was
+    standing in P3's column at the time, so there was nobody to displace and the
+    move bought nothing but the lottery ticket.
+
+    Note what this rule does **not** need: a threshold. Face-down dragons cost
+    25% at that table and 0% at another, and the argument is the same in both,
+    because a known gem is 100% a gem.
+    """
+    own_gem_legal = False
+    for action in ctx.legal_actions:
+        primitive = int(action)
+        if not 0 <= primitive < PIT_CAGE:
+            continue
+        row, column = divmod(primitive, MAX_COLUMNS)
+        if column != ctx.player_index or row >= len(ctx.public_rows):
+            continue
+        entry = ctx.public_rows[row][column]
+        if entry is not None and entry[0] == GEM:
+            own_gem_legal = True
+            break
+    if not own_gem_legal:
+        return set()
+
+    hidden: set[int] = set()
+    for action in ctx.legal_actions:
+        primitive = int(action)
+        if not 0 <= primitive < PIT_CAGE:
+            continue
+        row, column = divmod(primitive, MAX_COLUMNS)
+        if row >= len(ctx.public_rows) or column >= len(ctx.public_rows[row]):
+            continue
+        entry = ctx.public_rows[row][column]
+        if entry is None or entry[0] is not None:
+            continue
+        if _occupant(ctx, row, column) is not None:
+            continue
+        hidden.add(primitive)
+    return hidden
+
+
 def action_mask(ctx: PlayerActionContext) -> np.ndarray:
     """Legal policy actions, including legal blast announcements.
 
-    Six narrow rules ride on top of the legal moves, all of them policies rather
+    Seven narrow rules ride on top of the legal moves, all of them policies rather
     than rules of the game, which is why they live here and not in the
     environment (see BALANCE.md):
 
@@ -815,7 +874,11 @@ def action_mask(ctx: PlayerActionContext) -> np.ndarray:
        first: the row a card is taken at is the cage index a raid would leave the
        figure with, and a shallow row leaves it nothing to step back onto.
        ``strands_the_figure``.
-    6. A figure in a pit cage is already halfway out: whoever is still in a cage
+    6. A face-down dig is not a trade against a gem the seat can see in its own
+       column: the same one card a round, and only one of the two can be a
+       dragon. Raids are left alone, because pushing a rival is worth something
+       the card is not. ``digs_past_a_known_gem``.
+    7. A figure in a pit cage is already halfway out: whoever is still in a cage
        when the cards are turned leaves the mine.  So from a cage the lorry and
        the pass are one decision, not two — the escape is taken when it banks
        something, and refused (staying in the haul on the lorry) when it does
@@ -874,6 +937,22 @@ def action_mask(ctx: PlayerActionContext) -> np.ndarray:
         for primitive in ranked:
             mask[primitive] = False
             mask[join_action(primitive, True)] = False
+    lottery = {action for action in digs_past_a_known_gem(ctx) if mask[int(action)]}
+    if lottery:
+        trial = mask.copy()
+        for primitive in lottery:
+            trial[primitive] = False
+            trial[join_action(primitive, True)] = False
+        keeps_a_gem = any(
+            0 <= int(a) < PIT_CAGE
+            and int(a) % MAX_COLUMNS == ctx.player_index
+            and ctx.public_rows[int(a) // MAX_COLUMNS][ctx.player_index] is not None
+            and ctx.public_rows[int(a) // MAX_COLUMNS][ctx.player_index][0] == GEM
+            for a in ctx.legal_actions
+            if trial[int(a)]
+        )
+        if keeps_a_gem:
+            mask = trial
     if mask[int(PIT_CAGE)] and cage_banks_nothing(ctx):
         trial = mask.copy()
         trial[int(PIT_CAGE)] = False
@@ -898,6 +977,7 @@ __all__ = [
     "cage_banks_nothing",
     "cell_dragon_risk",
     "digs_face_up_dragon",
+    "digs_past_a_known_gem",
     "doomed_dragon_digs",
     "figure_dragon_risk",
     "has_dragon_free_move",
