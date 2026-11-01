@@ -1457,19 +1457,58 @@ def test_the_action_mask_keeps_a_visible_dragon_as_bait():
 
 
 def test_the_action_mask_hides_a_visible_dragon_nobody_can_punish():
-    """With no rival deep enough, the digger eats the dragon itself: pure loss."""
-    from features import action_mask, doomed_dragon_digs, rival_can_push
+    """Past the first decision of the round, the digger eats the dragon itself."""
+    from features import action_mask, can_wait_on_a_dragon, doomed_dragon_digs, rival_can_push
 
     ctx = replaced(
         _trap_context(dragon_row=1, own_row=5, opponents=(_rival(1, 0),)),
-        legal_actions=(1 * MAX_COLUMNS + 0, 4 * MAX_COLUMNS + 0),
+        legal_actions=(1 * MAX_COLUMNS + 0, 4 * MAX_COLUMNS + 0, int(PASS)),
         private_cards=((DYNAMITE, 1), (DYNAMITE, 1)),
     )
     assert not rival_can_push(ctx, 1 * MAX_COLUMNS + 0), "a rival at row 0 cannot reach row 1"
+    assert not can_wait_on_a_dragon(ctx), "already planned: nothing forces anybody to move"
     assert doomed_dragon_digs(ctx) == {1 * MAX_COLUMNS + 0}
     mask = action_mask(ctx)
     assert not mask[1 * MAX_COLUMNS + 0]
     assert mask[4 * MAX_COLUMNS + 0], "another move must stay available"
+
+
+def test_a_dragon_you_can_see_is_a_waiting_square_on_the_first_decision():
+    """Standing on a dragon is reversible if the round cannot end before your turn.
+
+    A round resolves on ``n - 1`` consecutive passes, and only a seat that has
+    already planned may pass, so a first decision with somebody still unplanned
+    behind it always gets a second decision -- and the seat steps off. That is
+    the depth rule's argument with the row made explicit: the bottom of the mine
+    cannot be raided, and it can be left.
+    """
+    from features import action_mask, can_wait_on_a_dragon, doomed_dragon_digs
+
+    first = replaced(
+        _trap_context(dragon_row=1, own_row=5, opponents=(_rival(1, 0),)),
+        legal_actions=(1 * MAX_COLUMNS + 0, 4 * MAX_COLUMNS + 0),
+        private_cards=((DYNAMITE, 1), (DYNAMITE, 1)),
+    )
+    assert can_wait_on_a_dragon(first)
+    assert doomed_dragon_digs(first) == set()
+    assert action_mask(first)[1 * MAX_COLUMNS + 0]
+
+    # Last in the round's order: everything behind us has planned, so the other
+    # three can pass in a row and resolve the round on top of the dragon.
+    last = replaced(
+        first,
+        starting_player=1,
+        opponents=(_rival(1, 0), _rival(2, 0), _rival(3, 0)),
+    )
+    order = [1, 2, 3, 0]  # starting player 1, four seats, this seat is seat 0 -> last
+    assert order[-1] == 0
+    assert not can_wait_on_a_dragon(last)
+    assert doomed_dragon_digs(last) == {1 * MAX_COLUMNS + 0}
+    assert not action_mask(last)[1 * MAX_COLUMNS + 0]
+
+    # A seat alone in the mine has nothing behind it either.
+    alone = replaced(first, opponents=())
+    assert not can_wait_on_a_dragon(alone)
 
 
 def test_the_action_mask_never_empties_itself():

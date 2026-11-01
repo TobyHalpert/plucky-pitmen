@@ -1058,14 +1058,48 @@ dynamite); P4 banks a gem into the cage at a 22% hazard — the insurance rule o
 "A cage is insurance", not a card choice. Not one of them opens on a dynamite it
 could see while a gem sat in the same column.
 
-On this rule, "always go to the deepest row first" is *nearly* right and worth
-separating from what the engine actually allows. Movement is one-way, so a deep
-position is the reversible one and the shallow position is the commitment; the
-deepest card is also the only one nobody can raid you out of. But the deepest card
-is not always a card you want: P3's and P4's bottom row holds a dragon **they can
-see**, and a rule that walked them onto it would lose both seats on the spot. The
-rule that survives is "the deepest card you would be content to collect", which is
-what the two functions above encode.
+On this rule, "always go to the deepest row first" is *nearly* right, and the one
+place it was wrong is worth spelling out. Movement is one-way, so a deep position
+is the reversible one while a shallow one is the commitment; the deepest card is
+also the only one nobody can raid you out of. What looked like the exception —
+P3's and P4's bottom card is a dragon **they can see** — is not an exception at
+all, and the earlier version of this paragraph was wrong to call it one:
+
+#### A visible dragon is a waiting square you can step off
+
+A card is turned only when the round resolves with a figure still standing on it,
+so a visible dragon is not a trap by itself. Standing on it costs a decision and
+buys the safest square in the mine, and the seat walks off at its next decision.
+
+The question is whether a next decision is guaranteed, and the engine answers it
+exactly. A round resolves on ``n - 1`` consecutive passes, and a pass is legal
+only *after* the seat has planned in that round. So if anybody who acts after you
+is still unplanned, it cannot pass, the streak cannot complete, and your next
+decision arrives:
+
+- **first decision of the round, not last in the order** — everything behind you
+  is unplanned and must make a planning move, so the round cannot end before your
+  turn. Safe: ``can_wait_on_a_dragon``.
+- **any later decision** — every seat has planned, so the other ``n - 1`` can pass
+  in a row and the round ends with you still on the dragon: −2 to you, the haul
+  over, and everybody else in the mine dead.
+- **first decision, last in the order** — the other seats have already planned and
+  can pass in a row without ever coming back to you.
+
+The middle and last cases are why the sketch version of this argument ("somebody
+else still has to move, so I always get another turn") is not enough: three
+consecutive passes cover three of the four seats. Traced on seed 7's first round,
+where the order is P4, P1, P2, P3 — P4, P1 and P2 plan and then pass in a row, and
+**P3 gets one decision in that round, not two**. A seat in that position sitting
+down on a visible dragon never gets to stand up.
+
+So ``doomed_dragon_digs`` no longer masks every unpushed dragon dig; it masks the
+ones taken when the seat has no waiting square, which is the exact condition
+above. On seed 7 nothing changes — it plays the same 94 decisions and scores
+0 / −1 / −1 / 5 — but the mask now permits the waiting square at **258 of 1,598
+decisions** over seeds 0–11, and the network takes a dragon it can see in **136**
+of them (most are still the bait case, where a rival deep enough is invited to
+push the figure into a cage and eat the dragon itself).
 
 The viewer also stops being the only one who cannot see the danger: `action_reason`
 now spells out what an escape banks and what it is running from —

@@ -475,8 +475,60 @@ def has_dragon_free_move(ctx: PlayerActionContext) -> bool:
     )
 
 
+def can_wait_on_a_dragon(ctx: PlayerActionContext) -> bool:
+    """True when standing on a dragon the seat can see is a move it can take back.
+
+    A card is only turned when the round resolves with a figure still on it
+    (``MineEnv._execute_round``), so a visible dragon is not a trap in itself —
+    it is a square the seat can stand on and step off at its next decision. The
+    question is whether a next decision is guaranteed, and the engine answers it
+    exactly. A round resolves when ``n - 1`` consecutive passes accumulate, and a
+    pass is legal only *after* the seat has planned in that round
+    (``MineEnv._pass_threshold``, ``MineEnv._legal``). So if any seat that acts
+    after this one has not yet planned, it cannot pass, the streak cannot
+    complete, and this seat's next decision arrives. If every seat behind it has
+    planned, the other ``n - 1`` can pass in a row and the round ends with the
+    figure still on the dragon — this seat never gets to step off.
+
+    That gives one exact condition: **this is the seat's first decision of the
+    round and it is not the last seat in the round's order.** On a first decision
+    everything behind it is still unplanned, so any position but last is safe; on
+    any later decision every seat has planned, so nothing is.
+
+    Worth being precise about, because the sketch version of this ("somebody else
+    still has to move, so I always get another turn") is wrong: three consecutive
+    passes cover only three of the four seats. Traced on seed 7's first round
+    (order P4, P1, P2, P3): P4, P1 and P2 plan, then pass in a row, and P3 —
+    last in the order — never gets a second decision at all.
+    """
+    if int(PASS) in {int(action) for action in ctx.legal_actions}:
+        return False  # already planned this round: nothing behind us is forced to move
+    active = {ctx.player_index}
+    active |= {
+        opponent.player_index
+        for opponent in ctx.opponents
+        if not (opponent.escaped or opponent.dead)
+    }
+    order = [
+        index
+        for offset in range(ctx.n_players)
+        if (index := (ctx.starting_player + offset) % ctx.n_players) in active
+    ]
+    if ctx.player_index not in order:
+        return False
+    return order.index(ctx.player_index) < len(order) - 1
+
+
 def doomed_dragon_digs(ctx: PlayerActionContext) -> set[int]:
-    """Face-up-dragon digs that no rival can punish: the digger eats it itself."""
+    """Face-up-dragon digs that no rival can punish: the digger eats it itself.
+
+    Except when the seat can wait on the dragon safely, in which case every
+    visible dragon in its column is a waiting square rather than a mistake --
+    the deepest row cannot be raided, and the seat steps off at its next
+    decision. See ``can_wait_on_a_dragon``.
+    """
+    if can_wait_on_a_dragon(ctx):
+        return set()
     return {
         int(action)
         for action in ctx.legal_actions
@@ -909,11 +961,12 @@ def action_mask(ctx: PlayerActionContext) -> np.ndarray:
     than rules of the game, which is why they live here and not in the
     environment (see BALANCE.md):
 
-    1. A dig onto a dragon the seat can see, with no rival deep enough to punish
-       it, is pure loss — hiding it costs nothing measured. The same dig *with* a
-       rival deep enough is bait and stays: the rival can displace the figure
-       into a pit cage, a safe exit that banks the loot, and then eats the dragon
-       itself. ``doomed_dragon_digs``.
+    1. A dig onto a dragon the seat can see is not automatically a mistake: the
+       card is only turned if the round resolves with the figure still on it, so
+       a dragon the seat can stand on and step off is a waiting square — the
+       deepest square in the mine cannot be raided either. It is masked only when
+       the seat cannot wait safely, or when no rival is deep enough to push the
+       bait into a cage. ``doomed_dragon_digs``, ``can_wait_on_a_dragon``.
     2. A face-down card that pays more than a deeper free card is dominated — the
        backside is the price and the position a round ends on buys nothing.
        ``walks_past_a_free_card``.
@@ -1035,6 +1088,7 @@ __all__ = [
     "action_reason",
     "backside_stats",
     "cage_banks_nothing",
+    "can_wait_on_a_dragon",
     "cell_dragon_risk",
     "digs_face_up_dragon",
     "digs_past_a_known_gem",
