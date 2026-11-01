@@ -174,6 +174,7 @@ def test_action_mask_never_widens_the_rules():
         digs_past_a_known_gem,
         lorry_skips_a_card_worth_taking,
         strands_the_figure,
+        takes_the_gem_over_the_dynamite,
         walks_past_a_free_card,
     )
 
@@ -195,6 +196,7 @@ def test_action_mask_never_widens_the_rules():
                     or action in walks_past_a_free_card(ctx)
                     or action in strands_the_figure(ctx)
                     or action in digs_past_a_known_gem(ctx)
+                    or action in takes_the_gem_over_the_dynamite(ctx)
                 ), "only the documented policy rules may hide a legal move"
         dynamite = sum(
             1 for front, _ in ctx.private_cards if front == DYNAMITE
@@ -984,6 +986,56 @@ def _board_context(cards, *, legal=None, own_position=5):
         displacement_events=(),
         tie_breaker_contenders=(),
     )
+
+
+def test_a_gem_you_can_see_beats_a_dynamite_you_can_see():
+    """Two face-up cards in your own column, one gem one dynamite: no trade.
+
+    Seed 7 of the viewer, haul 1, planning phase 2: P1's column reads gem (r0),
+    dynamite (r2), gem (r3) and it took the dynamite at 44% while the r3 gem was
+    its own first choice at 56%.  A gem is scored and a lone dynamite is inert,
+    and the gem below becomes unreachable as soon as the figure stands above it.
+    """
+    from features import action_mask, takes_the_gem_over_the_dynamite
+
+    ctx = _board_context(
+        {(2, 0): (DYNAMITE, 2), (3, 0): (GEM, 2)},
+        legal=(2 * MAX_COLUMNS + 0, 3 * MAX_COLUMNS + 0),
+        own_position=4,
+    )
+    assert takes_the_gem_over_the_dynamite(ctx) == {2 * MAX_COLUMNS + 0}
+    mask = action_mask(ctx)
+    assert not mask[2 * MAX_COLUMNS + 0]
+    assert mask[3 * MAX_COLUMNS + 0]
+
+    # Two dynamite, no gem in sight: the gem rule stays out of it, and the depth
+    # rule does the deciding -- same card, deeper row, more of the column open.
+    only_dynamite = _board_context(
+        {(1, 0): (DYNAMITE, 1), (2, 0): (DYNAMITE, 2)},
+        legal=(1 * MAX_COLUMNS + 0, 2 * MAX_COLUMNS + 0),
+        own_position=4,
+    )
+    assert takes_the_gem_over_the_dynamite(only_dynamite) == set()
+    assert not action_mask(only_dynamite)[1 * MAX_COLUMNS + 0]
+    assert action_mask(only_dynamite)[2 * MAX_COLUMNS + 0]
+
+    # A dragon the seat can see is not a gem: the dynamite stays legal there, and
+    # so does the dragon (it is bait, which ``doomed_dragon_digs`` handles).
+    with_dragon = _board_context(
+        {(1, 0): (DRAGON, 1), (2, 0): (DYNAMITE, 2)},
+        legal=(1 * MAX_COLUMNS + 0, 2 * MAX_COLUMNS + 0),
+        own_position=4,
+    )
+    assert takes_the_gem_over_the_dynamite(with_dragon) == set()
+
+    # A rival's dyn~ is face down to this seat: only its own column is readable.
+    rival_dynamite = _board_context(
+        {(2, 1): (DYNAMITE, 2), (3, 0): (GEM, 2)},
+        legal=(2 * MAX_COLUMNS + 1, 3 * MAX_COLUMNS + 0),
+        own_position=4,
+    )
+    assert takes_the_gem_over_the_dynamite(rival_dynamite) == set()
+    assert action_mask(rival_dynamite)[2 * MAX_COLUMNS + 1]
 
 
 def test_a_face_down_dig_is_not_a_trade_against_a_gem_you_can_see():

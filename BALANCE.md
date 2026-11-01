@@ -895,8 +895,8 @@ Those gem-less escapes are not a bug either. Removing them from the bot (an
 escape banks nothing, so stay and dig) costs it **0.76 points a seat and wins 32.8%
 of tables against a 50% null** over 400 paired games, because fleeing before a
 dragon it can see turns a sure −1 into 0 or, as sole escapee, +3. What looked arbitrary
-is a private read. The all-neural table escapes far less often: seed 7 plays 146
-decisions with thirty-one, most of them answers to a charged blast.
+is a private read. The all-neural table escapes far less often: seed 7 plays 94
+decisions with fourteen, five of them with nothing in hand.
 
 Both the player list and `analyze_game.py` now name the policy behind every seat,
 and `--viewer` replays the mixed table, so a report can be matched to the game it
@@ -1018,6 +1018,54 @@ that haul is an instant dragon instead, and the same four-way tie is paid from a
 different table. Both versions squander the haul; the scoring that pays a
 zero-gem mass escape +1 apiece is a separate defect, listed here rather than
 patched quietly.
+
+#### A gem you can see beats a dynamite you can see
+
+Seed 7, haul 1, planning phase 2, four rows on the board. Three of the four seats
+opened the phase by walking onto a **dynamite** in their own column while a card
+they could see, one row deeper, was a gem:
+
+| seat | own column, top to bottom | first move | its own first choice |
+| :-- | :-- | :-- | :-- |
+| P1 | gem, gem, dynamite, **gem** | dynamite at r2 (44%) | gem at r3 (56%) |
+| P2 | —, gem, dynamite, **gem** | dynamite at r2 (70%) | dynamite at r2 |
+| P4 | dynamite, —, **gem**, dragon | gem at r2 (correct: its r3 is a dragon) | — |
+| P3 | —, dynamite, dynamite, dragon | face-down card in a rival's column | — |
+
+Two face-up cards in one column are the only choice in this game with no
+uncertainty in it, and they are not a trade. A gem is scored: the escapee with the
+most gems takes the haul bonus (3, or 4 on the last haul). A dynamite is not
+scored at all, and one on its own does nothing — a blast needs two, and the blast
+deals three cards off the deck of which the seat keeps two, ending the haul if one
+is a dragon (46% of blasts in §5 woke one). Leaving the dynamite costs nothing
+either: it is face up in the seat's own column and can be taken in a later round,
+whereas the gem below it becomes unreachable the moment a figure stands above it,
+because movement is one-way.
+
+The same one-wayness decides ties. Two cards of the **same front** are also not a
+trade: the deeper one is raidable by fewer seats (a rival can only reach a card it
+stands strictly above), it leaves more of the column reachable afterwards, and a
+raid on it strands the figure less far up. `strands_the_figure` therefore ranks by
+depth inside a front, and `takes_the_gem_over_the_dynamite` ranks gem above
+dynamite, with dragons excluded from both — a dragon the seat can see is decided by
+the bait rule.
+
+**What a first move looks like now, in the same phase:** P1 and P2 open on the
+deepest row, both on a gem they can see (100% and 99%); P3, whose column has
+dynamite at r1 and r2 and a dragon at r3, opens on a face-down card in a rival's
+column (it holds nothing, and 40% of face-down cards are gems against a certain
+dynamite); P4 banks a gem into the cage at a 22% hazard — the insurance rule of
+"A cage is insurance", not a card choice. Not one of them opens on a dynamite it
+could see while a gem sat in the same column.
+
+On this rule, "always go to the deepest row first" is *nearly* right and worth
+separating from what the engine actually allows. Movement is one-way, so a deep
+position is the reversible one and the shallow position is the commitment; the
+deepest card is also the only one nobody can raid you out of. But the deepest card
+is not always a card you want: P3's and P4's bottom row holds a dragon **they can
+see**, and a rule that walked them onto it would lose both seats on the spot. The
+rule that survives is "the deepest card you would be content to collect", which is
+what the two functions above encode.
 
 The viewer also stops being the only one who cannot see the danger: `action_reason`
 now spells out what an escape banks and what it is running from —

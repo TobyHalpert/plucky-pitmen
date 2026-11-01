@@ -740,39 +740,34 @@ def action_reason(ctx: PlayerActionContext, action: int) -> str:
 
 
 def strands_the_figure(ctx: PlayerActionContext) -> set[int]:
-    """Own-column gems taken at a row that leaves the seat nowhere to recover.
+    """Cards in the seat's own column that it should reach from a deeper row first.
 
-    A raid pushes a figure into the pit cage with ``cage_index = row it stood
+    A raid pushes a figure into the pit cage with ``cage_index = the row it stood
     on``, and from a cage only rows **shallower** than the cage index are legal
     again (``MineEnv._movement_depth``). So the row a card is taken at decides
     what the seat can do if a rival raids that call mid-phase: from row 0 the
     answer is nothing — the only moves left are the lorry and the pass, and a
     pass in a cage is a departure — while from row 3 rows 0-2 are still open.
 
-    When the seat can see two gems in its own column, taking the deeper one
-    first cannot be worse: it is the same gem, it is raidable by fewer seats
-    (only figures standing at the front of the mine reach a deep card), and a
-    raid on it leaves the whole column still reachable. Taking the front gem
-    first forfeits that. Seed 7 of the viewer, haul 1, round 1: P1's column holds
-    gems at r0, r1 and r3, it takes r0c0 at 55%, and a raid on that call would
-    have left it with no card move at all.
+    Two cards of the **same front** in one column are therefore not a trade: the
+    deeper one is raidable by fewer seats (a rival can only reach a card it
+    stands strictly above — depth, not distance), it leaves more of the column
+    reachable afterwards, and a raid on it strands the figure less far up. The
+    seat takes the deeper one first and can still walk up to the shallow one in
+    the same phase; the reverse is impossible, because movement is one-way.
 
-    This is the one place the codebase used to argue the other way. The rule
-    that hides a face-down dig behind a cheaper deeper one (``walks_past_a_free_card``)
-    states that "ending the round on a deeper card buys nothing", which is true
-    only because every round resets the figures to the front; mid-phase it buys
-    the difference between a live phase and a forced exit. Measured over 200
-    four-net games, 209 displacements landed on a figure standing on a card, 114
-    of them from row 0 and 136 (65%) left the victim with no card move at all.
+    The comment this rule replaces said the opposite — "ending the round on a
+    deeper card buys nothing" — which is true *between* rounds (every round resets
+    the figures to the front, ``_set_players_to_starting_positions``) and false
+    *within* one. Seed 7 of the viewer, haul 1, planning phase 2: P1's column
+    holds a gem at r0 and a gem at r3, and a raid on a figure standing at r0
+    leaves it with no card move at all.
 
-    The counter-argument, and the reason this is not free: front cards are the
-    contested ones, 507 of 1,588 digs into a rival's column in the same sample
-    were row 0 against 166 at row 3, so taking the front gem *claims* it before
-    somebody else does. That is a race, not a guarantee, and the deeper gem
-    cannot run away in the same way — a rival has to reach the bottom of the
-    mine to take it.
+    Dragons are excluded: a card the seat can see is a dragon is not worth
+    reaching, and the bait rule (``doomed_dragon_digs``) already decides those.
+    Cards of different fronts are decided by ``takes_the_gem_over_the_dynamite``.
     """
-    own_gems: dict[int, int] = {}
+    deepest: dict[int, int] = {}
     for action in ctx.legal_actions:
         primitive = int(action)
         if not 0 <= primitive < PIT_CAGE:
@@ -781,13 +776,29 @@ def strands_the_figure(ctx: PlayerActionContext) -> set[int]:
         if column != ctx.player_index or row >= len(ctx.public_rows):
             continue
         entry = ctx.public_rows[row][column]
-        if entry is None or entry[0] != GEM:
+        if entry is None or entry[0] is None:
             continue
-        own_gems[row] = primitive
-    if len(own_gems) < 2:
-        return set()
-    deepest = max(own_gems)
-    return {action for row, action in own_gems.items() if row < deepest}
+        front = int(entry[0])
+        if front == DRAGON:
+            continue
+        deepest[front] = max(deepest.get(front, row), row)
+    hidden: set[int] = set()
+    for action in ctx.legal_actions:
+        primitive = int(action)
+        if not 0 <= primitive < PIT_CAGE:
+            continue
+        row, column = divmod(primitive, MAX_COLUMNS)
+        if column != ctx.player_index or row >= len(ctx.public_rows):
+            continue
+        entry = ctx.public_rows[row][column]
+        if entry is None or entry[0] is None:
+            continue
+        front = int(entry[0])
+        if front == DRAGON:
+            continue
+        if row < deepest.get(front, row):
+            hidden.add(primitive)
+    return hidden
 
 
 def digs_past_a_known_gem(ctx: PlayerActionContext) -> set[int]:
@@ -849,10 +860,52 @@ def digs_past_a_known_gem(ctx: PlayerActionContext) -> set[int]:
     return hidden
 
 
+def takes_the_gem_over_the_dynamite(ctx: PlayerActionContext) -> set[int]:
+    """Digs onto a card the seat can see is dynamite, while one it can see is a gem.
+
+    A front in the seat's own column is readable to that seat and to nobody else,
+    so this is one of the few places the game offers a choice with no uncertainty
+    in it: two cards, both face up, both legal. They are not a trade.
+
+    A gem is a scored card and the point of a haul: the escapee with the most gems
+    takes the bonus (3, or 4 on the last haul). A dynamite is not scored at all,
+    and one on its own does nothing — a blast needs two in hand, and the blast
+    deals three cards off the deck of which the seat keeps two, ending the haul if
+    one is a dragon (46% of the blasts in the sample in BALANCE.md woke one). So
+    the gem is worth at least as much in every line, and leaving the dynamite
+    costs nothing: it is face up in the seat's own column and can be taken in a
+    later round, whereas the gem below it becomes unreachable the moment the
+    figure stands above it, because movement is one-way.
+
+    Seed 7 of the viewer, haul 1, planning phase 2 is the case that produced this
+    rule: P1's column reads gem (r0), dynamite (r2), gem (r3) and it took the
+    **dynamite at r2 at 44%** while the gem at r3 was its own first choice at 56%;
+    P2 took its r2 dynamite at 70% with gems at r1 and r3. P4, whose r3 holds a
+    dragon it can see, correctly took the gem at r2.
+    """
+    gem_legal = False
+    dynamite_digs: set[int] = set()
+    for action in ctx.legal_actions:
+        primitive = int(action)
+        if not 0 <= primitive < PIT_CAGE:
+            continue
+        row, column = divmod(primitive, MAX_COLUMNS)
+        if column != ctx.player_index or row >= len(ctx.public_rows):
+            continue
+        entry = ctx.public_rows[row][column]
+        if entry is None or entry[0] is None:
+            continue
+        if int(entry[0]) == GEM:
+            gem_legal = True
+        elif int(entry[0]) == DYNAMITE:
+            dynamite_digs.add(primitive)
+    return dynamite_digs if gem_legal else set()
+
+
 def action_mask(ctx: PlayerActionContext) -> np.ndarray:
     """Legal policy actions, including legal blast announcements.
 
-    Seven narrow rules ride on top of the legal moves, all of them policies rather
+    Eight narrow rules ride on top of the legal moves, all of them policies rather
     than rules of the game, which is why they live here and not in the
     environment (see BALANCE.md):
 
@@ -870,15 +923,17 @@ def action_mask(ctx: PlayerActionContext) -> np.ndarray:
     4. The pit cage is the only exit that banks loot before the cards are turned,
        so an escape has to bank something or answer a visible threat.
        ``cage_banks_nothing``.
-    5. Of two gems the seat can see in its own column, the deeper one comes
+    5. A card the seat can see is a gem beats one it can see is a dynamite: a
+       gem is scored and a lone dynamite is inert. ``takes_the_gem_over_the_dynamite``.
+    6. Of two gems the seat can see in its own column, the deeper one comes
        first: the row a card is taken at is the cage index a raid would leave the
        figure with, and a shallow row leaves it nothing to step back onto.
        ``strands_the_figure``.
-    6. A face-down dig is not a trade against a gem the seat can see in its own
+    7. A face-down dig is not a trade against a gem the seat can see in its own
        column: the same one card a round, and only one of the two can be a
        dragon. Raids are left alone, because pushing a rival is worth something
        the card is not. ``digs_past_a_known_gem``.
-    7. A figure in a pit cage is already halfway out: whoever is still in a cage
+    8. A figure in a pit cage is already halfway out: whoever is still in a cage
        when the cards are turned leaves the mine.  So from a cage the lorry and
        the pass are one decision, not two — the escape is taken when it banks
        something, and refused (staying in the haul on the lorry) when it does
@@ -932,6 +987,11 @@ def action_mask(ctx: PlayerActionContext) -> np.ndarray:
         trial[int(LORRY)] = False
         if trial.any():
             mask = trial
+    spent = {action for action in takes_the_gem_over_the_dynamite(ctx) if mask[int(action)]}
+    if spent and any(int(a) not in spent and mask[int(a)] for a in ctx.legal_actions):
+        for primitive in spent:
+            mask[primitive] = False
+            mask[join_action(primitive, True)] = False
     ranked = {action for action in strands_the_figure(ctx) if mask[int(action)]}
     if ranked and any(int(a) not in ranked and mask[int(a)] for a in ctx.legal_actions):
         for primitive in ranked:
@@ -991,5 +1051,6 @@ __all__ = [
     "state_action_matrix",
     "state_features",
     "strands_the_figure",
+    "takes_the_gem_over_the_dynamite",
     "walks_past_a_free_card",
 ]
