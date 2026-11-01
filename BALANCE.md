@@ -475,6 +475,44 @@ distinction rather than indifferent to it. Teaching it is a training question �
 scripted pusher in the league, so the population both exercises the push and
 punishes the seats that park in front of it — not a mask rule.
 
+#### Measured as denial: the victim's side of a push
+
+The price above is measured on the **pusher's** score, which is the wrong lens if a
+push is really about "not giving the rival what it wants". So it was measured again
+from the victim's side: same paired design, same re-roll seeds, push against the
+model's own best non-push move, this time reporting both seats and the gap to the
+best rival.
+
+Row-0 pushes (the only ones that cost the victim a dig at all), **40 positions, 50
+paired re-rolls each**:
+
+| delta (push − best other move) | value |
+| :-- | --: |
+| my score | +0.175 (se 0.177) |
+| **the victim's score** | **−0.140 (se 0.188)** |
+| my score − best rival | +0.192 (se 0.194) |
+| win share | +4.1pp (se 2.7) |
+
+and restricted to pushes on **the current score leader**, 28 positions: my score
++0.152 (se 0.229), **the leader's score +0.146 (se 0.230)** — pushing the seat you
+have to beat does not cost it a point at all — win share +4.7pp (se 3.3).
+
+So the denial is real at row 0 but small, about the same size as the gain, and it
+disappears against the leader. The mechanism explains why, and it is the same fact
+as the price above seen from the other side: **a push transfers one card, it does
+not destroy one.** The card the victim stood on goes to the pusher; everything else
+in the victim's column is untouched; the figures reset to the front every round; so
+the victim arrives at the next round with a fresh choice and the same column. And
+if it was holding gems, being pushed *banks* them, which is why its score does not
+fall. What the push costs the victim is a **round**, and a round is cheap while the
+gem it wanted is still in the mine.
+
+The intuition would be right in a game that scored the race — "reach N gems before
+anyone else" — where one card taken from the leader is worth a tempo. This one
+scores *hauls*: the bonus goes to the escapee with the most gems at the end of each
+haul, so a single card only matters when it changes who that is. That is why the
+win share is the metric that moves (+4pp, ~1.5σ) and the victim's score is not.
+
 ### Backsides have to be read
 
 The trap above pays only against a table that watches the *player* instead of
