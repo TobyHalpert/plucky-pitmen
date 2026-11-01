@@ -407,6 +407,74 @@ push at 0.2 a game, so a league that pushes ten times as often might teach the
 cautious side to be worth something; the arms above say it is not worth anything
 against the population that exists.
 
+### Why a push is not the sharpest move in the game
+
+A push reads like the strongest thing on the board: you take a card out of a
+rival's column, out of a rival's hand, and send it to the cage. Asked why the nets
+use it so little, the answer is in three parts — what the rules actually do, what
+the nets can see, and what the numbers say.
+
+**What the rules do.** A push drops the victim into the cage at the row it stood
+on, and a figure in a cage may only reach rows *shallower* than that
+(``MineEnv._displace``, ``MineEnv._movement_depth``):
+
+| pushed from | cage index | what the victim can still do |
+| :-- | --: | :-- |
+| row 0 | 0 | no dig at all — lorry (lose the round) or leave with what it holds |
+| row 1 | 1 | rows 0 only |
+| row 3 | 3 | rows 0–2, i.e. its position was all it lost |
+
+So a push is only a *weapon* at row 0. Everywhere else it is a swap of positions.
+Three things hammer the value home even at row 0:
+
+- the pusher spends its own card of the round, and the card it takes is one it
+  cannot read (only the owner sees a column's fronts) — usually the *safer* of the
+  two options is a card in its own column;
+- the victim's remedy is cheap: park on the lorry and it is back at the front of
+  the mine next round, with the same gems;
+- a victim holding cards *banks* them by being pushed, so the push saves its loot,
+  and an empty-handed victim was worth nothing in the gem race to begin with. The
+  push denies it a card; the pusher was going to take a card anyway.
+
+**What the nets can see.** They cannot see the row interaction. Over 20 seeds
+there were **1,798 decisions with a push on offer** (11 a game in the reasoned
+case: a row-0, empty-handed victim) and the net's probability on the push barely
+moved with the row:
+
+| victim's row | 0 | 1 | 2 | 3 | 4 | 5 |
+| :-- | --: | --: | --: | --: | --: | --: |
+| net's probability on the push | 2.0% | 1.8% | 1.4% | 1.2% | 0.8% | 0.5% |
+| decided to push | 1.4% | 1.1% | 1.9% | 2.1% | 2.0% | 0% |
+
+The action block carried "a rival on its own column" and the row separately, so the
+product was representable but never learned. Two action features spelling out the
+consequence — *this push leaves the victim no card* and *this push banks the
+victim's loot* — were added and a network was fine-tuned from the shipped
+checkpoint for 24 generations. It pushed **less**: 0.1% of the offers, entropy down
+to 0.44. So the encoder was not the binding constraint; exploration was.
+
+**What the numbers say.** Pushing is priced against the model's own best non-push
+move at the same decision, same re-roll seeds, 20 positions per bucket, 60
+re-rolls per arm:
+
+| bucket | push | push − best other move |
+| :-- | --: | :-- |
+| row 0, empty-handed victim | +1.60 | **−0.01 (se 0.23)** |
+| row ≥ 1, empty-handed victim | +1.05 | **+0.00 (se 0.06)** |
+| victim carrying cards | +1.50 | **+0.30 (se 0.25)** |
+
+and forcing the reasoned push on one seat, 800 paired four-net games, is
+**+1.6pp wins (se 1.8), +0.11 points (se 0.09)** — positive, underpowered, and
+inside the noise of the earlier `pusher` arm (+0.2pp, −0.11).
+
+None of that is the *rate* the mechanics suggest, and the honest conclusion is
+the one already in "Displacement is a tax on the seat that parks": a push is worth
+about what the card you would otherwise take is worth. What the analysis adds is
+*where* it is not: at row 0 it is a genuine weapon, and the nets are blind to that
+distinction rather than indifferent to it. Teaching it is a training question — a
+scripted pusher in the league, so the population both exercises the push and
+punishes the seats that park in front of it — not a mask rule.
+
 ### Backsides have to be read
 
 The trap above pays only against a table that watches the *player* instead of
