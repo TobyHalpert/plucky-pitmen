@@ -172,6 +172,7 @@ def test_action_mask_never_widens_the_rules():
     from features import (
         digs_face_up_dragon,
         lorry_skips_a_card_worth_taking,
+        strands_the_figure,
         walks_past_a_free_card,
     )
 
@@ -191,6 +192,7 @@ def test_action_mask_never_widens_the_rules():
                     and lorry_skips_a_card_worth_taking(ctx)
                     or digs_face_up_dragon(ctx, action)
                     or action in walks_past_a_free_card(ctx)
+                    or action in strands_the_figure(ctx)
                 ), "only the documented policy rules may hide a legal move"
         dynamite = sum(
             1 for front, _ in ctx.private_cards if front == DYNAMITE
@@ -980,6 +982,47 @@ def _board_context(cards, *, legal=None, own_position=5):
         displacement_events=(),
         tie_breaker_contenders=(),
     )
+
+
+def test_the_deeper_of_two_own_column_gems_is_taken_first():
+    """The row you take a card at is the cage index a raid leaves you with.
+
+    A raid sets ``cage_index = the row the figure stood on`` and from a cage only
+    shallower rows are legal again, so a front-row gem taken mid-phase is a
+    phase you cannot recover in. Seed 7 of the viewer, haul 1, round 1: P1 has
+    gems at r0, r1 and r3 and takes r0c0; over 200 four-net games 114 of 209
+    raids landed on a figure in row 0 and 65% of raids left it no card at all.
+    """
+    from features import action_mask, strands_the_figure
+
+    ctx = _board_context(
+        {(0, 0): (GEM, 0), (1, 0): (GEM, 2), (3, 0): (GEM, 2)},
+        legal=(0 * MAX_COLUMNS + 0, 1 * MAX_COLUMNS + 0, 3 * MAX_COLUMNS + 0),
+        own_position=4,
+    )
+    assert strands_the_figure(ctx) == {0 * MAX_COLUMNS + 0, 1 * MAX_COLUMNS + 0}
+    mask = action_mask(ctx)
+    assert not mask[0 * MAX_COLUMNS + 0]
+    assert not mask[1 * MAX_COLUMNS + 0]
+    assert mask[3 * MAX_COLUMNS + 0]
+
+    # A single own-column gem has nothing to rank against: take it.
+    single = _board_context(
+        {(0, 0): (GEM, 0)},
+        legal=(0 * MAX_COLUMNS + 0,),
+        own_position=4,
+    )
+    assert strands_the_figure(single) == set()
+    assert action_mask(single)[0 * MAX_COLUMNS + 0]
+
+    # A deeper *dynamite* is not an alternative to a gem in hand.
+    dynamite_below = _board_context(
+        {(0, 0): (GEM, 0), (2, 0): (DYNAMITE, 1)},
+        legal=(0 * MAX_COLUMNS + 0, 2 * MAX_COLUMNS + 0),
+        own_position=4,
+    )
+    assert strands_the_figure(dynamite_below) == set()
+    assert action_mask(dynamite_below)[0 * MAX_COLUMNS + 0]
 
 
 def test_a_figure_in_a_cage_is_given_the_lorry_instead_of_a_pass():

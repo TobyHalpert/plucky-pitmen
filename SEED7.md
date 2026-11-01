@@ -15,8 +15,8 @@ python analyze_game.py --seed 7 --greedy           # the same seed with the samp
 > input) rather than in the search. Fixing that — a `round_dragon_hazard` state
 > feature and an escape rule that waits for it — retrained the checkpoint
 > (BALANCE.md, "A cage is insurance, and the table's hazard was not an input").
-> The shipped checkpoint now plays seed 7 differently: **109 decisions, sixteen
-> escapes, fourteen of them banking a gem, scored 3–2–1–3** — including a
+> The shipped checkpoint now plays seed 7 differently: **106 decisions, ten
+> escapes, nine of them banking a gem** — including a
 > correction to the cage itself: a figure in a cage leaves the mine when the
 > cards are turned, so a pass taken there is a departure, and the mask used to
 > remove the lorry and leave nothing but that pass (BALANCE.md, "A pass in the

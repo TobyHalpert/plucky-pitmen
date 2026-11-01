@@ -488,10 +488,11 @@ def walks_past_a_free_card(ctx: PlayerActionContext) -> set[int]:
     """Face-down digs that pay more than a card they climb past.
 
     Every planning phase starts with all figures at the front of the mine
-    (``_set_players_to_starting_positions``), and a player takes exactly one card
-    per round, so ending the round on a deeper card buys nothing by itself: the
-    only thing that differs between two face-down cards is the price on their
-    backside. A card is therefore dominated when a *deeper* free card is at
+    (``_set_players_to_starting_positions``), so ending the round on a deeper
+    card buys nothing *from one round to the next*: the only thing that differs
+    between two face-down cards is the price on their backside. (It does buy
+    something inside the phase — see ``strands_the_figure`` — and that is why the
+    rule for cards the seat can see runs the same way.) A card is therefore dominated when a *deeper* free card is at
     least as safe, because the figure walks past that card on the way and could
     have taken it instead. Choosing the dearer or the equally priced one of the
     two cannot be explained to a spectator and is not a trade — the backside is
@@ -738,10 +739,61 @@ def action_reason(ctx: PlayerActionContext, action: int) -> str:
     return f"back {_BACKSIDE_NAMES.get(int(back), '?')} ({chance:.0%} dragon){suffix}"
 
 
+def strands_the_figure(ctx: PlayerActionContext) -> set[int]:
+    """Own-column gems taken at a row that leaves the seat nowhere to recover.
+
+    A raid pushes a figure into the pit cage with ``cage_index = row it stood
+    on``, and from a cage only rows **shallower** than the cage index are legal
+    again (``MineEnv._movement_depth``). So the row a card is taken at decides
+    what the seat can do if a rival raids that call mid-phase: from row 0 the
+    answer is nothing — the only moves left are the lorry and the pass, and a
+    pass in a cage is a departure — while from row 3 rows 0-2 are still open.
+
+    When the seat can see two gems in its own column, taking the deeper one
+    first cannot be worse: it is the same gem, it is raidable by fewer seats
+    (only figures standing at the front of the mine reach a deep card), and a
+    raid on it leaves the whole column still reachable. Taking the front gem
+    first forfeits that. Seed 7 of the viewer, haul 1, round 1: P1's column holds
+    gems at r0, r1 and r3, it takes r0c0 at 55%, and a raid on that call would
+    have left it with no card move at all.
+
+    This is the one place the codebase used to argue the other way. The rule
+    that hides a face-down dig behind a cheaper deeper one (``walks_past_a_free_card``)
+    states that "ending the round on a deeper card buys nothing", which is true
+    only because every round resets the figures to the front; mid-phase it buys
+    the difference between a live phase and a forced exit. Measured over 200
+    four-net games, 209 displacements landed on a figure standing on a card, 114
+    of them from row 0 and 136 (65%) left the victim with no card move at all.
+
+    The counter-argument, and the reason this is not free: front cards are the
+    contested ones, 507 of 1,588 digs into a rival's column in the same sample
+    were row 0 against 166 at row 3, so taking the front gem *claims* it before
+    somebody else does. That is a race, not a guarantee, and the deeper gem
+    cannot run away in the same way — a rival has to reach the bottom of the
+    mine to take it.
+    """
+    own_gems: dict[int, int] = {}
+    for action in ctx.legal_actions:
+        primitive = int(action)
+        if not 0 <= primitive < PIT_CAGE:
+            continue
+        row, column = divmod(primitive, MAX_COLUMNS)
+        if column != ctx.player_index or row >= len(ctx.public_rows):
+            continue
+        entry = ctx.public_rows[row][column]
+        if entry is None or entry[0] != GEM:
+            continue
+        own_gems[row] = primitive
+    if len(own_gems) < 2:
+        return set()
+    deepest = max(own_gems)
+    return {action for row, action in own_gems.items() if row < deepest}
+
+
 def action_mask(ctx: PlayerActionContext) -> np.ndarray:
     """Legal policy actions, including legal blast announcements.
 
-    Five narrow rules ride on top of the legal moves, all of them policies rather
+    Six narrow rules ride on top of the legal moves, all of them policies rather
     than rules of the game, which is why they live here and not in the
     environment (see BALANCE.md):
 
@@ -759,7 +811,11 @@ def action_mask(ctx: PlayerActionContext) -> np.ndarray:
     4. The pit cage is the only exit that banks loot before the cards are turned,
        so an escape has to bank something or answer a visible threat.
        ``cage_banks_nothing``.
-    5. A figure in a pit cage is already halfway out: whoever is still in a cage
+    5. Of two gems the seat can see in its own column, the deeper one comes
+       first: the row a card is taken at is the cage index a raid would leave the
+       figure with, and a shallow row leaves it nothing to step back onto.
+       ``strands_the_figure``.
+    6. A figure in a pit cage is already halfway out: whoever is still in a cage
        when the cards are turned leaves the mine.  So from a cage the lorry and
        the pass are one decision, not two — the escape is taken when it banks
        something, and refused (staying in the haul on the lorry) when it does
@@ -813,6 +869,11 @@ def action_mask(ctx: PlayerActionContext) -> np.ndarray:
         trial[int(LORRY)] = False
         if trial.any():
             mask = trial
+    ranked = {action for action in strands_the_figure(ctx) if mask[int(action)]}
+    if ranked and any(int(a) not in ranked and mask[int(a)] for a in ctx.legal_actions):
+        for primitive in ranked:
+            mask[primitive] = False
+            mask[join_action(primitive, True)] = False
     if mask[int(PIT_CAGE)] and cage_banks_nothing(ctx):
         trial = mask.copy()
         trial[int(PIT_CAGE)] = False
@@ -849,5 +910,6 @@ __all__ = [
     "split_action",
     "state_action_matrix",
     "state_features",
+    "strands_the_figure",
     "walks_past_a_free_card",
 ]

@@ -895,8 +895,8 @@ Those gem-less escapes are not a bug either. Removing them from the bot (an
 escape banks nothing, so stay and dig) costs it **0.76 points a seat and wins 32.8%
 of tables against a 50% null** over 400 paired games, because fleeing before a
 dragon it can see turns a sure −1 into 0 or, as sole escapee, +3. What looked arbitrary
-is a private read. The all-neural table escapes far less often: seed 7 plays 109
-decisions with sixteen escapes, fourteen of them banking a gem.
+is a private read. The all-neural table escapes far less often: seed 7 plays 106
+decisions with ten escapes, nine of them banking a gem.
 
 Both the player list and `analyze_game.py` now name the policy behind every seat,
 and `--viewer` replays the mixed table, so a report can be matched to the game it
@@ -926,35 +926,49 @@ the old rule did not *let* the seat choose. The lorry standoff does not come bac
 with it: **0 wasted hauls in 900** in both arms (BALANCE.md, "Four nets parked on
 their lorries").
 
-#### A front-row gem is not a trap
+#### Correction: the row you take a card at decides what a raid can do to you
 
-A column can hold three gems at three depths, and the front row is the one
-position a raid can push the figure out of altogether: displacement sends a
-figure to the nearest pit cage towards the lorry, so from row 0 the cage index is
-0 and no card is left to step back onto, while from row 3 the figure lands in cage
-index 3 with rows 0–2 still open. Seed 7, haul 1, round 1: P1 stands at the front
-with gems at r0, r1 and r3 in its column and takes r0c0 at 55%, while the bottom
-gem is legal at 14%. Is the front one dominated?
+An earlier version of this paragraph argued the opposite of what follows, and it
+was wrong about the mechanism. It priced taking the front gem of your own column
+against the bottom one — **+0.13 ± 0.16**, a wash — and concluded the front gem is
+fine because "a displacement banks the loot; the figure leaves with the gems it
+carries". That part is true and beside the point: what a displacement does is end
+the *phase*, and the row the card was taken at is the cage index it leaves the
+figure with. From a cage only rows **shallower** than the cage index are legal
+again (``MineEnv._movement_depth``), so
 
-Not on the numbers. Priced from that position, 300 paired re-rolls: r0c0
-**+2.55 ± 0.14**, r3c0 **+2.42 ± 0.14**, paired difference **+0.13 ± 0.16**. Haul 1
-alone: 2.57 gems and +1.60 points from the front row against 2.45 and +1.57 from
-the bottom — and in 150 re-rolls of each the figure was never pushed out without
-collecting a card. As a rule, over 1,200 paired four-net games, masking the
-front-row own gem whenever a deeper own gem is reachable costs **−1.5pp of wins
-and −0.12 points (se 0.07)**, and restricting the mask to an empty hand changes
-nothing. It is not shipped.
+- displaced from **row 0** → cage index 0 → **no card is legal at all**; the only
+  moves are the lorry and the pass, and a pass in a cage is a departure;
+- displaced from **row 3** → cage index 3 → rows 0–2 are open, so the seat acts
+  again and can still take the shallow gem it passed over.
 
-The reason is that a displacement is a **banked exit**, not a loss: the figure
-leaves with the gems it carries, before the cards turn, which is the same exit the
-cage rule authorises when it is worth taking. What row 0 costs is the round, and
-with the lorry re-routing above even that is recoverable. Row 3 keeps the options
-— and those options are options to stay in a mine that can still kill you.
+Seed 7, haul 1, planning phase 1 is the same table twice: P3 is pushed into cage
+index 0 and has exactly `{lorry, pass}`; P1, on the same board, has gems at r0, r1
+and r3 in its column and takes **r0c0 at 55%** while the bottom gem is legal. Over
+200 four-net games, **114 of 209 mid-phase raids landed on a figure standing in
+row 0** (a deep figure can only be raided by one standing at the front of the
+mine) and **136 of those 209 — 65% — left the victim with no card move at all**.
 
-Where the risk is real, and is modelled: a figure at row 0 with an empty hand can
-be pushed out for a zero-point haul. That is the same "banks nothing" condition
-the cage mask reads, and the reason the escape rule looks at the hand and not just
-at the position.
+So the two orders are not the trade the earlier section claimed. Taking the deep
+gem first is the same gem, raidable by fewer seats, and if a raid does land the
+seat can still take the shallow one *in the same phase*: deep-first can bank two
+cards in a phase, shallow-first at most one. The rest of the codebase already
+prefers deeper for face-down cards (`walks_past_a_free_card`, which masks a
+shallower dig behind an equally-priced deeper one, and justified it with "ending
+the round on a deeper card buys nothing" — true *across* rounds, since every round
+resets the figures to the front, false *within* one). This is the same rule for
+cards the seat can see: ``strands_the_figure``.
+
+**What it costs, measured.** 2,000 paired four-net games with the rule on seat 1
+and three identical opponents: 25.6% / +1.59 with it against 25.7% / +1.60
+without — **−0.1pp wins (se 0.9), −0.01 points (se 0.046)**. Mechanism check over
+400 games: raids on that seat's cell 127 → 115, and of those, phases it could not
+recover from 77 → 75. The frequency is the honest weakness of this section: a seat
+is raided mid-phase about 0.3 times a game, so the option this restores is worth
+little on average and the rule cannot be justified by its score. It is shipped on
+the argument instead: the mask should not hand the network a move that is
+dominated inside the position it is in, and a network that has not learned the
+engine's cage-index rule cannot be relied on to see the difference itself.
 
 The viewer also stops being the only one who cannot see the danger: `action_reason`
 now spells out what an escape banks and what it is running from —
