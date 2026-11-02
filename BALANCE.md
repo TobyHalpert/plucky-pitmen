@@ -574,10 +574,13 @@ seat 0, same agent dice in every arm, 42 haul starts × 8 re-rolls:
 | **banked two dynamite, net's own play** | +0.61 | **−0.01 (se 0.10)** |
 | **banked two and spent them at the first opportunity** | +0.81 | **+0.20 (se 0.11)** |
 
-So the bank is a real edge of about **a fifth of a point per haul** -- and only if
-the blast is actually made. Held and never spent it is worth nothing, which is
-also true for gems in hand. It is not a "massive" bonus: BALANCE.md §5 has a blast
-haul scoring +0.41 against +0.40 for an ordinary one under the printed rule.
+So the bank is worth nothing *in itself* (-0.01) and about a fifth of a point per
+haul **if it is spent**. Held and never spent, dynamite is dead weight.
+
+That last sentence used to end "so it is not a massive bonus", and that was the
+wrong conclusion from the right table -- see the re-pricing below. The +0.20 is the
+value of one blast forced at the *earliest* opportunity, which turns out to be the
+worst moment to fire one.
 
 Which gives the answer to "should A leave to protect its dynamite?". Leaving
 protects the dynamite only because death loses it, and death also costs −1 and the
@@ -586,6 +589,37 @@ to bank dynamite is not**: a zero-gem exit pays nothing (the sole-escapee bonus 
 withheld at zero gems) and costs every card left in the mine. The dynamite bank is
 a reason to *prefer an exit you were taking anyway* over a risky last dig, not a
 reason to leave early.
+
+#### Re-priced: what blasting is worth, and how much of it the nets leave
+
+The cleanest way to price a blast is not to hand somebody the dynamite (which
+changes their hand as well as their options) but to change only their *policy*: the
+same seat, the same seed, the same four neural seats, and seat 0 blasts whenever it
+can instead of never. Paired over 160 games (and 100 under the printed rule):
+
+| rule | never blasts | blasts whenever it can | delta |
+| :-- | --: | --: | --: |
+| engine default (the chooser sees the three cards) | +1.76 | +2.21 | **+0.46 (se 0.14)** |
+| printed rule (three cards face down) | +1.48 | +2.01 | **+0.53 (se 0.19)** |
+
+About **half a point a game**, and it does not depend on the peeking rule, which is
+not what I expected. The blaster fires roughly **0.4 blasts a game** in that arm, so
+a blast is worth on the order of **+1.2 points** -- six times the +0.20/haul that
+forcing one blast at the first opportunity produced. Both numbers are real and the
+gap between them is the lesson: a blast is worth what its *timing* is worth, and
+the self-feeding part is real (of the cards kept out of blast draws, about 40% are
+dynamite, so a blast tends to pay for the next one).
+
+**And the nets leave most of it on the table.** Over 24 four-net games, at the 724
+seat-decisions where the seat to plan held two dynamite and could announce a blast,
+it announced one **156 times -- 21.5%**. So there is an unexploited gap worth about
+**+0.5 points a game per seat**, which on a table where a seat's whole game is worth
+two or three points is not a detail.
+
+That also reconciles with §5 rather than contradicting it: the +0.38/+1.00 margins
+there are *whole-policy* comparisons against scripted fields, where a pending blast
+also makes rule bots flee. The paired number here is the value to the blaster of
+using the dynamite it already has, on the field it actually plays.
 
 #### The abandoned column: the deadliest cell, and a weak threat
 
