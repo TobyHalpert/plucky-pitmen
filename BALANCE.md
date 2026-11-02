@@ -477,6 +477,30 @@ punishes the seats that park in front of it — not a mask rule.
 
 #### The lure: the trap the rules actually build
 
+**"Raider" means one thing here**: a figure that turned a card in a column its own
+seat does not own (`column != player_index`; the engine's `home_column_dragon` is
+False for it). Every figure is reset to the front of its *own* column at the start
+of a round and may then step into any column, so being a raider is always a choice
+made that round — never a state a seat is pushed into (a displaced figure goes to
+the cage with no column at all, and phase 1 removes it before any reveal). It is
+not the seat that *pushes*; that is the pusher.
+
+Two consequences of that definition are worth having on the record. First, a raider
+is **the one figure a push cannot touch**, because `_can_displace` requires the
+occupant to be standing in its own column: raiding buys immunity from displacement
+and pays for it with the information you cannot have. Second, over 20 four-net
+games, of 319 cards actually turned:
+
+| the figure stood in | cards turned | gem | dynamite | **dragon** |
+| :-- | --: | --: | --: | --: |
+| its own column | 259 (81%) | 126 (49%) | 120 (46%) | **13 (5%)** |
+| somebody else's | 60 (19%) | 21 (35%) | 19 (32%) | **20 (33%)** |
+
+A blind choice should hit a dragon at the deck's rate, one card in five, so 33% is
+not the deck being cruel — it is selection: seats raid *into columns whose owners
+have left*, and owners leave columns that hold dragons. The trap is visible from
+this side of the table too, and a net that cannot read fronts cannot see it coming.
+
 Your last two scenarios are the reason the push is not the sharpest weapon -- a
 push gets a rival out of a card, but the *trap* gets it out of a haul. Two rules
 do the work, and they interlock:
