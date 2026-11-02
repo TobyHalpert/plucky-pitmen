@@ -467,6 +467,29 @@ and forcing the reasoned push on one seat, 800 paired four-net games, is
 **+1.6pp wins (se 1.8), +0.11 points (se 0.09)** — positive, underpowered, and
 inside the noise of the earlier `pusher` arm (+0.2pp, −0.11).
 
+**Priced again under the promoted net, on held-out seeds.** The checkpoint in
+`checkpoints/selfplay4.npz` now refuses every push it is offered — 0 of 150 offers
+across 60 four-net games — so it is worth asking whether that is a learned
+indifference or a blind spot. Same-position forks, the push against the net's own
+best non-push move, 30 re-rolled continuations per arm:
+
+| sample | positions | pusher | the victim |
+| :-- | --: | --: | --: |
+| seeds 0-29 | 90 | **−0.11 (se 0.04)** | +0.13 |
+| held out, seeds 90-119 | 60 | **−0.16 (se 0.06)** | +0.14 |
+
+The rule is why, and it is one line: **only a seat that leaves scores.** The haul
+pays +3 (or +1 for a tie) to the escapee with the most gems, and nothing at all to
+the seats still in the mine — a push moves the victim into the cage, and a figure in
+a cage leaves the mine at the start of the execution phase *with its loot*. So a
+push cannot take a point from a rival; at its best it lines the rival up for the
+bonus it was already going to contest. The bucket that shows it: pushes on a victim
+holding a gem, 24 positions, pusher **−0.46 (se 0.09)** and victim **+0.40** — the
+push hands over the bonus. Even the row-0 case that this section used to call a
+weapon is not one: 17 positions, pusher −0.17 (se 0.12) on held-out seeds, and
+−0.46 (se 0.09) over 26 positions on the earlier sample. The bucket signs do not
+survive the change of seeds; the overall sign does, in both samples.
+
 None of that is the *rate* the mechanics suggest, and the honest conclusion is
 the one already in "Displacement is a tax on the seat that parks": a push is worth
 about what the card you would otherwise take is worth. What the analysis adds is
