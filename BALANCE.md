@@ -600,39 +600,51 @@ four-net games, cards actually turned, by whose column the figure stood in:
 | a live rival's column | 68 | 22 (32%) | 23 (34%) | **23 (34%)** |
 | **a column whose owner had left** | 10 | 2 (20%) | 2 (20%) | **6 (60%)** |
 
-Directional (ten cards), but the order is the order the information predicts: own
-fronts are read, a live rival is a blind draw, and an abandoned column is a blind
-draw in a mine that keeps the dragons nobody has been willing to touch.
+Those ten cards are the *turns*, not the population. The whole population is
+measurable: every card left in a column whose owner has left the mine, over the same
+25 games, is **117 cards -- 43 gems (37%), 38 dragons (32%), 36 dynamite (31%)**.
+Against a deck that is 20% dragons, an abandoned column is half again as dangerous
+as the deck, because the seat that owns it took the safe cards out before leaving
+and the haul is over before anyone works through the rest.
 
-The window is real, too. In 25 games, 23 of 75 hauls had an escape, and after the
-first escape the haul still played a mean of **3.4 more rounds**. So abandoned
-columns are on the board for about three rounds per escaped haul, and a figure
-standing in one is a live threat to everybody still inside: a dragon kills every
-figure left in the mine (-1 each) and ends the haul.
+**The window is short, not long.** An earlier version of this section said "a mean
+of 3.4 more rounds after the first escape". That was a bug in the probe -- it summed
+*all* rounds of each haul instead of the rounds after the first escape -- and the
+truth is the opposite of what I claimed, because of a rule I should have quoted:
+**once anybody has escaped, no new row is dealt** (`_finish_round`:
+`if not haul_over and not any(player.escaped ...)`). The mine is frozen from that
+moment and only shrinks. Measured properly, over 75 hauls (23 of them with an
+escape): **mean 1.83 rounds after the first escape, median 2, maximum 3**
+(10 hauls 1 round, 7 hauls 2, 6 hauls 3). One column goes dead, a couple of figures
+dig out what is left, and the haul is over.
 
 The pressure you describe -- *someone raids the dead column, so the leader should
-get out* -- fires almost never in the current meta: **10 cells in 25 games**, and
-only **2 rounds in 25 games** had a non-leader standing in an abandoned column while
-the score leader was still inside. In the one of those where the leader had a
-choice it left. Outside that, leaders leave in 12% of rounds and non-leaders in 10%:
-there is no learned "the leader gets cautious" behaviour at all.
+get out* -- therefore has very little room, and fires almost never in the current
+meta: **10 cells in 25 games**, and only **2 rounds in 25 games** had a non-leader
+standing in an abandoned column while the score leader was still inside. In the one
+of those where the leader had a choice it left. Outside that, score leaders leave in
+12% of rounds and everyone else in 10%: no learned "the leader gets cautious"
+behaviour at all.
 
 And when it does fire, the pressure is worth less than it looks, for a reason that
 is in the scoring and not in the dragon:
 
-* The bonus goes to the seat with the most gems **among the escaped** (`_score_haul`).
-  A leader that leaves alone takes the +3 (+4 on the last haul) *whatever* happens
-  in the mine, and nobody can overtake it once it is out. So compliance is nearly
-  free for it: it was going to be paid for those gems anyway.
+* The bonus is a **gem race among the escaped**, not a rank bonus: it goes to the
+  seat with the most gems of those who left (`_score_haul`), so a score leader with
+  few gems in this haul is paid nothing for walking out while somebody else holds
+  more. What makes an exit free is a *different* rule: with `solo_escape_bonus` on
+  (the default) a **sole** escapee is paid +3 (+4) even with no gems at all -- the
+  zero-gem escape this document already refuses, because it is the parasite.
 * A wipe costs **every figure still inside the same -1** and the thrower **-2**, so
   it barely moves the standings between the survivors and moves them one step
   *against* the seat that caused it.
 
-Put together: the abandoned column is a minefield, not a lever. It hurts whoever
-*cannot* afford to leave -- the seats still chasing gems -- and it asks the leader
-for something it was going to do anyway. That is also the honest reading of what
-made the lure pay earlier: not the dragon's damage to other people (which is
-uniform), but the **bonus secured by being the one who is already out**.
+Put together: the abandoned column is a minefield, not a lever, and the fuse is
+short. It hurts whoever *cannot* afford to leave -- the seats still chasing gems --
+and the only seats that get a free exit for it are the ones paid by the zero-gem
+solo bonus. That is also the honest reading of what made the lure pay earlier: not
+the dragon's damage to other people (which is uniform), but the **bonus secured by
+being the one who is already out**.
 
 #### What a push actually takes, and when it is right
 
