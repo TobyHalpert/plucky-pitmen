@@ -275,7 +275,7 @@ uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
 | `probe_escape.py` | escape rules side by side: how often a haul is thrown away by a herd of empty-handed cage moves, and what each variant is worth |
 | `analyze_game.py` | one game move by move: what each seat knew, the probability the network put on the move, and what the move was worth from there |
 | `probe_displacement.py` | is a push worth anything — to the seat that pushes, or to the one that parks where it can be pushed? paired arms over a 1,000-game league |
-| `migrate_checkpoint.py` | widen a checkpoint saved before a feature was added (zero columns or a zero row, behaviour unchanged; `--append-hazard` for the table-hazard feature) |
+| `migrate_checkpoint.py` | widen a checkpoint saved before a feature was added (zero columns or a zero row, behaviour unchanged; `--append-hazard` for the table-hazard feature, `--add-phase-clock` for the planning-clock inputs) |
 | `profile_agent.py` | what a checkpoint actually does: digs, front-row digs, passes, retreats, blasts, escapes — side by side for two checkpoints |
 | `gui_controller.py` | Tk-free viewer logic: moves, blasts, tie-breaks, the AI POLICY snapshot |
 | `mine_gui.py` | the Tk viewer itself |
@@ -428,6 +428,14 @@ The full write-up, with confidence intervals and reproduction commands, is in
   0.00, and re-rolled 200 times it ended on a dragon 1% of the time. The
   correction is strength-neutral (+0.03 points, se 0.09, against the checkpoint
   it replaces) and the escape rule costs nothing measurable with it.
+* **The planning clock is in the input, and the push is still declined.** A push
+  only puts a rival out of the haul if the phase closes before that rival's next
+  turn, and whether it can is decided by how many passes are left and which
+  rivals have already planned. Both are now inputs (a 13th per-opponent flag and
+  two state features, input 104 → 110), and the retrained net takes **1 push in
+  1,953 offers** — the same habit it had before — while the pushes it declines
+  price at **−0.30 (se 0.06)**. The blind spot was real; closing it did not make
+  the move good. BALANCE.md, "The planning clock went into the input".
 * **The blast threat is real; the AI ignores it.** A pending blast costs the
   blaster's rivals **-0.43 points [-0.81, -0.06]** and 11 points of win rate, and
   the cheapest counter — walk to the pit cage while the blast is pending —

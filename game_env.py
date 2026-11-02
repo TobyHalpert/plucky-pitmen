@@ -78,6 +78,11 @@ class OpponentPublicView:
     #: How often this seat has displaced somebody this game (public: the
     #: displacement is performed in front of everybody).
     displacements: int = 0
+    #: Whether this seat has already announced a move in the current planning
+    #: phase. Planning is open -- figures are placed in front of everybody -- so
+    #: this is public. A seat that has planned can pass, which is what lets the
+    #: round close before a rival that was just pushed ever gets a turn.
+    planned: bool = False
 
 
 @dataclass(frozen=True)
@@ -116,6 +121,13 @@ class PlayerActionContext:
     cards_remaining_in_deck: int
     displacement_events: tuple[tuple[int, int], ...]
     tie_breaker_contenders: tuple[int, ...]
+
+    # The planning clock: a round resolves once ``passes_to_close`` more passes
+    # fall in a row, so these two numbers say how long the seat has, and
+    # ``planned`` per opponent says which of them can be passed over.
+    consecutive_passes: int = 0
+    passes_to_close: int = 0
+    own_planned: bool = False
 
 
 @dataclass
@@ -1262,6 +1274,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                 "card_count": len(other.collected_cards),
                 "blast_pending": other.blast_pending,
                 "displacements": other.displacements,
+                "planned": self.planned_players[idx],
             }
             for idx, other in enumerate(self.players)
             if idx != player_index
@@ -1332,6 +1345,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                 card_count=len(other.collected_cards),
                 blast_pending=other.blast_pending,
                 displacements=other.displacements,
+                planned=self.planned_players[idx],
             )
             for idx, other in enumerate(self.players)
             if idx != player_index
@@ -1367,6 +1381,9 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             cards_remaining_in_deck=len(self.cards_remaining),
             displacement_events=tuple(self.displacement_events),
             tie_breaker_contenders=tuple(self.tie_breaker_contenders),
+            consecutive_passes=self.consecutive_passes,
+            passes_to_close=max(0, self._pass_threshold() - self.consecutive_passes),
+            own_planned=bool(self.planned_players[player_index]),
         )
 
     def _observation(self) -> np.ndarray:

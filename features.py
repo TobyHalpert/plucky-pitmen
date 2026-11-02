@@ -41,14 +41,22 @@ N_ACTIONS = 2 * N_BASE_ACTIONS
 BACKSIDES = (BACKSIDE_A, BACKSIDE_B, BACKSIDE_C)
 _FRONT_SLOT = {GEM: 0, DRAGON: 1, DYNAMITE: 2}
 MAX_TRACKED_OPPONENTS = 4
-N_OPPONENT_FEATURES = 12
+N_OPPONENT_FEATURES = 13
+# Offsets inside a tracked-opponent slot, for callers (and tests) that read one
+# of them without counting the layout by hand.
+OPPONENT_DISPLACEMENTS_OFFSET = 11
+OPPONENT_PLANNED_OFFSET = 12
 # Layout of the state block, so callers never have to count by hand:
 #   0..24  the decision point, 25..33 backside bookkeeping, then one block per
-#   tracked opponent, then the table's dragon hazard for this round.
+#   tracked opponent, then three table-level readings: the dragon hazard this
+#   round, how close the planning phase is to closing, and how many seats are
+#   still forced to move before it can.
 BACKSIDE_BLOCK = 25
 OPPONENT_BASE = BACKSIDE_BLOCK + 9
 HAZARD_FEATURE = OPPONENT_BASE + MAX_TRACKED_OPPONENTS * N_OPPONENT_FEATURES
-N_STATE_FEATURES = HAZARD_FEATURE + 1
+PHASE_CLOCK_FEATURE = HAZARD_FEATURE + 1
+FORCED_SEATS_FEATURE = HAZARD_FEATURE + 2
+N_STATE_FEATURES = FORCED_SEATS_FEATURE + 1
 N_ACTION_FEATURES = 21
 N_INPUT_FEATURES = N_STATE_FEATURES + N_ACTION_FEATURES
 
@@ -327,13 +335,36 @@ def state_features(ctx: PlayerActionContext) -> np.ndarray:
         values[base + 10] = float(opponent.player_index in displaced)
         # How keen this opponent is on displacing is the one read a seat has on
         # whether standing on a home-column dragon will be taken as bait.
-        values[base + 11] = min(opponent.displacements, 3) / 3.0
+        values[base + OPPONENT_DISPLACEMENTS_OFFSET] = min(opponent.displacements, 3) / 3.0
+        # Has this rival announced its move in the current planning phase? A
+        # seat that has planned is allowed to pass, and the round closes on
+        # ``n - 1`` passes in a row -- so a rival that has *not* planned yet
+        # cannot be passed over: it must act, which keeps the phase open. That
+        # is the difference between a push that puts a rival out and a push the
+        # rival simply answers by taking the lorry (BALANCE.md, "A push is not a
+        # forced exit").
+        values[base + OPPONENT_PLANNED_OFFSET] = float(opponent.planned)
 
     # The board only enters the input through the candidate-action block, so a
     # seat cannot see the card under a rival's figure.  That leaves the escape
     # decision blind to the one quantity that makes it right or wrong: whether
     # the mine is about to blow this round (BALANCE.md, "A cage is insurance").
     values[HAZARD_FEATURE] = round_dragon_hazard(ctx)
+
+    # The planning clock. A push only puts a rival out of the haul if the phase
+    # closes before that rival's next turn, and whether it can is decided by two
+    # numbers a seat could not see before: how many passes are still needed, and
+    # how many rivals are still forced to act. Without them every push looks
+    # like the mixture of "the rival spends a round on the lorry" and "the rival
+    # is out with its hand banked", and the mixture prices at about zero.
+    clock_total = max(1, ctx.consecutive_passes + ctx.passes_to_close)
+    values[PHASE_CLOCK_FEATURE] = ctx.consecutive_passes / clock_total
+    forced = 0
+    for opponent in ctx.opponents:
+        if opponent.escaped or opponent.dead or opponent.planned:
+            continue
+        forced += 1
+    values[FORCED_SEATS_FEATURE] = forced / n_players
 
     return values
 
@@ -1101,6 +1132,10 @@ __all__ = [
     "N_BASE_ACTIONS",
     "N_INPUT_FEATURES",
     "N_STATE_FEATURES",
+    "OPPONENT_DISPLACEMENTS_OFFSET",
+    "OPPONENT_PLANNED_OFFSET",
+    "PHASE_CLOCK_FEATURE",
+    "FORCED_SEATS_FEATURE",
     "OPPONENT_BASE",
     "action_features",
     "action_mask",

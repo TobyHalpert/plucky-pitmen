@@ -515,6 +515,54 @@ the same shape as the hazard input that was missing in "A cage is insurance":
 a mechanic whose value depends on an unrepresented variable gets learned as its
 average.
 
+#### The planning clock went into the input, and the net still does not push
+
+The paragraph above said the missing variable was the phase clock, so it was added.
+`PlayerActionContext` now carries `consecutive_passes`, `passes_to_close` and
+`own_planned`, every rival carries `planned` (planning is open — figures are placed
+in front of everybody), and `state_features` grew three inputs: a 13th
+per-opponent flag (*has this rival planned*) and two table readings (*how close the
+phase is to closing*, *how many seats are still forced to move*). Input width 104 →
+110; `python migrate_checkpoint.py old.npz new.npz --add-phase-clock` widens an old
+file with zero columns, which makes the same decisions as before (verified on seed
+7: 53 flagged decisions, −1 / 1 / 5 / −1, unchanged).
+
+Retrained 20 generations from the widened weights, same league and flags as the
+promoted run. One net in all four seats, 100 games:
+
+| | before | **with the clock** |
+| :-- | --: | --: |
+| mean seat score | +1.68 | **+1.95** |
+| gems per haul | 2.85 | 2.92 |
+| hauls ending on a dragon | 0.58 | **0.39** |
+| hauls thrown away | 20% | 30% |
+| escapes per game | 6.99 | 8.60 |
+
+Head to head, 600 games a side on fresh seeds: **+0.02 (se 0.12)** as seat 0 and
+**+0.35 (se 0.12)** as seat 1 — pooled +0.19 (se 0.09), and the asymmetry is not
+something the previous comparison showed (+0.37 / +0.31).
+
+**It did not change the push habit at all.** Pushes on offer over 30 games: 1,953
+with the clock, taken **1**; 1,961 without it, taken **5**. And the pushes the new
+net declines price *worse*, not better: **−0.30 (se 0.06)** over 60 held-out
+positions, with the branch that used to pay best — the victim answering with the
+lorry — down to **−0.03 (se 0.10)**.
+
+So the blind spot was real, the input is now there, and the answer did not change.
+That closes the question rather than the case: with the clock in the input the net
+can represent "this rival has planned and can be passed over, one more pass closes
+the phase, its figure is inside my depth", and it still declines the move. The
+older line in this section that called row 0 "a genuine weapon" is superseded by
+the held-out pricing above: it is not one.
+
+`checkpoints/selfplay4.npz` therefore stays **behaviourally identical** — it is the
+widened copy, so the viewer and every number above are unaffected by the layout
+change — and the retrained net is kept beside it as
+`checkpoints/selfplay4_clock.npz` (not shipped). It does not clear the bar this
+document has been holding itself to since the cage fix: it throws away half again
+as many hauls, and its head-to-head is a wash in one seat. If the balance is
+preferred on the other side of that line, that file is the one to promote.
+
 None of that is the *rate* the mechanics suggest, and the honest conclusion is
 the one already in "Displacement is a tax on the seat that parks": a push is worth
 about what the card you would otherwise take is worth. What the analysis adds is

@@ -373,6 +373,95 @@ def test_player_can_displace_occupant_in_that_players_own_column():
     assert env.displacement_events == [(1, 0)]
 
 
+def test_a_pushed_figure_is_not_out_of_the_haul_yet():
+    """A push is not a forced exit: the victim gets another planning turn.
+
+    The cage only takes a figure out at the beginning of the execution phase
+    (``_execute_round``, phase 1), and the push happens during planning. So a
+    pushed figure is in the cage but still in the mine, and it may take the
+    lorry instead of leaving -- which is the whole difference between a push
+    that costs the victim a round and one that banks its hand for it.
+    """
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    env.players[0].position = 2
+    env.players[0].column = None
+    env.players[1].position = 0
+    env.players[1].column = 1
+
+    env._displace(0, 1, 0)
+    victim = env.players[1]
+    assert victim.position == PIT_CAGE
+    assert not victim.escaped
+    assert env._legal(LORRY)  # from the cage: the lorry is still open to it
+
+    # It answers by taking the lorry, so the round resolves with it inside.
+    env.players[1].position = LORRY
+    env._execute_round()
+    assert not env.players[1].escaped
+
+    # The contrast: a figure left in the cage is out at the start of execution.
+    env.players[1].position = PIT_CAGE
+    env.players[1].escaped = False
+    env._execute_round()
+    assert env.players[1].escaped
+
+
+def test_a_rival_that_has_planned_can_be_passed_over():
+    """Planning is public, so "has this rival planned" is a legal input.
+
+    A seat that has planned may pass, and a round closes on ``n - 1`` passes in
+    a row. A rival that has *not* planned cannot pass, so it must act and the
+    phase cannot close before it does -- which is what makes a push stick or not.
+    """
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    env.planned_players = [False, True, False]
+
+    view = env.player_action_context(0)
+    flags = {o.player_index: o.planned for o in view.opponents}
+    assert flags == {1: True, 2: False}
+    assert env.player_view(0)["opponents"][0]["planned"] is True
+
+    import pytest
+
+    from features import (
+        FORCED_SEATS_FEATURE,
+        N_OPPONENT_FEATURES,
+        OPPONENT_BASE,
+        OPPONENT_PLANNED_OFFSET,
+        state_features,
+    )
+
+    row = state_features(view)
+    ordered = sorted(view.opponents, key=lambda o: (o.player_index - 0) % 3)
+    planned_slot = [i for i, o in enumerate(ordered) if o.player_index == 1][0]
+    unplanned_slot = [i for i, o in enumerate(ordered) if o.player_index == 2][0]
+    assert row[OPPONENT_BASE + planned_slot * N_OPPONENT_FEATURES + OPPONENT_PLANNED_OFFSET] == 1.0
+    assert row[OPPONENT_BASE + unplanned_slot * N_OPPONENT_FEATURES + OPPONENT_PLANNED_OFFSET] == 0.0
+    # One rival is forced to move, so it cannot be passed over.
+    assert row[FORCED_SEATS_FEATURE] == pytest.approx(1 / 3)
+
+
+def test_the_phase_clock_counts_the_passes_left():
+    """How close the round is to closing is the other half of the push price."""
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    env.consecutive_passes = 1
+    expected = max(0, env._pass_threshold() - 1)
+
+    view = env.player_action_context(0)
+    assert view.consecutive_passes == 1
+    assert view.passes_to_close == expected
+
+    from features import PHASE_CLOCK_FEATURE, state_features
+
+    row = state_features(view)
+    assert 0.0 < row[PHASE_CLOCK_FEATURE] < 1.0
+    env.consecutive_passes = 0
+    assert state_features(env.player_action_context(0))[PHASE_CLOCK_FEATURE] == 0.0
+
+
 def test_a_seat_can_count_how_often_a_rival_displaces_somebody():
     """Displacement is performed in the open, so it is public history.
 
@@ -398,6 +487,7 @@ def test_a_seat_can_count_how_often_a_rival_displaces_somebody():
         N_OPPONENT_FEATURES,
         N_STATE_FEATURES,
         OPPONENT_BASE,
+        OPPONENT_DISPLACEMENTS_OFFSET,
         state_features,
     )
 
@@ -407,7 +497,7 @@ def test_a_seat_can_count_how_often_a_rival_displaces_somebody():
     ordered = sorted(victim.opponents, key=lambda o: (o.player_index - 1) % 3)
     pusher_slot = [i for i, o in enumerate(ordered) if o.player_index == 0][0]
     quiet_slot = 1 - pusher_slot
-    last = N_OPPONENT_FEATURES - 1
+    last = OPPONENT_DISPLACEMENTS_OFFSET
     import pytest
 
     assert row[slot_base + pusher_slot * N_OPPONENT_FEATURES + last] == pytest.approx(1 / 3)
