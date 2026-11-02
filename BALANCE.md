@@ -513,6 +513,49 @@ scores *hauls*: the bonus goes to the escapee with the most gems at the end of e
 haul, so a single card only matters when it changes who that is. That is why the
 win share is the metric that moves (+4pp, ~1.5σ) and the victim's score is not.
 
+### The information the table cannot spend
+
+The one genuinely cooperative act this game would reward is a word in a rival's
+ear: *"the card you are standing on is a dragon, I can see it, get off."* The
+printed rules give the table no channel for it, and the cost of that is
+measurable.
+
+A column's fronts are readable only by its owner, so the case is common and one
+sided: a rival raids into somebody else's column, lands on a card it cannot read,
+and the owner is looking straight at it. Over 20 four-net games there were **40
+such positions — two a game**. The owner's side of it is handled correctly: the
+hazard reads **1.00 in 49 of 49** decisions taken in that position, and the owner
+gets out (18 cages, 29 stays that mostly left later; it died exactly once), which
+is right, because the dragon is certain for it and only the cage removes a figure
+from the haul.
+
+What cannot happen is the warning. In **15 of those 40 positions the raider turned
+the dragon itself** — −2 for it, −1 for every other figure still in the mine, the
+haul's loot gone. Roughly **0.75 hauls a game** are lost to a fact somebody at the
+table could see and could not say.
+
+The rules do offer one implicit channel: a seat can **act** its information — a
+column owner leaving the mine reads as "there is something under that card" — and
+the rule bot grew a reader for exactly that (``_is_signaled_danger``: the owner of
+my column fled, and was not displaced, so it left on purpose). It was measured, and
+it is the weaker of the two inferences: a seat that flees is equally likely to be
+banking loot or waiting out a blast, so reading the *behaviour* is what
+``trust_sitter`` does, and the backside-honest `reader` policy beats it (see
+"Backsides have to be read"). Signalling by action is real but noisy; signalling by
+declaration does not exist.
+
+Two ways to give the table the channel, both rules changes and neither made here:
+
+1. **A guard move.** Today a raider standing in your column cannot be displaced:
+   ``MineEnv._can_displace`` requires the occupant to be standing on its *own*
+   column, so the owner can evict nobody. Letting the owner push a raider off a
+   card it can see is a dragon converts private information into an action the
+   engine already understands — and it would make raiding a column genuinely
+   dangerous, which is a real change to the game's core economy.
+2. **A declaration.** Once per haul, a seat may reveal one card. That is table
+   talk: a new mechanic, and the only one that would let the informed seat spend
+   what it knows without spending its turn.
+
 ### Backsides have to be read
 
 The trap above pays only against a table that watches the *player* instead of
