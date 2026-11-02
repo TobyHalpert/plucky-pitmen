@@ -587,6 +587,48 @@ withheld at zero gems) and costs every card left in the mine. The dynamite bank 
 a reason to *prefer an exit you were taking anyway* over a risky last dig, not a
 reason to leave early.
 
+#### What a push actually takes, and when it is right
+
+A push is legal only onto a figure standing in **its own** column, so the victim
+chose the cell with the fronts in front of it. Its choice is therefore a signal, and
+that changes the arithmetic from "a card for a card". Over 20 four-net games, at
+every one of the **1,069 decisions where a push was legal**:
+
+| | gem | dynamite | dragon |
+| :-- | --: | --: | --: |
+| card under the victim (unreadable to me, but chosen by the victim) | **52%** | 20% | 28% |
+| best card left in my own column (readable) | **13%** | 70% | 17% |
+
+| shape of the decision | count | share |
+| :-- | --: | --: |
+| my column has no reachable gem, the victim's card is a gem | 417 | **39%** |
+| both are gems | 300 | 28% |
+| my column has a gem, the victim's card is not | 254 | 24% |
+| my own column has no reachable card at all | 98 | 9% |
+
+So the "is a push worth it" question is not "is my column a coin flip" — at the
+moments a push is even available, **my own column offers a gem only 13% of the time,
+because it is already dug out**. The push is a gem upgrade in 39% of those moments
+and an equal card plus a denial in another 28%; it is a downgrade in 24%. Among the
+27 pushes the nets actually made, the card they pushed onto was a gem 41% of the
+time, a dragon 30%.
+
+The price is the dragon, and it is asymmetric in a way worth naming: **the dragon
+in my own column is readable — I only ever stand on one when nothing better is
+legal — while the dragon under a victim is a lottery I cannot see.** A push that
+lands on one is a −2 for me, ends the haul for everyone inside, and sends the
+victim to the cage where phase 1 turns it into an **escape**. The mirror image of
+the lure is real: a figure standing on a dragon in its own column is *inviting* a
+push, and the pusher pays for it.
+
+Which gives the rule this section keeps arriving at, from a third direction: a push
+is worth taking when **my own column has nothing to take** and the victim's cell is
+probably a gem (39% + 28% of decisions), and it is a mistake when I have a readable
+gem of my own (24%). That is a policy, not a mask rule — the engine already offers
+the push in all those states (1,798 of 1,798 in the mask), and the agent has to
+learn that its own column being empty *raises* the value of displacement instead of
+lowering it.
+
 #### Measured as denial: the victim's side of a push
 
 The price above is measured on the **pusher's** score, which is the wrong lens if a
