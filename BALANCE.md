@@ -478,17 +478,42 @@ best non-push move, 30 re-rolled continuations per arm:
 | seeds 0-29 | 90 | **−0.11 (se 0.04)** | +0.13 |
 | held out, seeds 90-119 | 60 | **−0.16 (se 0.06)** | +0.14 |
 
-The rule is why, and it is one line: **only a seat that leaves scores.** The haul
-pays +3 (or +1 for a tie) to the escapee with the most gems, and nothing at all to
-the seats still in the mine — a push moves the victim into the cage, and a figure in
-a cage leaves the mine at the start of the execution phase *with its loot*. So a
-push cannot take a point from a rival; at its best it lines the rival up for the
-bonus it was already going to contest. The bucket that shows it: pushes on a victim
-holding a gem, 24 positions, pusher **−0.46 (se 0.09)** and victim **+0.40** — the
-push hands over the bonus. Even the row-0 case that this section used to call a
-weapon is not one: 17 positions, pusher −0.17 (se 0.12) on held-out seeds, and
-−0.46 (se 0.09) over 26 positions on the earlier sample. The bucket signs do not
-survive the change of seeds; the overall sign does, in both samples.
+**A push is not a forced exit, and that is the correction this section needed.**
+The earlier drafts of this file, and the price above, treated the cage as the end
+of the victim's haul. It is not. The cage only takes a figure out *at the beginning
+of the execution phase* (`MineEnv._execute_round`, phase 1), and the push happens
+during the **planning** phase — the victim's turn comes again, and from a cage it
+can take the lorry or step onto a card shallower than the cage index. Only if the
+phase closes before its turn does the push put it out. Measured on 60 declined
+pushes, by what the victim did with the next turn it got:
+
+| what the victim did | positions | pusher | victim |
+| :-- | --: | --: | --: |
+| dug off the cage, back into the mine | 30 | +0.10 | −0.03 |
+| **took the lorry** | 24 | **+0.55 (se 0.11)** | **−0.39** |
+| never got a turn: the push put it out | 6 | **−2.37 (se 0.17)** | +2.65 |
+| all | 60 | −0.07 (se 0.06) | +0.22 |
+
+The lorry branch is the one to look at, because it is the reading a player has of
+the move: the victim spends its round on the lorry, cannot dig, and stands exposed
+(dragon: loses the loot), while the pusher takes the card it was standing on. That
+branch is worth **+0.55 a push**. It is also the branch a push most often gets,
+because a pushable rival is by definition one that has already moved this round,
+so it has planned and can be passed over — the table just usually does not pass.
+
+What kills the average is the 6 in 60 that stick. There the round resolves
+immediately with the pusher standing on the victim's card, and a card in somebody
+else's column is a 1-in-3 dragon: the pusher eats the reveal, and the victim banks
+its hand and takes the bonus with it.
+
+**What the net cannot see** is which of the three it is buying. `PlayerActionContext`
+carries the seat order and the seat's own "have I planned" (its PASS is legal or
+not), but nothing about how many passes the phase still needs, nor which rivals
+have planned — and those two facts decide whether the victim answers the push at
+all. So every push looks like the mixture, and the mixture prices at zero. That is
+the same shape as the hazard input that was missing in "A cage is insurance":
+a mechanic whose value depends on an unrepresented variable gets learned as its
+average.
 
 None of that is the *rate* the mechanics suggest, and the honest conclusion is
 the one already in "Displacement is a tax on the seat that parks": a push is worth
