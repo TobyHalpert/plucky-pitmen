@@ -651,6 +651,37 @@ last haul **16 were made by seats behind on points**. So the net has learned "be
 aggressive when you need the haul" and has not learned "blast when you can"; the
 gap is the 0.60-a-game the forced seat manages against 0.08 a game left to itself.
 
+What the target rate is worth depends on whether the rest of the table joins in,
+and that is measurable too -- 120 paired games, four neural seats:
+
+| who blasts whenever legal | blasts/game | seat 0 | table mean | spread (best - worst) |
+| :-- | --: | --: | --: | --: |
+| nobody (native) | 0.28 | +1.67 | +1.67 | 5.23 |
+| seat 0 alone | 0.77 | **+2.21 (+0.54, se 0.17)** | +1.73 | 5.17 |
+| all four seats | 1.20 | +2.02 (+0.36, se 0.19) | **+1.86** | **4.45** |
+
+So it is a partial arms race: the unilateral edge (+0.54) is the largest, and it
+shrinks to +0.36 when everybody takes it -- but the table mean still rises (+0.19)
+and the spread **narrows** (5.23 -> 4.45), because the dynamite that scored nothing
+is being turned into gems. Blasting is not a zero-sum weapon; it is mostly a
+different use of a dead card.
+
+**"Close the gap in the learner" means something specific**, and the machinery is
+already here: the blast announcement is a bit in the action space (`split_action`),
+so nothing in the mask blocks it, and the net simply puts almost no probability on
+it. The trainer already seeds blasting opponents into the league --
+`train_selfplay.py --league-blast-mode {never,rich,always,trap,behind}` (default
+`rich`) with `--league-blast-prob` (default `0.15`, i.e. one scripted opponent in
+seven) -- so closing the gap is a matter of volume: more blasting opponents in the
+league, so blasts are both *seen* and *suffered* (the reaction side is §6, where a
+pending blast should send you to the cage), then a conservative warm restart from
+`checkpoints/selfplay4.npz` with the same guardrails, watching entropy and
+blasts/game so the collapse that happened the last time a warm start was pushed hard
+does not repeat. The alternative, given how flat the value is across standings, is
+to treat "blast when you can" as a derived move and ship it as a policy rule the way
+the eight mask rules are shipped -- cheap and immediately testable, at the price of
+the learner's own judgement about *when*.
+
 Why the flatness is not a surprise in hindsight: a blast buys **two cards** at the
 cost of dynamite that scores nothing, and the failure is only the dragon pair in the
 draw (about 6-10% of blasts, because the keeper can drop one dragon but not two).
