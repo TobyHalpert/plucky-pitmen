@@ -621,6 +621,44 @@ there are *whole-policy* comparisons against scripted fields, where a pending bl
 also makes rule bots flee. The paired number here is the value to the blaster of
 using the dynamite it already has, on the field it actually plays.
 
+#### Does the aggression belong in the last haul, and only for the seats behind?
+
+The obvious refinement of "blast more" is "blast when you need the haul": in the
+last haul, everybody not leading on points should blast to win it. That was not in
+the earlier measurement (it forced blasts with no regard for the score), so it is
+here. Same protocol -- one seat's *policy* changes, the other three play as they
+always do, 120 paired games:
+
+| when seat 0 may blast | its score | delta vs its own unforced play | blasts/game | per blast |
+| :-- | --: | --: | --: | --: |
+| unforced (the net's own choice) | +1.67 | -- | 0.08 | -- |
+| **whenever it legally can** | **+2.21** | **+0.54 (se 0.17)** | 0.60 | +0.90 |
+| whenever it is behind on points | +1.98 | +0.32 (se 0.12) | 0.40 | +0.79 |
+| whenever it is ahead on points | +1.97 | +0.30 (se 0.13) | 0.28 | +1.06 |
+| last haul, behind | +1.93 | +0.27 (se 0.10) | 0.28 | +0.94 |
+| last haul, any standing | +2.06 | +0.39 (se 0.11) | 0.35 | +1.12 |
+
+Read the last column: **a blast is worth about +1 point whether you are ahead,
+behind, in the last haul or in the first**, and the differences between those
+columns are inside the noise. The total only moves with how *often* the seat blasts.
+So the score-conditioned version of the rule captures +0.27 where the unconditional
+one captures +0.54, and the missing half is frequency, not timing.
+
+What the nets actually do is already conditional in the right direction, and far too
+timid in level. Resolved blasts by the whole table over 120 four-net games: **34 in
+total, 0.28 per game** -- haul 1: 8, haul 2: 8, haul 3: 18, and of the 18 in the
+last haul **16 were made by seats behind on points**. So the net has learned "be
+aggressive when you need the haul" and has not learned "blast when you can"; the
+gap is the 0.60-a-game the forced seat manages against 0.08 a game left to itself.
+
+Why the flatness is not a surprise in hindsight: a blast buys **two cards** at the
+cost of dynamite that scores nothing, and the failure is only the dragon pair in the
+draw (about 6-10% of blasts, because the keeper can drop one dragon but not two).
+Extra gems are never wasted either -- they secure the haul bonus and break gem ties
+-- so there is no standing in which the blast is a bad buy. The one thing that *is*
+standing-dependent is the threat it poses to other people, and that is §6's subject:
+a pending blast is worth about 0.4 points to whoever it is aimed at.
+
 #### The abandoned column: the deadliest cell, and a weak threat
 
 Once a column's owner has left the mine, nobody can read that column and nobody can
