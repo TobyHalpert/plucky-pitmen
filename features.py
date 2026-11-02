@@ -647,7 +647,28 @@ def lorry_skips_a_card_worth_taking(ctx: PlayerActionContext) -> bool:
     return not own_card_is_known_dragon(ctx)
 
 
-CAGE_ANSWERS_A_HAZARD = 0.15
+# The hazard a cage actually answers.  It cannot be the ordinary risk of the
+# table: four figures on face-down cards put the per-round reading at 0.2-0.3 in
+# almost every round, so a bar below that made "the mine might blow" a reason to
+# leave at every single decision -- seed 7, haul 3: all four seats bailed out with
+# one gem each at 0.22-0.29 and the haul paid a four-way tie of +1.
+CAGE_ANSWERS_A_HAZARD = 0.45
+
+
+def rival_is_on_my_dragon(ctx: PlayerActionContext) -> bool:
+    """True when a rival stands on a card in this seat's column that it can see is
+    a dragon: the seat knows the round is about to end with a dragon."""
+    for opponent in ctx.opponents:
+        if opponent.dead or opponent.escaped or opponent.position == PIT_CAGE:
+            continue
+        if opponent.column != ctx.player_index:
+            continue
+        if not 0 <= opponent.position < len(ctx.public_rows):
+            continue
+        entry = ctx.public_rows[opponent.position][ctx.player_index]
+        if entry is not None and entry[0] is not None and int(entry[0]) == DRAGON:
+            return True
+    return False
 
 
 def cage_banks_nothing(ctx: PlayerActionContext) -> bool:
@@ -657,40 +678,46 @@ def cage_banks_nothing(ctx: PlayerActionContext) -> bool:
     cards are turned and banks the gems in hand, so it is worth a round for
     exactly two reasons: there is loot to bank, **and** there is something to
     escape from. Loot means a gem in hand (dynamite is not scored and survives an
-    escape either way). Something to escape from means a blast is charged -- the
-    blast ends the haul if it turns a dragon -- or a dragon the seat can see is
-    about to be turned: the card under its own figure, a card in its column with
-    a rival standing on it, or, at the weakest, a table where somebody is
-    standing on a card that can be a dragon (``round_dragon_hazard``).
+    escape either way). Something to escape from means a blast that is charged --
+    it can end the haul whatever the board says -- a dragon the seat can see is
+    about to be turned (the card under its own figure, or a card in its column
+    with a rival standing on it), or a board that is genuinely going up in flames
+    (``round_dragon_hazard`` above ``CAGE_ANSWERS_A_HAZARD``, which a charged
+    blast reads as 1.00).
 
-    The second reason is the one this mask used to miss, and the reason the
-    clause has to exist at all: leaving is a **decision that repeats**. The seat
-    can leave later in the same planning phase, once the rivals have moved and
-    the danger they create is on the board, and it can leave later in the haul
-    with more gems in hand. Banking before anybody has committed to a card buys
-    nothing that waiting one move does not buy. Do it anyway and the round is
-    spent for nothing: seed 7 of the viewer, the same seat in two hauls, one gem
-    in hand, nobody standing on a dragon-capable card. See BALANCE.md, "A cage is
-    insurance".
-
-    The hazard is a *lower* bound on the danger (a rival is free to walk onto a
-    card mid-round), so the threshold sits at the smallest non-trivial reading
-    rather than at some share of it.
+    What is *not* a reason, and used to be one: the ordinary risk of a mine. Four
+    figures on face-down cards read 0.2-0.3 every single round, so any bar below
+    that made the cage legal at every decision, and a seat holding one gem had no
+    reason not to take it. Seed 7, haul 3: all four seats left with one gem each
+    at 0.22-0.29 while three of them could see gems in their own columns, and the
+    haul paid a four-way tie of +1 with the mine abandoned. Leaving is a
+    **decision that repeats**: the cage is still there next round, the gems are
+    still there next round, and until something can actually take them away the
+    round is better spent digging.
 
     The same question is asked of a *pass* taken while already in a cage: a
     figure in a cage leaves the mine when the cards are turned, so passing there
     is the same departure one decision later.
 
-    Everything else is a wasted round, and this is the clause that gets that
-    wrong in the obvious implementation: **"somebody is already in a cage"** is
-    not a threat. Ordinary raiding displaces rivals into cages all the time, and
-    once one seat reads another's cage as a reason to flee, the whole table
-    follows: an earlier checkpoint, seed 7, haul 1, ended with every figure in a
-    cage and not one gem collected, and the same thing happened in 40% of sampled
-    four-net games. See BALANCE.md, "An escape has to bank something".
+    Everything else is a wasted round, and the clause has to get one more case
+    right, which it does not by looking at the table: **"somebody is already in a
+    cage"** is not a threat. Ordinary raiding displaces rivals into cages all the
+    time, and once one seat reads another's cage as a reason to flee, the whole
+    table follows: an earlier checkpoint, seed 7, haul 1, ended with every figure
+    in a cage and not one gem collected, and the same thing happened in 40% of
+    sampled four-net games.
     """
     if any(front == GEM for front, _ in ctx.private_cards):
-        return round_dragon_hazard(ctx) <= CAGE_ANSWERS_A_HAZARD
+        # Loot in hand is a reason to leave only if something can take it away.
+        # A dragon is the only thing that does: it ends the haul and everybody
+        # still inside scores for a dead figure. So the test is the danger, not
+        # the gems -- and it has to be danger above the ordinary risk of a mine,
+        # because that risk never goes away and "it might blow" would make the
+        # cage legal at every decision (see the constant).
+        return not (
+            round_dragon_hazard(ctx) >= CAGE_ANSWERS_A_HAZARD
+            or rival_is_on_my_dragon(ctx)
+        )
     if ctx.own_blast_pending or any(o.blast_pending for o in ctx.opponents):
         return False
     if own_card_is_known_dragon(ctx):
@@ -702,16 +729,8 @@ def cage_banks_nothing(ctx: PlayerActionContext) -> bool:
         # same phase; from that position the gem is worth +2.59 +- 0.12 and the
         # cage +2.23 +- 0.10.
         return known_safe_card_available(ctx)
-    for opponent in ctx.opponents:
-        if opponent.dead or opponent.escaped or opponent.position == PIT_CAGE:
-            continue
-        if opponent.column != ctx.player_index:
-            continue
-        if not 0 <= opponent.position < len(ctx.public_rows):
-            continue
-        entry = ctx.public_rows[opponent.position][ctx.player_index]
-        if entry is not None and entry[0] is not None and int(entry[0]) == DRAGON:
-            return False
+    if rival_is_on_my_dragon(ctx):
+        return False
     return True
 
 

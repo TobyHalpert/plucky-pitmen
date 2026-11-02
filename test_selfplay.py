@@ -1324,8 +1324,31 @@ def test_the_mask_forbids_banking_a_gem_while_nothing_can_blow():
     assert not action_mask(carrying)[int(PIT_CAGE)]
 
 
+def test_one_rival_on_a_face_down_card_is_not_a_reason_to_leave_with_loot():
+    """The ordinary risk of a four-seat mine is 0.2-0.3 every single round.
+
+    Seed 7, haul 3: all four nets left with one gem each at 0.22-0.29 while three
+    of them could see gems in their own columns, and the haul paid a four-way tie
+    of +1 with the mine abandoned. A bar below the table's own base rate makes the
+    cage legal at every decision, which is surrender rather than insurance.
+    """
+    from features import CAGE_ANSWERS_A_HAZARD, action_mask, round_dragon_hazard
+
+    ordinary = replaced(
+        _board_context(
+            {(2, 0): (None, 0)},
+            legal=(0, int(PIT_CAGE)),
+            own_position=5,
+        ),
+        private_cards=((GEM, 0),),
+        opponents=(replaced(_rival(1, 2), column=0),),
+    )
+    assert round_dragon_hazard(ordinary) < CAGE_ANSWERS_A_HAZARD
+    assert not action_mask(ordinary)[int(PIT_CAGE)]
+
+
 def test_the_mask_keeps_the_cage_when_something_can_blow():
-    """Loot plus a table where somebody can turn a dragon: that is an exit."""
+    """Loot plus a board that is genuinely going up: that is an exit."""
     from features import (
         CAGE_ANSWERS_A_HAZARD,
         action_mask,
@@ -1335,15 +1358,18 @@ def test_the_mask_keeps_the_cage_when_something_can_blow():
 
     threatened = replaced(
         _board_context(
-            {(2, 0): (None, 0)},
+            {(2, 0): (None, 0), (1, 1): (None, 0), (1, 2): (None, 1)},
             legal=(0, int(PIT_CAGE)),
             own_position=5,
         ),
         private_cards=((GEM, 0),),
-        opponents=(replaced(_rival(1, 2), column=0),),
+        opponents=(
+            replaced(_rival(1, 2), column=0),
+            replaced(_rival(2, 1), column=1),
+            replaced(_rival(3, 1), column=2),
+        ),
     )
-    # The gem in hand nudges the backside's risk (one known-safe card fewer).
-    assert round_dragon_hazard(threatened) > CAGE_ANSWERS_A_HAZARD
+    assert round_dragon_hazard(threatened) >= CAGE_ANSWERS_A_HAZARD
     assert not cage_banks_nothing(threatened)
     assert action_mask(threatened)[int(PIT_CAGE)]
 

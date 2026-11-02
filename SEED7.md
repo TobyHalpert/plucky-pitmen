@@ -8,6 +8,15 @@ python analyze_game.py --seed 7 --forks            # what each flagged move was 
 python analyze_game.py --seed 7 --greedy           # the same seed with the sampler off
 ```
 
+> **Update: the cage bar moved after this read.** The escape rule used to allow a
+> seat holding a gem to leave whenever the round's hazard was above 0.15 — a bar
+> below the 0.2-0.3 that a four-seat mine reads every round, so it was no bar at
+> all. It is now 0.45 (BALANCE.md, "One gem in hand is not a reason to leave
+> either"): the shipped checkpoint plays seed 7 as **−1 / 0 / 3 / 2**, with haul 1
+> collecting 3-4-0-2 gems instead of a 1-1-1-1 bail-out. The move-by-move read
+> below is of the earlier game, which is why it is quoted with the checkpoint that
+> played it.
+
 > **Which game this is.** The checkpoint that plays `--seed 7` today is not the
 > one that played the game read below: while this analysis was being made, two of
 > the escapes in it were taken at a table where nothing could blow, which turned

@@ -475,6 +475,45 @@ distinction rather than indifferent to it. Teaching it is a training question �
 scripted pusher in the league, so the population both exercises the push and
 punishes the seats that park in front of it — not a mask rule.
 
+#### One gem in hand is not a reason to leave either
+
+The escape rule said: with loot in hand, leave when the hazard is above
+`CAGE_ANSWERS_A_HAZARD`. The constant was **0.15**, and four figures on face-down
+cards read **0.2–0.3 every single round**, so the rule was vacuous in a four-seat
+game: any seat holding one gem could leave at any moment, and the net — which had
+learned exactly that — took the cage at 85–95% whenever it held one.
+
+Seed 7, haul 3, before this change: **all four seats left with one gem each** at a
+hazard of 0.22–0.29 while P2 could see *three* gems in its own column, and the haul
+paid a four-way tie of +1 with the mine abandoned. The same shape cost haul 1 too:
+gems 1-1-1-1. That is the complaint in one line — a round is worth more than the
+insurance on it when nothing unusual is happening.
+
+`CAGE_ANSWERS_A_HAZARD` is now **0.45**, i.e. "not the ordinary weather of a mine",
+plus the case a hazard cannot see at all (a rival standing on a dragon in the
+seat's own column, which the seat knows is about to be turned). Measured table-wide
+on 120 four-net games, all seats under the bar:
+
+| bar | gems per haul | hauls thrown away* | hauls ending on a dragon | mean seat score |
+| :-- | --: | --: | --: | --: |
+| 0.15 (old) | 2.34 | 23% | 51% | +1.67 |
+| 0.25 | 2.38 | 19% | 60% | +1.59 |
+| 0.35 | 2.58 | 13% | 71% | +1.50 |
+| **0.45 (shipped)** | **2.69** | **11%** | 76% | +1.39 |
+
+\* at least three seats escaped and the table collected two gems or fewer.
+
+Seed 7 now plays a real haul 1 (gems 3-4-0-2) and scores **-1 / 0 / 3 / 2**
+(instead of 0 / −1 / −1 / 5 with two hauls thrown away).
+
+The trade is on the table and should be read honestly: the stricter bar **halves the
+thrown-away hauls and collects 15% more gems per haul**, and those extra rounds cost
+**more dragons** — a seat that stays with a gem in hand is standing in the 20-30%
+that the old rule was running away from — so the mean seat score falls from +1.67 to
++1.39 and the table gets more volatile. The bar is one constant if the balance is
+preferred on the other side of that line; what it should not be is below the table's
+own base rate, where it means "leave, always", which is what it meant.
+
 #### The lure: the trap the rules actually build
 
 **"Raider" means one thing here**: a figure that turned a card in a column its own
@@ -1560,8 +1599,9 @@ down on a visible dragon never gets to stand up.
 
 So ``doomed_dragon_digs`` no longer masks every unpushed dragon dig; it masks the
 ones taken when the seat has no waiting square, which is the exact condition
-above. On seed 7 nothing changes — it plays the same 94 decisions and scores
-0 / −1 / −1 / 5 — but the mask now permits the waiting square at **258 of 1,598
+above. On seed 7 at the time nothing changed — it played the same 94 decisions and
+scored 0 / −1 / −1 / 5, before the cage bar was moved (below) — and the mask
+permits the waiting square at **258 of 1,598
 decisions** over seeds 0–11, and the network takes a dragon it can see in **136**
 of them (most are still the bait case, where a rival deep enough is invited to
 push the figure into a cage and eat the dragon itself).
@@ -1887,9 +1927,9 @@ where the runaway `planning_turns` reached 128 and the `int8` observation raised
 
 The breaker is a last resort, not a rule: at `HANG_BREAKER_TURNS = 64` decisions
 with no card reachable, the round is closed. No round in 40 four-net games needs
-more than **45** decisions (busiest legitimately-seen round: 28), so nothing that
-could already finish a round changes — **seed 7 is identical (94 decisions,
-0 / −1 / −1 / 5)** and the whole suite is green.
+more than **45** decisions (busiest legitimately-seen round: 28), so it cannot
+change a game that was able to close its rounds — verified at the time against the
+then-current mask, where seed 7 was byte-identical (94 decisions, 0 / −1 / −1 / 5).
 
 What I deliberately did **not** do is the honest fix, because it is a rules
 decision and it moves the balance: "a figure is placed once per round, so a second
