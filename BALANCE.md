@@ -503,8 +503,10 @@ on 120 four-net games, all seats under the bar:
 
 \* at least three seats escaped and the table collected two gems or fewer.
 
-Seed 7 now plays a real haul 1 (gems 3-4-0-2) and scores **-1 / 0 / 3 / 2**
-(instead of 0 / −1 / −1 / 5 with two hauls thrown away).
+Seed 7 under those weights (the ones the bar change shipped with) plays a real haul 1
+(gems 3-4-0-2) and scores **-1 / 0 / 3 / 2** instead of 0 / −1 / −1 / 5 with two hauls
+thrown away. The retrained weights below move seed 7 again — see their own
+paragraph.
 
 The trade is on the table and should be read honestly: the stricter bar **halves the
 thrown-away hauls and collects 15% more gems per haul**, and those extra rounds cost
@@ -513,6 +515,89 @@ that the old rule was running away from — so the mean seat score falls from +1
 +1.39 and the table gets more volatile. The bar is one constant if the balance is
 preferred on the other side of that line; what it should not be is below the table's
 own base rate, where it means "leave, always", which is what it meant.
+
+#### The nets were retrained under the new bar
+
+`checkpoints/selfplay4.npz` is now the weights from 20 generations resumed off the
+old ones with the escape rule above in the mask
+(`--resume checkpoints/selfplay4.npz --generations 20 --games-per-generation 150
+--league-prob 0.6 --league-blast-mode always --league-blast-prob 0.5 --seed 9091`).
+Generation 20 self-play score +1.23, 2.99 blasts a game, entropy 0.527. The
+intermediate runs sit beside it as `checkpoints/selfplay4_blast*.npz` (git-ignored)
+and the replaced weights are in the previous commit if the margin is ever
+challenged. `checkpoints/selfplay4_prehazard.npz` is older than all of these: it is
+the net from before the per-opponent displacement feature.
+
+One net in all four seats, 100 games each:
+
+| | old net | **promoted net** |
+| :-- | --: | --: |
+| mean seat score | +1.33 | **+1.71** |
+| gems per haul | 2.38 | **2.83** |
+| hauls thrown away (≥3 out, ≤2 gems) | 11% | 23% |
+| hauls ending on a dragon | 81% | **57%** |
+| escapes per game | 4.95 | 6.88 |
+| blasts per game | 0.13 | 0.27 |
+| **pushes per game** | 1.74 | **0.15** |
+
+Head to head, 300 games a side with the new net in one seat and the old one in the
+other three: **+0.37 (se 0.19)** as seat 0, **+0.31 (se 0.18)** as seat 1, so about
+**+0.34 a seat** and ~2.5σ over the 600 games. Symmetric across the two seats, which
+is the check that the margin is not a seat artefact.
+
+**The falling push count is not a regression, and it is not the mask.** Over 40
+four-net games the mask refused a legal push **0 times in 2,282 push-legal decisions**
+under the old net and **0 times in 2,586** under this one — `action_mask` never
+mentions a push, so the two nets can only differ in what they *think* it is worth.
+They do: the policy's probability mass on push actions at those decisions fell from
+0.067 to 0.011.
+
+That valuation is the right one. Masking pushes table-wide (all four seats, 200
+paired games on the same seeds) gives mean seat score **+1.323 with pushes and
++1.390 without**, a paired **−0.068 (se 0.047)**: the old net's 1.74 pushes a game
+were buying nothing. It is the same fact as "the victim's side of a push" below —
+a push hands the rival a card in a cage, and a caged rival leaves with its loot, so
+the pusher mostly buys a round of immunity it did not need. Two further runs (8
+generations at a low learning rate, and 20 generations with the blasting league
+turned down to 30%) both drifted to the same place — 0.32 and 0.15 pushes a game —
+which is what a learner with more games does, not an artefact of the league.
+
+**Every cage still has a reason behind it.** All 2,192 cage decisions in 80
+four-net games were audited against the rule that allowed them:
+
+| what the cage answered | share |
+| :-- | --: |
+| banks ≥1 gem, hazard 1.00 | 37% |
+| banks nothing, **a rival's blast is charged** | 25% |
+| banks nothing, **its own blast is charged** | 18% |
+| banks nothing, **the dragon under it** | 17% |
+| banks nothing, a rival stands on its dragon | 1.5% |
+| **banks nothing and answers nothing** | **0%** |
+
+The zero-reason row is the one #27 was about and it is empty. The blast rows are the
+interesting ones, because a charged blast threatens a point (a woken dragon kills
+everyone still in the mine) but not the hand — so an empty-handed exit is a *defence
+of the score*, not a free forfeit. Tested as a rule: forbid an empty cage unless the
+death is already certain (a dragon under the seat with no safe card to take, or a
+rival on the seat's dragon). Thrown-away hauls collapse — 12%→3% on the old net,
+22%→2% on the new one — and gems per haul rise (2.51→2.90 and 2.84→3.67), **but mean
+seat score falls 1.37→1.13 and 1.74→1.48** and the dragon count rises, which says the
+empty exits are worth about a quarter of a point a game to the seats that take them.
+The rule is therefore left as it is: the exit is allowed when a blast is charged, and
+what #27 fixed — leaving because the mine is *ordinarily* risky — stays forbidden.
+
+The remaining difference between the two nets on that row is a consequence of the
+rest: the new net blasts twice as often, so more hauls have a charged blast in them,
+so more empty exits are available, and it takes them.
+
+Seed 7 under the promoted weights: **-1 / 1 / 5 / -1**, haul gems
+`[[3,3,1,1],[1,2,2,1],[0,0,0,1]]`, outcomes `lorry / lorry / dragon`, and 53 decisions
+flagged for a look instead of 109. Both of the first two hauls end with all four seats
+out, and that is the shape to watch — but every one of those exits banks at least one
+gem (P1 leaves haul 1 with 3, haul 2 with 3; P3 leaves both with 1), and the only
+empty exit in the game is P4 stepping off a rival's charged blast in haul 3. The haul
+the old weights won by staying in (3-4-0-2) is now split 3-3-1-1: the same table, the
+same total, the loot banked instead of carried.
 
 #### The lure: the trap the rules actually build
 

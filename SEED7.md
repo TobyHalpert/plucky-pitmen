@@ -12,10 +12,20 @@ python analyze_game.py --seed 7 --greedy           # the same seed with the samp
 > seat holding a gem to leave whenever the round's hazard was above 0.15 — a bar
 > below the 0.2-0.3 that a four-seat mine reads every round, so it was no bar at
 > all. It is now 0.45 (BALANCE.md, "One gem in hand is not a reason to leave
-> either"): the shipped checkpoint plays seed 7 as **−1 / 0 / 3 / 2**, with haul 1
+> either"): the checkpoint that shipped the bar change played seed 7 as
+> **−1 / 0 / 3 / 2**, with haul 1
 > collecting 3-4-0-2 gems instead of a 1-1-1-1 bail-out. The move-by-move read
 > below is of the earlier game, which is why it is quoted with the checkpoint that
 > played it.
+
+> **Update: the weights were retrained after this read too.** The escape rule change
+> is in the mask, so it needed new weights behind it; the promoted checkpoint (20
+> more generations, 600-game head-to-head at +0.34 a seat) plays seed 7 as
+> **−1 / 1 / 5 / −1**, haul gems `[[3,3,1,1],[1,2,2,1],[0,0,0,1]]`, 53 decisions
+> flagged for a look instead of 109. Both of the first two hauls end with all four
+> seats out and every one of those exits banks at least one gem; the only empty
+> exit in the game is P4 stepping off a rival's charged blast in haul 3. The
+> details are in BALANCE.md, "The nets were retrained under the new bar".
 
 > **Which game this is.** The checkpoint that plays `--seed 7` today is not the
 > one that played the game read below: while this analysis was being made, two of
