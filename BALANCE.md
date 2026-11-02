@@ -590,6 +590,19 @@ The remaining difference between the two nets on that row is a consequence of th
 rest: the new net blasts twice as often, so more hauls have a charged blast in them,
 so more empty exits are available, and it takes them.
 
+**The exit a charged blast justifies is the most valuable single move measured in
+this file.** Forbid the cage while any blast is in the table's hand (keeping the
+exits that dodge a dragon the seat can already see) and, over 150 paired games,
+the seats lose **+0.342 (se 0.066)** — about 5σ, and larger than the whole margin
+between the two checkpoints. What the ban does to the board says why: the table
+collects *more* gems per haul (2.88 → 4.06) and throws away more of them (hauls
+thrown away 28% → 33%), because a charged blast that wakes a dragon ends the haul
+with everybody still in the mine dead and their unbanked cards void. So the exit is
+not "leaving with nothing" — it converts a 46% chance of losing the hand into a
+banked hand, and the mask has to allow it whenever a blast is charged
+(`round_dragon_hazard` reads 1.00 then, and the net takes the cage at 92-98%).
+
+
 Seed 7 under the promoted weights: **-1 / 1 / 5 / -1**, haul gems
 `[[3,3,1,1],[1,2,2,1],[0,0,0,1]]`, outcomes `lorry / lorry / dragon`, and 53 decisions
 flagged for a look instead of 109. Both of the first two hauls end with all four seats
