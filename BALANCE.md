@@ -587,6 +587,53 @@ withheld at zero gems) and costs every card left in the mine. The dynamite bank 
 a reason to *prefer an exit you were taking anyway* over a risky last dig, not a
 reason to leave early.
 
+#### The abandoned column: the deadliest cell, and a weak threat
+
+Once a column's owner has left the mine, nobody can read that column and nobody can
+be signalled about it -- there is no owner left to read a front or say a word. If
+that is true anywhere on the board it is true there, and the numbers agree. Over 25
+four-net games, cards actually turned, by whose column the figure stood in:
+
+| the figure stood in | cards turned | gem | dynamite | **dragon** |
+| :-- | --: | --: | --: | --: |
+| its own column | 322 | 157 (49%) | 151 (47%) | **14 (4%)** |
+| a live rival's column | 68 | 22 (32%) | 23 (34%) | **23 (34%)** |
+| **a column whose owner had left** | 10 | 2 (20%) | 2 (20%) | **6 (60%)** |
+
+Directional (ten cards), but the order is the order the information predicts: own
+fronts are read, a live rival is a blind draw, and an abandoned column is a blind
+draw in a mine that keeps the dragons nobody has been willing to touch.
+
+The window is real, too. In 25 games, 23 of 75 hauls had an escape, and after the
+first escape the haul still played a mean of **3.4 more rounds**. So abandoned
+columns are on the board for about three rounds per escaped haul, and a figure
+standing in one is a live threat to everybody still inside: a dragon kills every
+figure left in the mine (-1 each) and ends the haul.
+
+The pressure you describe -- *someone raids the dead column, so the leader should
+get out* -- fires almost never in the current meta: **10 cells in 25 games**, and
+only **2 rounds in 25 games** had a non-leader standing in an abandoned column while
+the score leader was still inside. In the one of those where the leader had a
+choice it left. Outside that, leaders leave in 12% of rounds and non-leaders in 10%:
+there is no learned "the leader gets cautious" behaviour at all.
+
+And when it does fire, the pressure is worth less than it looks, for a reason that
+is in the scoring and not in the dragon:
+
+* The bonus goes to the seat with the most gems **among the escaped** (`_score_haul`).
+  A leader that leaves alone takes the +3 (+4 on the last haul) *whatever* happens
+  in the mine, and nobody can overtake it once it is out. So compliance is nearly
+  free for it: it was going to be paid for those gems anyway.
+* A wipe costs **every figure still inside the same -1** and the thrower **-2**, so
+  it barely moves the standings between the survivors and moves them one step
+  *against* the seat that caused it.
+
+Put together: the abandoned column is a minefield, not a lever. It hurts whoever
+*cannot* afford to leave -- the seats still chasing gems -- and it asks the leader
+for something it was going to do anyway. That is also the honest reading of what
+made the lure pay earlier: not the dragon's damage to other people (which is
+uniform), but the **bonus secured by being the one who is already out**.
+
 #### What a push actually takes, and when it is right
 
 A push is legal only onto a figure standing in **its own** column, so the victim
