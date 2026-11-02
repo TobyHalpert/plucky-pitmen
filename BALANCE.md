@@ -475,6 +475,94 @@ distinction rather than indifferent to it. Teaching it is a training question �
 scripted pusher in the league, so the population both exercises the push and
 punishes the seats that park in front of it — not a mask rule.
 
+#### The lure: the trap the rules actually build
+
+Your last two scenarios are the reason the push is not the sharpest weapon -- a
+push gets a rival out of a card, but the *trap* gets it out of a haul. Two rules
+do the work, and they interlock:
+
+1. Within a round, **phase 1 comes before phase 2**: everybody standing in the pit
+   cage leaves, and is then immune to anything revealed that round; only after
+   that does every remaining figure reveal the card it is standing on.
+2. A column's fronts are readable only by its owner. Everybody else sees a
+   backside.
+
+So the owner of a column can see a dragon under a rival's figure and get out of
+the mine **on the very round that dragon is turned** -- collecting the haul bonus
+while the raider takes −2 and every other figure still inside takes −1. Nothing
+else in the game gives a seat that pairing of information and immunity.
+
+Measured over 30 four-net games (`lure3`-style engine instrumentation, every round
+recorded at the reveal):
+
+| dragons turned by a raider standing in somebody else's column | 31 (≈1 per game) |
+| :-- | --: |
+| ...and the column's owner was **already out** of the mine | **30** |
+| ...of those, the owner left in the *same* round as the reveal | 24 |
+| ...of those, the owner had left a round or more earlier (trap left set) | 6 |
+| ...and the owner was still inside and ate the −1 with everybody else | 1 |
+
+What it pays, per haul, in the hauls where it happened:
+
+| | same-round (n=24) | left earlier (n=6) |
+| :-- | --: | --: |
+| the column owner | **+2.42** | +0.17 |
+| the raider that turned it | **−0.83** | −0.17 |
+| everybody else | +0.71 | +2.08 |
+
+Two readings, and the second is the interesting one:
+
+* **The trap fires about once a game and the owner is out for 30 of the 31.** In
+  10 of the 24 same-round cases the owner planned *after* the raider, so it could
+  see the figure on its dragon and choose the cage knowing why: that is your
+  "player A goes to the pit cage" line, and the nets already find it.
+* The other 14 are the same trap without the intent: the owner was leaving anyway
+  and the raider walked into a column whose owner was publicly in the cage. That
+  is a misread the raider cannot fix -- it cannot see the front, and the only
+  warning is "the owner is leaving", which it has no rule for.
+
+The cost of *not* leaving is on the same table: the one owner that stayed inside
+took the −1 with the rest.
+
+#### Banking dynamite across a haul
+
+The second scenario is real in the engine and has an exact rule: **dynamite is the
+only card that survives a haul boundary**, and it survives only if you are not
+dead (`_start_next_haul` keeps `DYNAMITE` and nothing else, and only for live
+seats). So a seat holding two dynamite that leaves the mine keeps them and starts
+the next haul able to blast; a seat that dies holding them loses them, and pays −1
+as well.
+
+It is already happening a lot. Per seat-haul at the start of a haul, over 30
+four-net games:
+
+| dynamite in hand | 0 | 1 | 2 | 3 | 4 |
+| :-- | --: | --: | --: | --: | --: |
+| seat-hauls (n=360) | 273 | 49 | **32** | 5 | 1 |
+
+So **38 of 360 seat-hauls (10.6%) start with enough dynamite to blast**, without
+anybody planning it. What is that worth? Paired from the same haul-start position,
+seat 0, same agent dice in every arm, 42 haul starts × 8 re-rolls:
+
+| arm | seat 0's haul points | vs plain |
+| :-- | --: | --: |
+| plain (no dynamite) | +0.62 | — |
+| **banked two dynamite, net's own play** | +0.61 | **−0.01 (se 0.10)** |
+| **banked two and spent them at the first opportunity** | +0.81 | **+0.20 (se 0.11)** |
+
+So the bank is a real edge of about **a fifth of a point per haul** -- and only if
+the blast is actually made. Held and never spent it is worth nothing, which is
+also true for gems in hand. It is not a "massive" bonus: BALANCE.md §5 has a blast
+haul scoring +0.41 against +0.40 for an ordinary one under the printed rule.
+
+Which gives the answer to "should A leave to protect its dynamite?". Leaving
+protects the dynamite only because death loses it, and death also costs −1 and the
+haul's loot, so **leaving to dodge a likelier dragon is right and leaving purely
+to bank dynamite is not**: a zero-gem exit pays nothing (the sole-escapee bonus is
+withheld at zero gems) and costs every card left in the mine. The dynamite bank is
+a reason to *prefer an exit you were taking anyway* over a risky last dig, not a
+reason to leave early.
+
 #### Measured as denial: the victim's side of a push
 
 The price above is measured on the **pusher's** score, which is the wrong lens if a
@@ -1544,7 +1632,7 @@ the game that self-play at this budget simply does not discover, because it is
 rare (0.8 blasts/game), announced early, and punishes the blaster's own haul 58%
 of the time — so it never earns enough games to show up in the gradient.
 
-## 7. Two engine bugs — and one bug I had to withdraw
+## 7. Three engine bugs — and one bug I had to withdraw
 
 Asking the AI to blast surfaced a real engine bug. It produced a silent failure:
 the game could not finish, so `play_game` returned `aborted=True` with **every
@@ -1558,6 +1646,32 @@ haul was abandoned. With four always-blasting `rule` players this hit **36 of
 60 games**; every one of them was being scored 0-0-0-0 and averaged in as a
 draw. Fixed twice over: the dragon cancels a dead player's blast, and only a
 player who can still act is allowed to defer the end of the round.
+
+**The bug found while pricing the lure: a table with nothing to reach cannot
+close its round.** A round closes when `n−1` consecutive seats pass, and a seat may
+only pass after it has planned. Neither the pit cage nor the lorry is a pass, so
+two seats caged at index 0 (cage index 0 leaves no dig legal) and two parked on
+their lorries (no dig legal either) bounce cage-to-lorry forever: every choice is
+a legal no-op, `consecutive_passes` never reaches the threshold, the round never
+executes, and the haul neither progresses nor ends. Seen live in a four-net game,
+where the runaway `planning_turns` reached 128 and the `int8` observation raised
+`OverflowError` mid-game.
+
+The breaker is a last resort, not a rule: at `HANG_BREAKER_TURNS = 64` decisions
+with no card reachable, the round is closed. No round in 40 four-net games needs
+more than **45** decisions (busiest legitimately-seen round: 28), so nothing that
+could already finish a round changes — **seed 7 is identical (94 decisions,
+0 / −1 / −1 / 5)** and the whole suite is green.
+
+What I deliberately did **not** do is the honest fix, because it is a rules
+decision and it moves the balance: "a figure is placed once per round, so a second
+cage/lorry choice is that seat's pass" — or its equivalent, closing the round as
+soon as nothing is reachable. Both make the bounce end at the moment it starts,
+and both change finished games: seed 7 becomes **101 decisions, 0 / +1 / −1 / 3**,
+and the empty-handed escape starts paying again (**rusher +1.19** against its
+`< 1.0` guard). That is the same defect as the haul-scoring parasite, dressed as a
+tie-break: *who escapes this round* would be decided by a no-op loop. Worth fixing,
+but as a rule, with the scoring change that goes with it.
 
 **The bug in the action grid: a five-row mine that keeps growing.** The rules
 deal a new row at the bottom of the mine every round, so a haul can reach ten

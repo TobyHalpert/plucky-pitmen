@@ -9,6 +9,7 @@ from game_env import (
     DYNAMITE,
     GEM,
     DECK_SIZE,
+    HANG_BREAKER_TURNS,
     LORRY,
     MAX_COLUMNS,
     MAX_ROWS,
@@ -834,3 +835,31 @@ def test_every_row_of_a_grown_mine_has_a_reachable_card_action():
     assert {
         action // MAX_COLUMNS for action in context.legal_actions if action < PIT_CAGE
     } == legal_card_rows
+
+
+def test_a_live_locked_round_is_broken_rather_than_left_to_run_away():
+    """Two seats caged at index 0 (nothing to dig) and two on their lorries
+    (nothing to dig): cage and lorry are both legal for the other pair, so a
+    table that keeps choosing them never passes.  In a real four-net game that
+    bounced until ``planning_turns`` reached 128 and the int8 observation
+    overflowed; the breaker has to close the round long before that."""
+    env = MineEnv(opponents=3)
+    env.reset(seed=11)
+    for index, player in enumerate(env.players):
+        player.position = PIT_CAGE if index % 2 == 0 else LORRY
+        player.column = None
+        player.cage_index = 0
+
+    assert env._nobody_can_reach_a_card()
+    # Ordinary rounds never get near the bound: the busiest seen is 28.
+    assert HANG_BREAKER_TURNS > 32
+
+    env.planning_turns = HANG_BREAKER_TURNS
+    env.consecutive_passes = 0
+    haul_before = env.haul
+    seat = env.planning_player
+    bounce = LORRY if env.players[seat].position == PIT_CAGE else PIT_CAGE
+    env.step_one_player(bounce, force_action=True)
+
+    assert env.planning_turns == 0            # the round closed
+    assert env.haul > haul_before or env.game_finished

@@ -48,6 +48,11 @@ LORRY = PIT_CAGE + 1
 PASS = LORRY + 1
 
 HAULS_PER_GAME = 3
+# A round of planning needs at most a couple of decisions per seat.  This bound
+# exists only to break a live-lock (see MineEnv._nobody_can_reach_a_card): it is
+# far above anything ordinary play reaches, so it cannot change a game that was
+# able to finish its rounds.
+HANG_BREAKER_TURNS = 64
 PIT_CAGE_REWARD = 0.0
 LORRY_REWARD = -0.05
 
@@ -275,6 +280,17 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                     break
                 self.consecutive_passes += 1
 
+        if (
+            self.planning_turns >= HANG_BREAKER_TURNS
+            and self._nobody_can_reach_a_card()
+        ):
+            # Last resort, not a rule: see _nobody_can_reach_a_card.  No real
+            # round has needed anything like this many decisions (the busiest
+            # seen is 28 at four players), so nothing that already finished a
+            # round can reach it.
+            self.consecutive_passes = max(
+                self.consecutive_passes, self._pass_threshold()
+            )
         should_execute = self.consecutive_passes >= self._pass_threshold()
         if not should_execute:
             reward = self.last_reward if action == PASS else planning_reward
@@ -365,6 +381,14 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             if (index := (player_index + offset) % self.n_players) in active_players
         ]
         self.planning_player = next_players[0] if next_players else active_players[0]
+        if (
+            self.planning_turns >= HANG_BREAKER_TURNS
+            and self._nobody_can_reach_a_card()
+        ):
+            # See step(): the same last-resort breaker on the multi-agent path.
+            self.consecutive_passes = max(
+                self.consecutive_passes, self._pass_threshold()
+            )
         if self.consecutive_passes < self._pass_threshold():
             reward = self.last_reward if action == PASS else planning_reward
             self.last_reward = reward
@@ -728,6 +752,33 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         if action == PASS:
             return self.planned_players[player_index]
         return False
+
+    def _nobody_can_reach_a_card(self) -> bool:
+        """True when no figure still in the mine has a card left to step onto.
+
+        Not a scoring rule but the end of a round: a seat whose only legal
+        choices are the pit cage and the lorry never passes, so
+        ``consecutive_passes`` cannot reach the threshold and the round never
+        closes.  The state is reachable in ordinary play -- two seats caged at
+        index 0 (no dig legal) and two on their lorries (no dig legal) bounce
+        cage-to-lorry forever.  Seen live in a four-net game, where the runaway
+        ``planning_turns`` overflowed the int8 observation and the haul neither
+        progressed nor ended.
+        """
+        for index, player in enumerate(self.players):
+            if player.escaped or player.dead or player.position == LORRY:
+                continue
+            depth = min(self._movement_depth(player), len(self.rows))
+            for row in range(depth):
+                for column, card in enumerate(self.rows[row]):
+                    if card is None:
+                        continue
+                    if (
+                        not self._card_occupied(row, column, ignore_player=index)
+                        or self._can_displace(row, column, index)
+                    ):
+                        return False
+        return True
 
     def _movement_depth(self, player: Player) -> int:
         if player.position == PIT_CAGE:
