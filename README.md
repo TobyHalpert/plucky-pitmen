@@ -438,13 +438,16 @@ The full write-up, with confidence intervals and reproduction commands, is in
   reading anything. The field it farms dies 0.41 times a seat-haul and loses 60% of
   hauls to dragons; the cage bar that stopped the table leaving for no reason also
   made it **0.44 points easier to farm**. BALANCE.md, "The counter".
-* **The lorry and the cage are one decision, read from both ends.** Rule 8 refused
-  an empty-handed escape from a cage and left the figure on the lorry; nothing
-  stopped it stepping straight back in, and the mask pushed it out again. Neither
-  move is a pass, so the round could not close, and a seat displaced before its own
-  turn could not pass at all. **19 of 200 four-net games never finished**; the ones
-  that did cost **820 decisions against 113** after the rule. BALANCE.md, "The lorry
-  and the cage are one decision".
+* **A seat holds the card it chose, and the drift is gone.** A figure scores the
+  card under it when the planning phase closes and movement is one-way, so a second
+  move in the same phase gives up that card for a shallower one. Rule 9
+  (`climbs_off_the_card_it_chose`) holds unless the seat is stepping off a dragon it
+  can see or onto a gem it can see (and not when it is standing on one already):
+  **+0.441 a seat (se 0.065)** over 200 paired games with the weights unchanged.
+  Phases taking two or more moves fell 66% → 23%; on the current mask **75.6% of
+  1,985 seat-phases take exactly one card move**, and every remaining second dig is
+  a re-entry from a cage or a step off a visible dragon. BALANCE.md, "The card you
+  are standing on".
 * **A seat holds the card it chose.** A figure scores the card under it when the
   planning phase closes, and movement is one-way, so a second move in the same
   phase gives up that card for a shallower one — and at the bottom of the column

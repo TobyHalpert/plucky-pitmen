@@ -571,40 +571,45 @@ distinction rather than indifferent to it. Teaching it is a training question �
 scripted pusher in the league, so the population both exercises the push and
 punishes the seats that park in front of it — not a mask rule.
 
-### The lorry and the cage are one decision
+### The lorry and the cage: nothing to fix, and a correction
 
-Rule 8 read the lorry/cage pair from the cage: a seat shoved into a cage whose
-escape banks nothing is put on the lorry instead, because a departure that banks
-nothing throws the haul away. The pair was never read from the **lorry**, and that
-is a livelock.
+The previous commit claimed a livelock here: a seat on the lorry stepping back
+into a cage whose escape banks nothing, the mask pushing it straight out again, the
+round never closing. It reported 19 of 200 four-net games never finishing inside
+4,000 decisions and 820 decisions a game against 113 after a fix. **That claim is
+withdrawn. It was an artefact of the A/B harness, not a property of the net.**
 
-From the lorry a seat standing next to a cage it would refuse can step back in.
-The mask then refuses the escape and puts it back on the lorry. Neither move is a
-pass, so `consecutive_passes` is reset to zero by both, the round never reaches the
-threshold that closes it, and every other seat is asked to decide again. A seat that
-has *not* planned this phase — it was displaced into the cage before its turn —
-cannot pass at all, so it has no way out: the phase can only end on the hang
-breaker.
+What the harness did: it patched the *output* of `action_mask` to make the cage
+legal from the lorry, then compared against the real mask. But rule 4 already masks
+an escape that banks nothing *wherever it is offered*, the lorry included, so the
+patch did not test the rule it was meant to test — it disabled rule 4 for one
+position and measured that. Both arms of a correct ablation (neutering only the
+lorry-side branch, if there were one) are identical: one generation of training
+produces byte-identical weights with and without it.
 
-Measured on the shipped checkpoint, 200 four-net games:
+What is actually true, measured on the shipped checkpoint:
 
-| | before | **after** |
-| :-- | --: | --: |
-| decisions per game | **820** | **113** |
-| worst game | never finished (capped at 4,000) | 285 |
-| games that finished | **181 / 200** | **200 / 200** |
-| decisions per planning phase | 16.1 | **3.1** |
-| worst single phase | 353 | 14 |
-| lorry-then-cage in one phase | 299 (60 games) | 69 |
-| mean seat score | +1.962 | **+2.175** |
+| | |
+| :-- | --: |
+| decisions per game (4 nets) | **108**, worst 285 |
+| games that finish | **100 / 100** |
+| decisions per planning phase | 3.13, worst 14 |
+| decisions taken from the lorry | 661 of 10,640 |
+| ...with the cage offered from the lorry | 143 |
+| ...where the escape would bank nothing (mask has something to remove) | **0** |
+| ...where the seat could not pass instead | **0** |
 
-paired **+0.212 a seat (se 0.053)**. Nineteen of two hundred games were not
-finishing at all; the rule is the fix for both the loop and the score.
+Every one of the 143 is a real escape: a blast is charged, so the cage is worth
+taking. A seat on the lorry can always fall back on its pass. The branch that was
+committed to close the "loop" could not fire in a single one of those decisions, so
+it has been **removed** — `features.py` is back to the code of the previous commit
+apart from one docstring. The two tests written for it stay, re-framed: one pins
+that an escape banking nothing is refused from the lorry too, the other that a
+four-net game finishes inside a sane number of decisions.
 
-This is what the viewer was showing: a figure that keeps moving forward because it
-keeps being asked, not because it wants to. The green line above is the honest
-version of the complaint — a planning phase should cost about one decision per
-seat, plus the corrections the table forces on each other.
+The lesson is the one this file keeps relearning: an A/B is only worth the thing it
+actually changes. Patching a function's *result* is not the same as switching off
+the rule inside it.
 
 ### The card you are standing on
 
@@ -658,7 +663,7 @@ visible-gem swap the rule keeps on purpose (a card the seat can see is a gem bea
 the one it is standing on) and the first move of the phase, which the seat has to
 make.
 
-Seed 7 under rule 9 and the lorry/cage pairing (same weights): **3 / 3 / 1 / 4**, haul gems
+Seed 7 under rule 9 (same weights): **3 / 3 / 1 / 4**, haul gems
 `[[3,3,1,2],[4,0,1,3],[0,1,1,1]]`, 27 decisions flagged for a look instead of 53.
 Both of the first two hauls run four planning phases with the figures holding the
 cards they chose — 9 and 8 gems collected — and both end on a dragon, which is the
@@ -675,9 +680,14 @@ rewarded for holding, because every extra dig is scored by the shaping term whil
 the card it forfeits never appears as a cost. Both files
 (`checkpoints/selfplay4_stay.npz`, `selfplay4_stay2.npz`) are **not shipped**.
 
-What is left of dithering is a seat swapping onto a gem it can see when it is not
-already standing on one, which is a gain. The lorry/cage flip seen in seed 5 is
-fixed by the lorry-side pairing below.
+**What is left of the drift, measured on 1,985 seat-phases in 60 games** with the
+current mask: **75.6% of phases take exactly one card move**, 18.6% take two, 3.6%
+three, 0.4% four. Every one of the second digs has a reason: 605 are a **re-entry
+from a cage** (the seat refused an empty-handed escape, so it is back in the mine by
+rule and has to dig) and 98 are a **step off a dragon it can see**. Not one is a
+seat wandering towards the lorry. The remaining lorry/cage movement in the viewer is
+in the same category — a real escape taken when a blast is charged, and the pass a
+seat takes while standing on the lorry.
 
 **It also closes most of the counter's edge.** The same agent against the same
 seats, 200 games, the rule off and on:

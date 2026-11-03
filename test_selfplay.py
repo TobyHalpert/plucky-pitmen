@@ -1877,21 +1877,16 @@ def test_the_table_holds_its_card_and_collects_more_for_it():
     assert float(np.mean(on)) > float(np.mean(off))
 
 
-def test_a_seat_on_the_lorry_cannot_re_enter_a_cage_it_just_refused():
-    """The livelock: lorry -> cage -> lorry -> cage, forever.
+def test_an_escape_that_banks_nothing_is_refused_from_the_lorry_too():
+    """Rule 4 is not position-specific, which is why the lorry/cage pair is safe.
 
-    From a cage, an escape that banks nothing is refused and the seat stays in the
-    haul on the lorry (rule 8). From the lorry with no gems banked and nothing
-    threatening, going back into the cage is that same escape, so the mask pushes
-    the figure straight out again -- and because neither the lorry nor the cage is
-    a pass, `consecutive_passes` never reaches the threshold and the planning
-    phase cannot close. A seat that has not planned yet (it was displaced) cannot
-    pass at all, so it has no other legal move: the round only ends on the hang
-    breaker.
-
-    Measured on the shipped checkpoint before the fix: 19 of 200 four-net games
-    never finished inside 4,000 decisions, and a normal game cost 820 decisions
-    against 113 after (BALANCE.md, "The lorry and the cage are one decision").
+    An escape is refused wherever it is offered, so a seat standing on the lorry
+    cannot re-enter a cage it would refuse, and from the lorry it always has its
+    pass to fall back on -- the pair cannot spin. Measured on the shipped
+    checkpoint, 100 four-net games: the cage is offered from the lorry 143 times
+    and every one is a real escape (a blast is charged), so the mask has nothing
+    to remove; and there is no decision in 10,640 where a seat on the lorry could
+    not pass. BALANCE.md, "The lorry and the cage: nothing to fix".
     """
     import features
     from features import action_mask
@@ -1954,8 +1949,13 @@ def test_a_seat_on_the_lorry_cannot_re_enter_a_cage_it_just_refused():
     assert action_mask(threatened)[int(PIT_CAGE)]
 
 
-def test_a_four_net_game_finishes_promptly_and_no_phase_livelocks():
-    """Regression guard on the loop itself: bounded decisions, every game over."""
+def test_a_four_net_game_finishes_promptly():
+    """Every game ends, and a game costs about 110 decisions, not thousands.
+
+    A planning phase that cannot close would show up here as a game that never
+    finishes. Measured on the shipped checkpoint: 108 decisions a game, worst 285,
+    three decisions a planning phase.
+    """
     from collections import Counter
     from gui_controller import GameController, resolve_checkpoint
     from learning import PolicyNet
@@ -1974,5 +1974,5 @@ def test_a_four_net_game_finishes_promptly_and_no_phase_livelocks():
             ctl.step_one_player_auto()
         assert env.game_finished, f"seed {seed} did not finish in {decisions} decisions"
         slowest = max(slowest, decisions)
-    # Before the fix a normal game cost ~820 decisions and a stuck one never ended.
+    # A game that cannot close a phase would blow straight past this.
     assert slowest < 400

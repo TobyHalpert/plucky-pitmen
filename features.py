@@ -1100,10 +1100,13 @@ def action_mask(ctx: PlayerActionContext) -> np.ndarray:
        when the cards are turned leaves the mine.  So from a cage the lorry and
        the pass are one decision, not two — the escape is taken when it banks
        something, and refused (staying in the haul on the lorry) when it does
-       not. The same pairing read from the lorry: a seat that has just refused
-       an escape of its own accord does not immediately re-enter the cage it
-       refused, so that move is masked and the seat holds.  Before this the lorry was masked in the cage and the only move left
-       was a pass, so the seat "chose" an empty departure at 100%.
+       not. Before this the lorry was masked in the cage and the only move left
+       was a pass, so the seat "chose" an empty departure at 100%. The rule
+       also covers the lorry side: an escape that banks nothing is masked
+       whenever it is offered, from the lorry included, and a seat on the lorry
+       can always fall back on its pass (measured: 143 decisions in 100 games
+       offer the cage from the lorry, and every one of them is a real escape --
+       a blast is charged -- so the mask has nothing to remove).
 
     9. The card a seat scores is the one under its figure when the phase closes,
        and movement is one-way, so a second move in the same phase forfeits the
@@ -1153,24 +1156,6 @@ def action_mask(ctx: PlayerActionContext) -> np.ndarray:
         else:
             trial[int(LORRY)] = False
         if trial.any():
-            mask = trial
-    elif (
-        ctx.own_position == LORRY
-        and mask[int(PIT_CAGE)]
-        and cage_banks_nothing(ctx)
-    ):
-        # The mirror of the cage pairing above: a seat on the lorry that goes
-        # back into a cage has decided to leave a haul it just decided to stay
-        # in, and the mask will push it straight back out to the lorry. That is
-        # a round spent on nothing -- worse, it is a round the seat can spend
-        # repeatedly: an escape that banks nothing is refused from the cage, so
-        # lorry -> cage -> lorry -> cage holds the planning phase open and makes
-        # every other seat decide again. 46 of them in 40 games, and the phase
-        # is closed by the hang breaker instead of by the table.
-        trial = mask.copy()
-        trial[int(PIT_CAGE)] = False
-        trial[join_action(int(PIT_CAGE), True)] = False
-        if trial.any():  # a pass is always there: the seat has planned
             mask = trial
     elif mask[int(LORRY)] and lorry_skips_a_card_worth_taking(ctx):
         trial = mask.copy()
