@@ -1737,3 +1737,128 @@ def test_the_counter_is_deterministic_and_never_displaces():
     play_game([Recording() for _ in range(4)], seed=12)
     assert seen
     assert not any(is_push(action, ctx) for action, ctx in seen)
+
+
+def _hold_context(rows, *, legal, own_position, own_column=0, private=()):
+    from game_env import PlayerActionContext
+
+    grid = [tuple(rows.get((row, column)) for column in range(4)) for row in range(4)]
+    return PlayerActionContext(
+        player_index=0,
+        legal_actions=tuple(legal),
+        public_rows=tuple(grid),
+        private_cards=tuple(private),
+        own_blast_cards=(),
+        own_score=0,
+        own_position=own_position,
+        own_column=own_column,
+        own_cage_index=None,
+        own_blast_pending=False,
+        opponents=(),
+        used_blast_backsides=(),
+        haul=1,
+        round=0,
+        starting_player=0,
+        n_players=4,
+        cards_remaining_in_deck=10,
+        displacement_events=(),
+        tie_breaker_contenders=(),
+    )
+
+
+def test_a_second_move_in_the_same_phase_is_a_climb_towards_the_lorry():
+    """The card a seat scores is the one under it when the phase closes.
+
+    Movement is one-way, so a seat that has already planned and moves again does
+    not collect a second card -- it swaps the card it chose for a shallower one.
+    Measured on the shipped checkpoint: 66% of seat-phases took two or more
+    moves, all of them with a pass available, and the extra move is worth -0.08
+    (se 0.09) against holding. Masking it is worth +0.39 a seat over 200 paired
+    games (BALANCE.md, "The card you are standing on").
+    """
+    from features import action_mask, climbs_off_the_card_it_chose
+
+    # Standing on a gem it can see, deeper cards free: hold, do not climb.
+    on_a_gem = _hold_context(
+        {(0, 0): (DYNAMITE, 0), (1, 0): (GEM, 0)},
+        legal=(0 * MAX_COLUMNS + 0, int(PASS)),
+        own_position=1,          # standing on the gem at row 1
+    )
+    climbed = climbs_off_the_card_it_chose(on_a_gem)
+    assert 0 * MAX_COLUMNS + 0 in climbed  # a free card shallower up the column
+    mask = action_mask(on_a_gem)
+    assert mask[int(PASS)]                 # holding is what it does
+    assert not mask[0 * MAX_COLUMNS + 0]   # the climb is refused
+
+    # But a gem it can SEE above it is worth the swap: a scored card beats a
+    # dynamite that scores nothing.
+    on_a_dynamite = _hold_context(
+        {(0, 0): (GEM, 0), (1, 0): (DYNAMITE, 0)},
+        legal=(0 * MAX_COLUMNS + 0, int(PASS)),
+        own_position=1,          # standing on the dynamite at row 1
+    )
+    assert 0 * MAX_COLUMNS + 0 not in climbs_off_the_card_it_chose(on_a_dynamite)
+    assert action_mask(on_a_dynamite)[0 * MAX_COLUMNS + 0]
+
+    # And a visible dragon under the figure is not a card worth holding.
+    on_a_dragon = _hold_context(
+        {(0, 0): (DYNAMITE, 0), (1, 0): (DRAGON, 0)},
+        legal=(0 * MAX_COLUMNS + 0, int(PASS)),
+        own_position=1,          # standing on the visible dragon at row 1
+    )
+    assert climbs_off_the_card_it_chose(on_a_dragon) == set()
+
+    # The first decision of a phase is an empty set: it has to move.
+    fresh = _hold_context(
+        {(0, 0): (GEM, 0), (1, 0): (GEM, 0)},
+        legal=(0 * MAX_COLUMNS + 0, 1 * MAX_COLUMNS + 0),
+        own_position=4,
+        own_column=None,
+    )
+    assert climbs_off_the_card_it_chose(fresh) == set()
+
+
+def test_the_table_holds_its_card_and_collects_more_for_it():
+    """The rule, measured end to end: +0.39 points a seat, twice the gems.
+
+    Same weights, the rule switched off by pretending it finds nothing to mask.
+    """
+    import features
+    from gui_controller import GameController, resolve_checkpoint
+    from learning import PolicyNet
+
+    net = PolicyNet.load(resolve_checkpoint("neural:selfplay4"))
+    rule = features.climbs_off_the_card_it_chose
+    real = features.action_mask
+
+    def play(seed):
+        ctl = GameController(3, "neural:selfplay4", seed)
+        ctl.reset(3, "neural:selfplay4", seed, all_seats=True, advance=False)
+        ctl.agents = [
+            NeuralAgent(net, seed=seed * 31 + i, temperature=0.7) for i in range(4)
+        ]
+        env, steps = ctl.env, 0
+        while not env.game_finished and steps < 1500:
+            steps += 1
+            ctl.step_one_player_auto()
+        return env
+
+    def with_rule(seed):
+        features.climbs_off_the_card_it_chose = rule
+        return play(seed)
+
+    def without_rule(seed):
+        features.climbs_off_the_card_it_chose = lambda _ctx: set()
+        try:
+            return play(seed)
+        finally:
+            features.climbs_off_the_card_it_chose = rule
+
+    on, off = [], []
+    for seed in range(12):
+        env = with_rule(seed)
+        on.append(float(np.mean([p.score for p in env.players])))
+        env = without_rule(seed)
+        off.append(float(np.mean([p.score for p in env.players])))
+    features.action_mask = real
+    assert float(np.mean(on)) > float(np.mean(off))

@@ -438,6 +438,17 @@ The full write-up, with confidence intervals and reproduction commands, is in
   reading anything. The field it farms dies 0.41 times a seat-haul and loses 60% of
   hauls to dragons; the cage bar that stopped the table leaving for no reason also
   made it **0.44 points easier to farm**. BALANCE.md, "The counter".
+* **A seat holds the card it chose.** A figure scores the card under it when the
+  planning phase closes, and movement is one-way, so a second move in the same
+  phase gives up that card for a shallower one — and at the bottom of the column
+  the only moves left are the lorry and the cage. The shipped net made two or more
+  moves in **66% of its seat-phases**, every extra one with a pass available.
+  Rule 9 (`climbs_off_the_card_it_chose`) holds unless the seat is stepping off a
+  dragon it can see or onto a gem it can see: **+0.390 a seat (se 0.062)** over 200
+  paired games with the weights unchanged, gems per haul 2.90 → 4.64, thrown-away
+  hauls 22% → 14%. Retraining under the rule changed nothing (−0.06, se 0.17), and
+  it drops the `counter` bot's edge from +3.21 to +2.02 a game. BALANCE.md,
+  "The card you are standing on".
 * **The planning clock is in the input, and the push is still declined.** A push
   only puts a rival out of the haul if the phase closes before that rival's next
   turn, and whether it can is decided by how many passes are left and which

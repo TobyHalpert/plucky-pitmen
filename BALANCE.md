@@ -571,6 +571,76 @@ distinction rather than indifferent to it. Teaching it is a training question �
 scripted pusher in the league, so the population both exercises the push and
 punishes the seats that park in front of it — not a mask rule.
 
+### The card you are standing on
+
+A seat scores the card **under its figure when the planning phase closes**, and a
+figure only ever moves towards the lorries. So a second move in the same phase does
+not collect a second card: it gives up the card the seat already chose for a
+shallower one it did not, and at the bottom of the column the only moves left are
+the lorry (collects nothing) and the cage (leaves the haul). Passing is legal for
+any seat that has planned, so holding is always available.
+
+The shipped checkpoint did not hold. Over 40 four-net games:
+
+| | |
+| :-- | --: |
+| seat-phases measured | 1,360 |
+| phases where the seat made two or more moves | **66%** |
+| moves made after the first one | 1,326 |
+| ...of those, with a pass available (it could simply have held) | **1,326 (100%)** |
+| phases that ended with the figure on its lorry | 11% |
+
+What the extra moves were giving up, among decisions where a pass was available
+(30 games): 217 climbed off a **dynamite** in its own column, 63 climbed off a
+**dragon** it could see (that one is right — rule 1's waiting square), 27 left a
+**gem** it could see to raid another column, and the rest were raids or moves off a
+card whose front it had not seen. Priced from the identical position, the extra
+move against holding the card to the end of the phase is **−0.08 (se 0.09)** a move
+— small per move, but there are about 33 of them a game, which is **−2.7 points a
+game** across the four seats.
+
+**Rule 9 masks it** (`climbs_off_the_card_it_chose`): a seat that has already
+planned this phase holds, unless it is stepping **off a dragon it can see** or
+**onto a gem it can see** in its own column. Same weights, same seeds, 200 paired
+four-net games:
+
+| | rule off | **rule on** |
+| :-- | --: | --: |
+| mean seat score | +1.734 | **+2.124** |
+| gems per haul | 2.90 | **4.64** |
+| hauls thrown away | 22% | **14%** |
+| hauls ending on a lorry | 229 | 211 |
+
+paired **+0.390 a seat (se 0.062)**. Behaviour after the rule: 61% of phases take
+exactly one move (was 33%), 37% still take two or more — those are the visible-gem
+swaps the rule keeps — and 2% never move at all.
+
+Seed 7 under the rule (same weights): **0 / 5 / −1 / 5**, haul gems
+`[[4,3,1,3],[0,1,1,0],[2,4,2,1]]`, 30 decisions flagged for a look instead of 53.
+Haul 1 is the shape it produces: four figures holding their cards through four
+planning phases, collecting 11 gems between them, and then a dragon ends the haul
+with everybody still inside.
+
+**A retrain under the rule changed nothing.** 20 generations from the shipped
+weights with the rule in the mask: native +2.04 a seat against +2.12 for the
+shipped net, head to head **−0.06 (se 0.17)** and **−0.05 (se 0.16)** over 300 games
+a side. So the mask is not papering over a policy the net would have found by
+itself — the net had no way to be rewarded for holding, because every extra dig is
+scored by the shaping term while the card it forfeits never appears as a cost. The
+retrained file is `checkpoints/selfplay4_stay.npz`, **not shipped**.
+
+**It also closes most of the counter's edge.** The same agent against the same
+seats, 200 games, the rule off and on:
+
+| | counter | nets | margin | counter wins |
+| :-- | --: | --: | --: | --: |
+| rule off | +4.29 | +1.07 | **+3.21 (se 0.24)** | 65% |
+| rule on | +3.38 | +1.36 | **+2.02 (se 0.24)** | 50% |
+
+That is worth writing down plainly: the habit was not only ugly, it *was* the
+exploit. A seat that forfeits the card it chose, a row at a time, hands the haul to
+whoever banks first — which is what the counter was doing.
+
 ### The counter: a deterministic seat that farms this field
 
 `agents.CounterAgent` (policy name `counter`) is forty lines of rules, no dice and
@@ -623,6 +693,10 @@ and it is the same rule that makes it dull to watch it play itself.
 | ... allowed to push | +3.92 | +1.04 | +2.87 | 58% |
 | `leaver` (one gem, then out) | +3.96 | +0.99 | +2.96 | 58% |
 | `rule` bot | +0.87 | +1.29 | −0.41 | 23% |
+
+These margins are measured with rule 9 switched off, because the counter was
+published before that rule existed. **With the rule on, the same agent's edge drops
+to +2.02 (se 0.24) and it wins 50% of games** — see "The card you are standing on".
 
 Read honestly, that table says something other than "the tells are the exploit":
 

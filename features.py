@@ -1004,10 +1004,66 @@ def takes_the_gem_over_the_dynamite(ctx: PlayerActionContext) -> set[int]:
     return dynamite_digs if gem_legal else set()
 
 
+def climbs_off_the_card_it_chose(ctx: PlayerActionContext) -> set[int]:
+    """Card moves that give up the card the figure is already standing on.
+
+    The card a seat scores is the one under its figure when the planning phase
+    closes, and a figure moves one way only -- towards the lorries. So a second
+    move in the same phase does not collect a second card: it swaps the card the
+    seat has already chosen for a shallower one it did not, and at the bottom of
+    the column the only moves left are the lorry (which collects nothing) and the
+    cage (which leaves the haul). Passing is legal for any seat that has planned,
+    so the seat can simply hold what it has.
+
+    Measured on the shipped checkpoint, 40 four-net games: **66% of the 1,360
+    seat-phases take two or more moves**, 1,326 moves were made after the first
+    one, and a pass was available for **every single one of them**. 11% of the
+    phases ended with the figure on its lorry. Priced against holding the card to
+    the end of the phase, the extra move is worth -0.08 (se 0.09) a move and
+    -2.7 points a game across the four seats.
+
+    Two swaps are worth making, and only two:
+
+    * the card under the figure is a dragon the seat can see, so it has to step
+      off before the cards turn (``own_card_is_known_dragon``, rule 1's waiting
+      square);
+    * the move lands on a gem the seat can see in its own column, because a
+      scored card beats one nobody has turned over.
+
+    Everything else is a seat walking itself towards the lorry for nothing.
+    """
+    if int(PASS) not in {int(action) for action in ctx.legal_actions}:
+        return set()  # first decision of the phase: the seat has to move
+    if not 0 <= ctx.own_position < PIT_CAGE or ctx.own_column is None:
+        return set()  # standing on nothing (front of the mine, cage, lorry)
+    if ctx.own_position >= len(ctx.public_rows):
+        return set()
+    entry = ctx.public_rows[ctx.own_position][ctx.own_column]
+    if entry is None:
+        return set()  # already standing on an emptied cell: nothing to give up
+    if own_card_is_known_dragon(ctx):
+        return set()  # rule 1: step off it, wherever that is
+    doomed = set()
+    for action in ctx.legal_actions:
+        primitive = int(action)
+        if not 0 <= primitive < PIT_CAGE:
+            continue
+        row, column = divmod(primitive, MAX_COLUMNS)
+        if (
+            column == ctx.player_index
+            and row < len(ctx.public_rows)
+            and ctx.public_rows[row][column] is not None
+            and ctx.public_rows[row][column][0] == GEM
+        ):
+            continue  # a gem it can see is worth the swap
+        doomed.add(primitive)
+    return doomed
+
+
 def action_mask(ctx: PlayerActionContext) -> np.ndarray:
     """Legal policy actions, including legal blast announcements.
 
-    Eight narrow rules ride on top of the legal moves, all of them policies rather
+    Nine narrow rules ride on top of the legal moves, all of them policies rather
     than rules of the game, which is why they live here and not in the
     environment (see BALANCE.md):
 
@@ -1042,6 +1098,13 @@ def action_mask(ctx: PlayerActionContext) -> np.ndarray:
        something, and refused (staying in the haul on the lorry) when it does
        not.  Before this the lorry was masked in the cage and the only move left
        was a pass, so the seat "chose" an empty departure at 100%.
+
+    9. The card a seat scores is the one under its figure when the phase closes,
+       and movement is one-way, so a second move in the same phase forfeits the
+       card already chosen for a shallower one -- at the bottom of the column,
+       for the lorry, which collects nothing. A seat that has planned holds
+       unless it is stepping off a dragon it can see or onto a gem it can see.
+       ``climbs_off_the_card_it_chose``.
 
     Rules 3 and 4 are about wasted rounds, and 4 in particular exists because
     "somebody is already in a cage" is *not* a threat: a raid puts a rival there,
@@ -1122,6 +1185,14 @@ def action_mask(ctx: PlayerActionContext) -> np.ndarray:
         trial[join_action(int(PIT_CAGE), True)] = False
         if trial.any():
             mask = trial
+    climbs = {action for action in climbs_off_the_card_it_chose(ctx) if mask[int(action)]}
+    if climbs:
+        trial = mask.copy()
+        for primitive in climbs:
+            trial[primitive] = False
+            trial[join_action(primitive, True)] = False
+        if trial.any():  # a pass is always there to hold with, so this holds
+            mask = trial
     return mask
 
 
@@ -1142,6 +1213,7 @@ __all__ = [
     "action_reason",
     "backside_stats",
     "cage_banks_nothing",
+    "climbs_off_the_card_it_chose",
     "can_wait_on_a_dragon",
     "cell_dragon_risk",
     "digs_face_up_dragon",
