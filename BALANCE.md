@@ -630,13 +630,22 @@ cards they chose — 9 and 8 gems collected — and both end on a dragon, which 
 cost side of staying in: the seats that banked first keep their points (P1 and P3
 leave haul 1 with gems in hand) and the one still inside takes the −1.
 
-**A retrain under the rule changed nothing.** 20 generations from the shipped
-weights with the rule in the mask: native +2.04 a seat against +2.12 for the
-shipped net, head to head **−0.06 (se 0.17)** and **−0.05 (se 0.16)** over 300 games
-a side. So the mask is not papering over a policy the net would have found by
-itself — the net had no way to be rewarded for holding, because every extra dig is
-scored by the shaping term while the card it forfeits never appears as a cost. The
-retrained file is `checkpoints/selfplay4_stay.npz`, **not shipped**.
+**A retrain under the rule changed nothing**, twice. 20 generations from the
+shipped weights with the first (looser) version of the rule in the mask: native
++2.04 a seat against +2.12, head to head **−0.06 (se 0.17)** and **−0.05 (se 0.16)**
+over 300 games a side. And 20 more under the tightened rule: native +2.17 against
++2.19, head to head **−0.04 (se 0.18)** and **−0.14 (se 0.16)**. So the mask is not
+papering over a policy the net would have found by itself — it had no way to be
+rewarded for holding, because every extra dig is scored by the shaping term while
+the card it forfeits never appears as a cost. Both files
+(`checkpoints/selfplay4_stay.npz`, `selfplay4_stay2.npz`) are **not shipped**.
+
+Two smaller pieces of dithering are left in and are deliberate for now: a seat
+still swaps onto a gem it can see when it is not already standing on one, and it
+can flip between the lorry and the cage inside one phase (seed 5, seat 1, before
+the rule: cage, lorry, cage, lorry in round 3). The first is a gain; the second is
+a real decision the mask cannot make for it (the lorry stays in the haul, the cage
+leaves), taken at sampling temperature 0.7.
 
 **It also closes most of the counter's edge.** The same agent against the same
 seats, 200 games, the rule off and on:
