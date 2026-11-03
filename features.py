@@ -1027,8 +1027,10 @@ def climbs_off_the_card_it_chose(ctx: PlayerActionContext) -> set[int]:
     * the card under the figure is a dragon the seat can see, so it has to step
       off before the cards turn (``own_card_is_known_dragon``, rule 1's waiting
       square);
-    * the move lands on a gem the seat can see in its own column, because a
-      scored card beats one nobody has turned over.
+    * the move lands on a gem the seat can see in its own column **and the seat is
+      not already standing on one** -- a scored card beats an unknown one and
+      beats a dynamite, but swapping a gem for a gem is a wash with a step
+      attached, which is the same drift one row at a time.
 
     Everything else is a seat walking itself towards the lorry for nothing.
     """
@@ -1043,6 +1045,7 @@ def climbs_off_the_card_it_chose(ctx: PlayerActionContext) -> set[int]:
         return set()  # already standing on an emptied cell: nothing to give up
     if own_card_is_known_dragon(ctx):
         return set()  # rule 1: step off it, wherever that is
+    already_on_a_gem = entry[0] is not None and int(entry[0]) == GEM
     doomed = set()
     for action in ctx.legal_actions:
         primitive = int(action)
@@ -1054,8 +1057,9 @@ def climbs_off_the_card_it_chose(ctx: PlayerActionContext) -> set[int]:
             and row < len(ctx.public_rows)
             and ctx.public_rows[row][column] is not None
             and ctx.public_rows[row][column][0] == GEM
+            and not already_on_a_gem
         ):
-            continue  # a gem it can see is worth the swap
+            continue  # a gem it can see is worth the swap, if it is not on one
         doomed.add(primitive)
     return doomed
 

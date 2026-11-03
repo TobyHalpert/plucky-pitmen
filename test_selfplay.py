@@ -286,7 +286,10 @@ def test_policy_net_can_learn_to_prefer_one_action():
     mask = action_mask(ctx)
     matrix = state_action_matrix(ctx)
     before = float(net.masked_probs(matrix, mask)[target])
-    for _ in range(80):
+    # The mask decides how much of the grid competes for the gradient, so this
+    # number moves whenever a masking rule changes; 200 epochs keeps the
+    # relative-gain assertion honest across that (rule 9 cut it at 80).
+    for _ in range(200):
         net.fit(fixed, epochs=1, batch_size=24, entropy_coef=0.0)
     after = float(net.masked_probs(matrix, mask)[target])
     # The head scores every action of the grid, so an absolute probability
@@ -1486,10 +1489,20 @@ def test_the_action_mask_hides_a_visible_dragon_nobody_can_punish():
     """Past the first decision of the round, the digger eats the dragon itself."""
     from features import action_mask, can_wait_on_a_dragon, doomed_dragon_digs, rival_can_push
 
+    # The seat stands on a dynamite it can see, so stepping one row up onto a gem
+    # is a gain rule 9 still allows -- that is the "another move" it needs.
+    trap = _trap_context(dragon_row=1, own_row=5, opponents=(_rival(1, 0),))
     ctx = replaced(
-        _trap_context(dragon_row=1, own_row=5, opponents=(_rival(1, 0),)),
+        trap,
         legal_actions=(1 * MAX_COLUMNS + 0, 4 * MAX_COLUMNS + 0, int(PASS)),
         private_cards=((DYNAMITE, 1), (DYNAMITE, 1)),
+        public_rows=tuple(
+            tuple(
+                (DYNAMITE, 1) if index == 5 and column == 0 else cell
+                for column, cell in enumerate(row)
+            )
+            for index, row in enumerate(trap.public_rows)
+        ),
     )
     assert not rival_can_push(ctx, 1 * MAX_COLUMNS + 0), "a rival at row 0 cannot reach row 1"
     assert not can_wait_on_a_dragon(ctx), "already planned: nothing forces anybody to move"

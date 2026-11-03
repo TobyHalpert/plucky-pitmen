@@ -582,13 +582,16 @@ any seat that has planned, so holding is always available.
 
 The shipped checkpoint did not hold. Over 40 four-net games:
 
-| | |
-| :-- | --: |
-| seat-phases measured | 1,360 |
-| phases where the seat made two or more moves | **66%** |
-| moves made after the first one | 1,326 |
-| ...of those, with a pass available (it could simply have held) | **1,326 (100%)** |
-| phases that ended with the figure on its lorry | 11% |
+| | before the rule | after |
+| :-- | --: | --: |
+| seat-phases measured | 1,360 | 1,351 |
+| phases with two or more moves | **66%** | **23%** |
+| phases with exactly one move | 33% | **75%** |
+| moves made after the first one | 1,326 (0.92 a phase) | 412 (0.28 a phase) |
+| ...of those, with a pass available (it could simply have held) | **100%** | 100% |
+| phases that ended with the figure on its lorry | 11% | **8.7%** |
+| standing on the row-0 card, then taking the **lorry** with nothing under it | 2 | 4 |
+| standing on the row-0 card, then taking the **cage** (banking or fleeing) | 298 | 211 |
 
 What the extra moves were giving up, among decisions where a pass was available
 (30 games): 217 climbed off a **dynamite** in its own column, 63 climbed off a
@@ -601,25 +604,31 @@ game** across the four seats.
 
 **Rule 9 masks it** (`climbs_off_the_card_it_chose`): a seat that has already
 planned this phase holds, unless it is stepping **off a dragon it can see** or
-**onto a gem it can see** in its own column. Same weights, same seeds, 200 paired
+**onto a gem it can see** in its own column — and the gem exception only applies
+when the seat is not already standing on one, because a gem for a gem is a wash
+with a step attached, which is the same drift one row at a time. (Without that
+second condition the rule still left 230 gem-for-gem swaps in 40 games and 37% of
+phases taking two moves; with it, 23%.) Same weights, same seeds, 200 paired
 four-net games:
 
 | | rule off | **rule on** |
 | :-- | --: | --: |
-| mean seat score | +1.734 | **+2.124** |
-| gems per haul | 2.90 | **4.64** |
-| hauls thrown away | 22% | **14%** |
-| hauls ending on a lorry | 229 | 211 |
+| mean seat score | +1.734 | **+2.175** |
+| gems per haul | 2.90 | **4.33** |
+| hauls thrown away | 22% | **12%** |
+| hauls ending on a lorry | 229 | 188 |
 
-paired **+0.390 a seat (se 0.062)**. Behaviour after the rule: 61% of phases take
-exactly one move (was 33%), 37% still take two or more — those are the visible-gem
-swaps the rule keeps — and 2% never move at all.
+paired **+0.441 a seat (se 0.065)**. What is left of the two-move phases is the
+visible-gem swap the rule keeps on purpose (a card the seat can see is a gem beats
+the one it is standing on) and the first move of the phase, which the seat has to
+make.
 
-Seed 7 under the rule (same weights): **0 / 5 / −1 / 5**, haul gems
-`[[4,3,1,3],[0,1,1,0],[2,4,2,1]]`, 30 decisions flagged for a look instead of 53.
-Haul 1 is the shape it produces: four figures holding their cards through four
-planning phases, collecting 11 gems between them, and then a dragon ends the haul
-with everybody still inside.
+Seed 7 under the rule (same weights): **3 / 3 / 1 / 4**, haul gems
+`[[3,3,1,2],[4,0,1,3],[0,1,1,1]]`, 27 decisions flagged for a look instead of 53.
+Both of the first two hauls run four planning phases with the figures holding the
+cards they chose — 9 and 8 gems collected — and both end on a dragon, which is the
+cost side of staying in: the seats that banked first keep their points (P1 and P3
+leave haul 1 with gems in hand) and the one still inside takes the −1.
 
 **A retrain under the rule changed nothing.** 20 generations from the shipped
 weights with the rule in the mask: native +2.04 a seat against +2.12 for the

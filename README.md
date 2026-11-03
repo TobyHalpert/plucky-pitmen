@@ -444,10 +444,12 @@ The full write-up, with confidence intervals and reproduction commands, is in
   the only moves left are the lorry and the cage. The shipped net made two or more
   moves in **66% of its seat-phases**, every extra one with a pass available.
   Rule 9 (`climbs_off_the_card_it_chose`) holds unless the seat is stepping off a
-  dragon it can see or onto a gem it can see: **+0.390 a seat (se 0.062)** over 200
-  paired games with the weights unchanged, gems per haul 2.90 → 4.64, thrown-away
-  hauls 22% → 14%. Retraining under the rule changed nothing (−0.06, se 0.17), and
-  it drops the `counter` bot's edge from +3.21 to +2.02 a game. BALANCE.md,
+  dragon it can see or onto a gem it can see (and not when it is standing on one
+  already): **+0.441 a seat (se 0.065)** over 200 paired games with the weights
+  unchanged, gems per haul 2.90 → 4.33, thrown-away hauls 22% → 12%, two-move
+  phases 66% → 23%, phases ending on the lorry 11% → 8.7%. Retraining under the
+  earlier, looser version of the rule changed nothing (−0.06, se 0.17), and it
+  drops the `counter` bot's edge from +3.21 to +2.02 a game. BALANCE.md,
   "The card you are standing on".
 * **The planning clock is in the input, and the push is still declined.** A push
   only puts a rival out of the haul if the phase closes before that rival's next
