@@ -261,7 +261,7 @@ uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
 | module | purpose |
 | :-- | :-- |
 | `features.py` | fixed-size, seat-invariant state + action features; no hidden information |
-| `agents.py` | `Agent` interface, scripted baselines (incl. `rusher`, `leaver`, `threat`, and `reader` — `rule` without the "a quiet rival means a safe card" inference), `NeuralAgent` |
+| `agents.py` | `Agent` interface, scripted baselines (incl. `rusher`, `leaver`, `threat`, `reader` — `rule` without the "a quiet rival means a safe card" inference — and `counter`, the deterministic seat that farms the trained net), `NeuralAgent` |
 | `learning.py` | masked-softmax MLP policy + value baseline, REINFORCE, Adam, save/load |
 | `selfplay.py` | full-game driver: every seat controlled, blasts, tie-breaks, per-player returns |
 | `train_selfplay.py` | league self-play trainer with checkpoints and a learning curve |
@@ -428,6 +428,16 @@ The full write-up, with confidence intervals and reproduction commands, is in
   0.00, and re-rolled 200 times it ended on a dragon 1% of the time. The
   correction is strength-neutral (+0.03 points, se 0.09, against the checkpoint
   it replaces) and the escape rule costs nothing measurable with it.
+* **A forty-line deterministic seat beats the trained net by 2.8 points a game.**
+  `agents.CounterAgent` — never pushes, never takes a card it has not seen the
+  front of, banks two gems — takes **+3.94 a seat against the nets' +1.16** and wins
+  57% of games outright, in all four seats. The two tells it was built around are
+  worth less than the habit that does the work: not displacing is worth **+0.10**,
+  the dragon read **+0.20** in the variant that raids and **0.00** in the shipped
+  one, and plain early banking is the whole margin — `leaver` gets +2.96 without
+  reading anything. The field it farms dies 0.41 times a seat-haul and loses 60% of
+  hauls to dragons; the cage bar that stopped the table leaving for no reason also
+  made it **0.44 points easier to farm**. BALANCE.md, "The counter".
 * **The planning clock is in the input, and the push is still declined.** A push
   only puts a rival out of the haul if the phase closes before that rival's next
   turn, and whether it can is decided by how many passes are left and which

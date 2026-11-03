@@ -571,6 +571,90 @@ distinction rather than indifferent to it. Teaching it is a training question �
 scripted pusher in the league, so the population both exercises the push and
 punishes the seats that park in front of it — not a mask rule.
 
+### The counter: a deterministic seat that farms this field
+
+`agents.CounterAgent` (policy name `counter`) is forty lines of rules, no dice and
+no hidden information — it reads only `PlayerActionContext`, exactly like every
+other agent, so it cannot see a card the seat it plays could not see. It exists to
+answer a plain question: given everything measured above, how much is the trained
+net worth to an opponent who plans around it?
+
+What it does:
+
+* **never displaces** — pushes are worth −0.30 and the nets take 1 in 2,000, so
+  there is nothing to defend against and nothing to gain;
+* **never takes a card it has not seen the front of** — a seat sees its own column,
+  so it digs only there, and a card in another column (or one drawn blind) is a
+  1-in-3 dragon it simply never risks;
+* **reads the empty-handed exit** — a seat is only allowed to leave with nothing in
+  hand to answer a charged blast or a dragon it can see under itself, so a rival
+  that exits with an empty hand has named the card it was standing on. That cell
+  goes on a never-step-here list for the haul;
+* **banks** — two gems, or one gem with an escape that costs nothing, and it is
+  out, because a banked gem is scored and a gem in a dead hand is not.
+
+**It wins, and comfortably.** One counter against three copies of the shipped
+checkpoint — 300 games per seat on seeds 3000–3299, the counter in one chair and
+three copies of the checkpoint in the others:
+
+| the counter in | the counter | the three nets | margin | outright wins |
+| :-- | --: | --: | --: | --: |
+| seat 0 | +4.55 | +0.83 | +3.72 (se 0.20) | 66% |
+| seat 1 | +4.10 | +1.15 | +2.95 (se 0.20) | 56% |
+| seat 2 | +4.37 | +1.00 | +3.37 (se 0.19) | 61% |
+| seat 3 | +3.88 | +1.16 | +2.71 (se 0.21) | 53% |
+
+and on a second, disjoint block (seeds 4000–4299, seat 0 only) the same shape:
+**+3.94 against +1.16, margin +2.77 (se 0.20), 57% outright wins.**
+
+Four counters in four seats is a quiet game: **0% of hauls end on a dragon**,
++1.97 a seat, 5.88 gems a haul — the "never dig blind" rule is what makes it safe,
+and it is the same rule that makes it dull to watch it play itself.
+
+**What each tell is actually worth** (300 games, seeds 4000–4299):
+
+| arm | its score | the nets | margin | wins |
+| :-- | --: | --: | --: | --: |
+| the counter as shipped | +3.94 | +1.16 | **+2.77 (se 0.20)** | 57% |
+| ... without the dragon tell | +3.94 | +1.16 | +2.77 | 57% |
+| ... raiding instead of safe digs | +3.49 | +1.08 | +2.40 | 54% |
+| ... raiding, without the tell | +3.32 | +1.13 | +2.20 | 52% |
+| ... banking at one gem | +3.70 | +1.22 | +2.48 | 54% |
+| ... allowed to push | +3.92 | +1.04 | +2.87 | 58% |
+| `leaver` (one gem, then out) | +3.96 | +0.99 | +2.96 | 58% |
+| `rule` bot | +0.87 | +1.29 | −0.41 | 23% |
+
+Read honestly, that table says something other than "the tells are the exploit":
+
+* **Not displacing is worth nothing to the opponent.** Turning pushes on changes
+  the margin by +0.10 (se 0.12) — the counter barely ever has one on offer, and
+  taking it is worth -0.30. What the absence of pushes *does* buy is that a seat can
+  park in its own column without fear, which this bot does not need.
+* **The dragon tell is worth +0.20** in the variant that raids (2.40 → 2.20 without
+  it) and **exactly nothing** in the shipped one, because a seat that only digs
+  cards it has seen never meets the risk the tell is about. Staying out of the dark
+  is a better use of the same information than reading it.
+* **The lever is banking early.** Every early-banking arm beats the nets by 2.4–3.0
+  points a seat, including `leaver`, which is thirty lines and reads nothing at all.
+
+**Why the field is farmable, in one number:** with four nets at the table, **60% of
+hauls end on a dragon** and a net seat dies **0.41 times per haul**; the counter,
+sitting on cards it has seen, dies to blasts only. A haul that ends on a dragon pays
+the seats that already left and voids the loot of the seats still inside, so the
+bonus goes to whoever banked first. That is not a bug in the nets — it is the trade
+this file recorded when the cage bar moved: fewer thrown hauls, more dragons, mean
+seat score +1.67 → +1.39. Repeated against this opponent, the same trade reads:
+
+| cage bar (mask only, same weights) | counter's margin | dragon hauls |
+| :-- | --: | --: |
+| 0.45 (shipped) | **+2.91 (se 0.24)** | 51% |
+| 0.15 (before the fix) | +2.47 (se 0.21) | 38% |
+
+So the fix that stops the table leaving for no reason also made it **0.44 points a
+game easier to farm** by an opponent that banks. Both statements are true and both
+belong here: the rule is right for the game the user wanted, and it hands a
+deterministic opponent a bigger edge.
+
 #### One gem in hand is not a reason to leave either
 
 The escape rule said: with loot in hand, leave when the hazard is above

@@ -1556,3 +1556,184 @@ def test_the_action_mask_stays_legal_when_every_move_is_a_dragon():
     )
     mask = action_mask(ctx)
     assert mask[1 * MAX_COLUMNS + 0], "the mask must never be empty"
+
+
+def _counter_context(rows, *, legal, own_position=2, private=(), opponents=(), haul=1):
+    """A 4-seat context for the counter agent, built from ``{(row, col): cell}``."""
+    from game_env import PlayerActionContext
+
+    grid = []
+    for row in range(4):
+        grid.append(tuple(rows.get((row, column)) for column in range(4)))
+    return PlayerActionContext(
+        player_index=0,
+        legal_actions=tuple(legal),
+        public_rows=tuple(grid),
+        private_cards=tuple(private),
+        own_blast_cards=(),
+        own_score=0,
+        own_position=own_position,
+        own_column=0,
+        own_cage_index=None,
+        own_blast_pending=False,
+        opponents=tuple(opponents),
+        used_blast_backsides=(),
+        haul=haul,
+        round=0,
+        starting_player=0,
+        n_players=4,
+        cards_remaining_in_deck=10,
+        displacement_events=(),
+        tie_breaker_contenders=(),
+    )
+
+
+def _counter_rival(index, position, column, *, escaped=False, cards=0):
+    from game_env import OpponentPublicView
+
+    return OpponentPublicView(
+        player_index=index,
+        position=position,
+        column=column,
+        cage_index=None,
+        escaped=escaped,
+        dead=False,
+        score=0,
+        collected_backsides=(),
+        card_count=cards,
+        blast_pending=False,
+    )
+
+
+def test_the_counter_never_pushes_even_when_a_push_is_the_only_card():
+    """Displacement is worth -0.30 points, so the counter declines it (BALANCE.md)."""
+    from agents import CounterAgent
+
+    # A rival sits on a card in its own column, two rows shallower than us, so
+    # stepping onto it would displace it into the cage.
+    rival = _counter_rival(1, 0, 1)
+    ctx = _counter_context(
+        {(0, 1): (None, 0)}, legal=(1, int(PASS)), own_position=2, opponents=(rival,)
+    )
+    assert CounterAgent().act(ctx) != 1
+    # ... unless it is asked to, which is how the price was measured.
+    assert CounterAgent(allow_push=True).act(ctx) == 1
+
+
+def test_the_counter_reads_an_empty_handed_exit_as_a_dragon():
+    """A seat only leaves with an empty hand to answer a dragon it can see.
+
+    That is the tell: the card it was standing on is a dragon, so the counter
+    never steps on it. The card itself is never revealed to anybody.
+    """
+    from agents import CounterAgent
+
+    agent = CounterAgent()
+    rival = _counter_rival(1, 0, 1)
+    first = _counter_context(
+        {(0, 1): (None, 0), (1, 0): (None, 2)},
+        legal=(1 * MAX_COLUMNS + 0,), own_position=3, opponents=(rival,),
+    )
+    agent.act(first)
+    # Next sighting: the same seat is out of the mine and its hand did not grow.
+    gone = _counter_rival(1, PIT_CAGE, None, escaped=True, cards=0)
+    second = _counter_context(
+        {(0, 1): (None, 0), (1, 0): (None, 2)},
+        legal=(1 * MAX_COLUMNS + 0,), own_position=3, opponents=(gone,), haul=1,
+    )
+    agent.act(second)
+    assert (1, 0, 1) in agent.dragon_cells
+    # And it refuses that cell afterwards, even as the only card on offer.
+    only = _counter_context(
+        {(0, 1): (None, 0)}, legal=(1, int(PASS)), own_position=1, opponents=(rival,)
+    )
+    assert agent.act(only) != 1
+
+
+def test_the_counter_does_not_take_a_card_it_has_not_seen():
+    """Own-column fronts are visible; another column's are not. Only dig the first."""
+    from agents import CounterAgent
+
+    # Own column: a gem one row up. Another column: a free face-down card.
+    ctx = _counter_context(
+        {(0, 0): (GEM, 0), (1, 1): (None, 2)},
+        legal=(0 * MAX_COLUMNS + 0, 1 * MAX_COLUMNS + 1, int(PIT_CAGE)),
+        own_position=2,
+    )
+    assert CounterAgent().act(ctx) == 0 * MAX_COLUMNS + 0
+
+    # Nothing known reachable, one unknown card and the cage: bank, do not dig.
+    unknown_only = _counter_context(
+        {(1, 1): (None, 2)},
+        legal=(1 * MAX_COLUMNS + 1, int(PIT_CAGE)),
+        own_position=2,
+        private=((GEM, 0),),
+    )
+    assert CounterAgent().act(unknown_only) == int(PIT_CAGE)
+
+
+def test_the_counter_banks_two_gems_and_hands_the_nets_a_losing_table():
+    """The measured exploit, as pinned by the numbers in BALANCE.md.
+
+    One counter against three copies of the shipped checkpoint wins about 56% of
+    games outright and takes +4.1 points a seat against their +1.1. The test uses
+    a short slice, and both sides are deterministic on the seed, so it is a
+    regression guard rather than a sample.
+    """
+    from agents import CounterAgent, NeuralAgent
+    from gui_controller import resolve_checkpoint
+    from learning import PolicyNet
+
+    net = PolicyNet.load(resolve_checkpoint("neural:selfplay4"))
+    margins = []
+    for seed in range(40):
+        agents = [CounterAgent()] + [
+            NeuralAgent(net, seed=seed * 31 + seat, temperature=0.7)
+            for seat in (1, 2, 3)
+        ]
+        scores = play_game(agents, seed=seed).scores
+        margins.append(scores[0] - float(np.mean(scores[1:])))
+    assert float(np.mean(margins)) > 1.5
+
+
+def test_the_counter_is_deterministic_and_never_displaces():
+    """No dice, and not one displacement in a whole game of them.
+
+    The counter has no random source at all, so the same seed must replay
+    exactly; and because it never pushes, four counters in four seats produce a
+    game with no displacement in it. That is the shared tell this agent is built
+    on: the seats it plays against do not displace either.
+    """
+    from agents import CounterAgent, NeuralAgent
+    from gui_controller import resolve_checkpoint
+    from learning import PolicyNet
+
+    net = PolicyNet.load(resolve_checkpoint("neural:selfplay4"))
+
+    def seats():
+        return [CounterAgent()] + [
+            NeuralAgent(net, seed=5 + i, temperature=0.7) for i in (1, 2, 3)
+        ]
+
+    assert play_game(seats(), seed=91).scores == play_game(seats(), seed=91).scores
+
+    seen: list[tuple[int, object]] = []
+
+    class Recording(CounterAgent):
+        def decide(self, ctx):
+            choice = super().decide(ctx)
+            seen.append((int(choice.action), ctx))
+            return choice
+
+    def is_push(action: int, ctx) -> bool:
+        if not 0 <= action < PIT_CAGE:
+            return False
+        row, column = divmod(action, MAX_COLUMNS)
+        return any(
+            not (o.escaped or o.dead) and o.column == column and o.position == row
+            for o in ctx.opponents
+        )
+
+    play_game([Recording() for _ in range(4)], seed=12)
+    assert seen
+    assert not any(is_push(action, ctx) for action, ctx in seen)

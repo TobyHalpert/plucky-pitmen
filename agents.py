@@ -33,7 +33,7 @@ from game_env import (
     PIT_CAGE,
     PlayerActionContext,
 )
-from features import backside_stats, split_action
+from features import backside_stats, round_dragon_hazard, split_action
 
 
 @dataclass(frozen=True)
@@ -407,6 +407,265 @@ class ThreatAgent(Agent):
         return preferred_blast_choice(cards, ctx)
 
 
+class CounterAgent(Agent):
+    """A deterministic seat built to beat the learned nets on their own tells.
+
+    Three measured facts about the shipped checkpoint, all in BALANCE.md:
+
+    * **It never displaces.** 1 push taken out of 1,953 offered, and the pushes
+      it declines are worth -0.30 points. So a seat can stand on a card in its
+      own column with a rival deeper in the mine and never be pushed off it, and
+      there is nothing to gain by pushing back. This agent never pushes.
+    * **It always signals a dragon.** The escape rule gives a seat two reasons
+      to take a cage with an empty hand: a charged blast, or a dragon it can see
+      under itself. A net that leaves the mine having collected nothing and with
+      no blast in the table's hand has therefore told the table exactly which
+      card it was standing on, and that card is a dragon. That is the tell this
+      agent reads: a rival's empty-handed exit marks its last cell as a dragon,
+      which is a cell never to step on.
+    * **It hands the haul over.** The nets escape 8.6 times a game and throw
+      away 30% of the hauls (three or more seats out with two gems or fewer
+      between them). The bonus goes to the escapee with the most gems, so a seat
+      that stays, collects, and leaves with a hand beats a table that leaves
+      early with one gem each.
+
+    So the policy is deliberately the opposite of the net's: dig until the loot
+    is worth banking, bank it when a blast is charged or the mine is genuinely
+    dangerous, and never spend a round on the lorry, a push, or an exit that
+    banks nothing.
+    """
+
+    name = "counter"
+
+    def __init__(
+        self,
+        bank_gems: int = 2,
+        hazard_bar: float = 0.45,
+        read_signals: bool = True,
+        allow_push: bool = False,
+        bank_on_sight: bool = True,
+        safe_only: bool = True,
+    ) -> None:
+        self.bank_gems = int(bank_gems)
+        self.hazard_bar = float(hazard_bar)
+        #: Leave as soon as ``bank_gems`` are in hand, whatever the hazard. A
+        #: banked gem is scored; a gem carried into a woken dragon is not.
+        self.bank_on_sight = bool(bank_on_sight)
+        #: Only ever stand on a card this seat has seen the front of (its own
+        #: column). A card nobody can see is a one-in-three dragon, and a seat
+        #: that never takes one is never killed by a card.
+        self.safe_only = bool(safe_only)
+        #: Read a rival's empty-handed exit as "the card under it was a dragon".
+        self.read_signals = bool(read_signals)
+        #: Take a displacement when one is on offer. Off by default: a push is
+        #: worth -0.30 points to the seat that makes it (BALANCE.md).
+        self.allow_push = bool(allow_push)
+        #: rival -> (haul, row, column, cards held) at its last sighting.
+        self._seen: dict[int, tuple[int, int, int, int]] = {}
+        #: cells this agent has read as dragons, as (haul, row, column).
+        self.dragon_cells: set[tuple[int, int, int]] = set()
+        self._haul = -1
+
+    # -- the tell ------------------------------------------------------
+    def _observe(self, ctx: PlayerActionContext) -> None:
+        if ctx.haul != self._haul:
+            self._haul = int(ctx.haul)
+            self._seen.clear()
+        blast = ctx.own_blast_pending or any(
+            opponent.blast_pending for opponent in ctx.opponents
+        )
+        for opponent in ctx.opponents:
+            previous = self._seen.get(opponent.player_index)
+            if (
+                previous is not None
+                and self.read_signals
+                and opponent.escaped
+                and not blast
+                and previous[3] == opponent.card_count
+            ):
+                # It left the mine with an empty hand and nothing to run from
+                # but the card it stood on.
+                self.dragon_cells.add((previous[0], previous[1], previous[2]))
+            if (
+                not (opponent.escaped or opponent.dead)
+                and 0 <= opponent.position < PIT_CAGE
+                and opponent.column is not None
+            ):
+                self._seen[opponent.player_index] = (
+                    int(ctx.haul),
+                    int(opponent.position),
+                    int(opponent.column),
+                    int(opponent.card_count),
+                )
+
+    def _known_dragon_cells(self, ctx: PlayerActionContext) -> set[tuple[int, int]]:
+        return {
+            (row, column)
+            for haul, row, column in self.dragon_cells
+            if haul == ctx.haul
+        }
+
+    # -- helpers -------------------------------------------------------
+    @staticmethod
+    def _gems(ctx: PlayerActionContext) -> int:
+        return sum(1 for front, _ in ctx.private_cards if front == GEM)
+
+    @staticmethod
+    def _occupied(ctx: PlayerActionContext) -> set[tuple[int, int]]:
+        return {
+            (opponent.position, opponent.column)
+            for opponent in ctx.opponents
+            if not (opponent.escaped or opponent.dead) and opponent.column is not None
+        }
+
+    @staticmethod
+    def _alone(ctx: PlayerActionContext) -> bool:
+        return all(
+            opponent.escaped or opponent.dead for opponent in ctx.opponents
+        )
+
+    def _own_cells(self, ctx: PlayerActionContext, legal: list[int]):
+        """Legal free cards in this seat's own column, with what is known of them."""
+        out = []
+        for action in legal:
+            row, column = divmod(action, MAX_COLUMNS)
+            if column != ctx.player_index or row >= len(ctx.public_rows):
+                continue
+            entry = ctx.public_rows[row][column]
+            front = None if entry is None else entry[0]
+            back = None if entry is None else int(entry[1])
+            out.append((row, int(action), front, back))
+        return out
+
+    # -- the decision --------------------------------------------------
+    def act(self, ctx: PlayerActionContext) -> int:
+        self._observe(ctx)
+        legal = [int(a) for a in ctx.legal_actions]
+        if not legal:
+            return int(PASS)
+        legal_set = set(legal)
+        gems = self._gems(ctx)
+        known = self._known_dragon_cells(ctx)
+        occupied = self._occupied(ctx)
+        blast = ctx.own_blast_pending or any(
+            opponent.blast_pending for opponent in ctx.opponents
+        )
+
+        # Already out of the mine (in a cage): the departure is the decision.
+        if ctx.own_position == PIT_CAGE:
+            if PASS in legal_set:
+                return int(PASS)
+            return int(LORRY) if LORRY in legal_set else legal[0]
+
+        # Bank it when something can take the hand away.
+        if PIT_CAGE in legal_set and gems >= 1 and blast:
+            return int(PIT_CAGE)
+        if (
+            PIT_CAGE in legal_set
+            and gems >= self.bank_gems
+            and self.bank_on_sight
+        ):
+            return int(PIT_CAGE)
+        if (
+            PIT_CAGE in legal_set
+            and gems >= self.bank_gems
+            and round_dragon_hazard(ctx) >= self.hazard_bar
+        ):
+            return int(PIT_CAGE)
+        # Alone in the mine and holding loot: leave before the mine ends, or the
+        # hand is never scored.
+        if PIT_CAGE in legal_set and gems >= 1 and self._alone(ctx):
+            return int(PIT_CAGE)
+
+        own = self._own_cells(ctx, legal)
+        on_dragon = (
+            ctx.own_column == ctx.player_index
+            and ctx.own_position >= 0
+            and ctx.own_position < len(ctx.public_rows)
+            and ctx.public_rows[ctx.own_position][ctx.player_index] is not None
+            and ctx.public_rows[ctx.own_position][ctx.player_index][0] == DRAGON
+        )
+        if on_dragon:
+            # Nothing to be gained by sitting on it: step onto anything in the
+            # own column that cannot be a dragon, deepest gem first.
+            safe = [
+                (row, action, front)
+                for row, action, front, _back in own
+                if front is not None and front != DRAGON
+            ]
+            safe.sort(key=lambda item: (item[2] != GEM, -item[0]))
+            if safe:
+                return safe[0][1]
+            if PIT_CAGE in legal_set and gems >= 1:
+                return int(PIT_CAGE)
+            if LORRY in legal_set:
+                return int(LORRY)
+            if PASS in legal_set:
+                return int(PASS)
+
+        # The figure is where it should be for this round: let the phase close.
+        if ctx.own_planned and PASS in legal_set:
+            return int(PASS)
+
+        # Dig. Own column first (the fronts are known and a dragon there is
+        # free information), then a raid on an unoccupied card the table has
+        # not signalled as a dragon.
+        known_gems = [
+            (row, action) for row, action, front, _b in own if front == GEM
+        ]
+        if known_gems:
+            return max(known_gems)[1]
+        free_own = [
+            (row, action)
+            for row, action, front, _b in own
+            if front is None and (row, ctx.player_index) not in known
+        ] if not self.safe_only else []
+        if free_own:
+            return max(free_own)[1]
+        own_dynamite = [
+            (row, action) for row, action, front, _b in own if front == DYNAMITE
+        ]
+        if own_dynamite and not ctx.private_cards:
+            return max(own_dynamite)[1]
+
+        try:
+            from features import backside_stats
+
+            _known, _safe, _unknown, risk = backside_stats(ctx)
+        except Exception:  # pragma: no cover - defensive
+            risk = None
+        raids = []
+        for action in legal:
+            row, column = divmod(action, MAX_COLUMNS)
+            if column == ctx.player_index or row >= len(ctx.public_rows):
+                continue
+            if (row, column) in known:
+                continue
+            entry = ctx.public_rows[row][column]
+            if (row, column) in occupied:
+                # A push. Only when asked for: it is worth -0.30 points, and the
+                # branch it pays best (the victim answering with the lorry) is
+                # cancelled by the branch where the phase closes early.
+                if self.allow_push:
+                    raids.append((-1.0, -row, action))
+                continue
+            if self.safe_only or entry is None:
+                continue  # a card nobody has seen the front of is a 1-in-3 dragon
+            back = int(entry[1])
+            score = -float(risk[back]) if risk is not None else 0.0
+            raids.append((score, -row, action))
+        if raids:
+            return max(raids)[2]
+
+        if PIT_CAGE in legal_set and gems >= 1:
+            return int(PIT_CAGE)
+        if PASS in legal_set:
+            return int(PASS)
+        if LORRY in legal_set:
+            return int(LORRY)
+        return legal[0]
+
+
 def visible_dragon_ahead(ctx: PlayerActionContext) -> tuple[int, int] | None:
     """A dragon the player can see in its own column, if it can still be forced onto it.
 
@@ -545,6 +804,7 @@ SCRIPTED = (
     "rusher",
     "leaver",
     "threat",
+    "counter",
 )
 
 
@@ -567,6 +827,8 @@ def make_scripted_agent(
         return LeaverAgent()
     if policy == "threat":
         return ThreatAgent(blast=blast)
+    if policy == "counter":
+        return CounterAgent()
     raise ValueError(f"unknown scripted agent: {policy}")
 
 
@@ -574,6 +836,7 @@ __all__ = [
     "ActionChoice",
     "Agent",
     "CautiousAgent",
+    "CounterAgent",
     "GreedyAgent",
     "NeuralAgent",
     "RandomAgent",
