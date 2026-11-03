@@ -571,6 +571,41 @@ distinction rather than indifferent to it. Teaching it is a training question �
 scripted pusher in the league, so the population both exercises the push and
 punishes the seats that park in front of it — not a mask rule.
 
+### The lorry and the cage are one decision
+
+Rule 8 read the lorry/cage pair from the cage: a seat shoved into a cage whose
+escape banks nothing is put on the lorry instead, because a departure that banks
+nothing throws the haul away. The pair was never read from the **lorry**, and that
+is a livelock.
+
+From the lorry a seat standing next to a cage it would refuse can step back in.
+The mask then refuses the escape and puts it back on the lorry. Neither move is a
+pass, so `consecutive_passes` is reset to zero by both, the round never reaches the
+threshold that closes it, and every other seat is asked to decide again. A seat that
+has *not* planned this phase — it was displaced into the cage before its turn —
+cannot pass at all, so it has no way out: the phase can only end on the hang
+breaker.
+
+Measured on the shipped checkpoint, 200 four-net games:
+
+| | before | **after** |
+| :-- | --: | --: |
+| decisions per game | **820** | **113** |
+| worst game | never finished (capped at 4,000) | 285 |
+| games that finished | **181 / 200** | **200 / 200** |
+| decisions per planning phase | 16.1 | **3.1** |
+| worst single phase | 353 | 14 |
+| lorry-then-cage in one phase | 299 (60 games) | 69 |
+| mean seat score | +1.962 | **+2.175** |
+
+paired **+0.212 a seat (se 0.053)**. Nineteen of two hundred games were not
+finishing at all; the rule is the fix for both the loop and the score.
+
+This is what the viewer was showing: a figure that keeps moving forward because it
+keeps being asked, not because it wants to. The green line above is the honest
+version of the complaint — a planning phase should cost about one decision per
+seat, plus the corrections the table forces on each other.
+
 ### The card you are standing on
 
 A seat scores the card **under its figure when the planning phase closes**, and a
@@ -623,7 +658,7 @@ visible-gem swap the rule keeps on purpose (a card the seat can see is a gem bea
 the one it is standing on) and the first move of the phase, which the seat has to
 make.
 
-Seed 7 under the rule (same weights): **3 / 3 / 1 / 4**, haul gems
+Seed 7 under rule 9 and the lorry/cage pairing (same weights): **3 / 3 / 1 / 4**, haul gems
 `[[3,3,1,2],[4,0,1,3],[0,1,1,1]]`, 27 decisions flagged for a look instead of 53.
 Both of the first two hauls run four planning phases with the figures holding the
 cards they chose — 9 and 8 gems collected — and both end on a dragon, which is the
@@ -640,12 +675,9 @@ rewarded for holding, because every extra dig is scored by the shaping term whil
 the card it forfeits never appears as a cost. Both files
 (`checkpoints/selfplay4_stay.npz`, `selfplay4_stay2.npz`) are **not shipped**.
 
-Two smaller pieces of dithering are left in and are deliberate for now: a seat
-still swaps onto a gem it can see when it is not already standing on one, and it
-can flip between the lorry and the cage inside one phase (seed 5, seat 1, before
-the rule: cage, lorry, cage, lorry in round 3). The first is a gain; the second is
-a real decision the mask cannot make for it (the lorry stays in the haul, the cage
-leaves), taken at sampling temperature 0.7.
+What is left of dithering is a seat swapping onto a gem it can see when it is not
+already standing on one, which is a gain. The lorry/cage flip seen in seed 5 is
+fixed by the lorry-side pairing below.
 
 **It also closes most of the counter's edge.** The same agent against the same
 seats, 200 games, the rule off and on:

@@ -1875,3 +1875,104 @@ def test_the_table_holds_its_card_and_collects_more_for_it():
         off.append(float(np.mean([p.score for p in env.players])))
     features.action_mask = real
     assert float(np.mean(on)) > float(np.mean(off))
+
+
+def test_a_seat_on_the_lorry_cannot_re_enter_a_cage_it_just_refused():
+    """The livelock: lorry -> cage -> lorry -> cage, forever.
+
+    From a cage, an escape that banks nothing is refused and the seat stays in the
+    haul on the lorry (rule 8). From the lorry with no gems banked and nothing
+    threatening, going back into the cage is that same escape, so the mask pushes
+    the figure straight out again -- and because neither the lorry nor the cage is
+    a pass, `consecutive_passes` never reaches the threshold and the planning
+    phase cannot close. A seat that has not planned yet (it was displaced) cannot
+    pass at all, so it has no other legal move: the round only ends on the hang
+    breaker.
+
+    Measured on the shipped checkpoint before the fix: 19 of 200 four-net games
+    never finished inside 4,000 decisions, and a normal game cost 820 decisions
+    against 113 after (BALANCE.md, "The lorry and the cage are one decision").
+    """
+    import features
+    from features import action_mask
+    from game_env import LORRY, PlayerActionContext
+
+    def on_the_lorry(*, gems, blast=False):
+        from game_env import OpponentPublicView
+
+        rivals = tuple(
+            OpponentPublicView(
+                player_index=index,
+                position=4,
+                column=index,
+                cage_index=None,
+                escaped=False,
+                dead=False,
+                score=0,
+                collected_backsides=(),
+                card_count=0,
+                blast_pending=blast and index == 1,
+            )
+            for index in (1, 2, 3)
+        )
+        return PlayerActionContext(
+            player_index=0,
+            legal_actions=(int(PIT_CAGE), int(PASS)),
+            public_rows=tuple(tuple((None, 0) for _ in range(4)) for _ in range(5)),
+            private_cards=tuple((GEM, 0) for _ in range(gems)),
+            own_blast_cards=(),
+            own_score=0,
+            own_position=LORRY,
+            own_column=None,
+            own_cage_index=None,
+            own_blast_pending=False,
+            opponents=rivals,
+            used_blast_backsides=(),
+            haul=2,
+            round=1,
+            starting_player=0,
+            n_players=4,
+            cards_remaining_in_deck=10,
+            displacement_events=(),
+            tie_breaker_contenders=(),
+            consecutive_passes=0,
+            passes_to_close=3,
+            own_planned=True,
+        )
+
+    # Loot in hand but nothing to run from: the cage is refused, the seat holds.
+    quiet = on_the_lorry(gems=2)
+    assert features.cage_banks_nothing(quiet)
+    mask = action_mask(quiet)
+    assert not mask[int(PIT_CAGE)]
+    assert mask[int(PASS)]
+
+    # A charged blast is a reason to leave, so the cage comes back and the
+    # escape is taken (rule 8 then drops the pass, keeping the lorry).
+    threatened = on_the_lorry(gems=2, blast=True)
+    assert not features.cage_banks_nothing(threatened)
+    assert action_mask(threatened)[int(PIT_CAGE)]
+
+
+def test_a_four_net_game_finishes_promptly_and_no_phase_livelocks():
+    """Regression guard on the loop itself: bounded decisions, every game over."""
+    from collections import Counter
+    from gui_controller import GameController, resolve_checkpoint
+    from learning import PolicyNet
+
+    net = PolicyNet.load(resolve_checkpoint("neural:selfplay4"))
+    slowest = 0
+    for seed in range(6):
+        ctl = GameController(3, "neural:selfplay4", seed)
+        ctl.reset(3, "neural:selfplay4", seed, all_seats=True, advance=False)
+        ctl.agents = [
+            NeuralAgent(net, seed=seed * 31 + i, temperature=0.7) for i in range(4)
+        ]
+        env, decisions = ctl.env, 0
+        while not env.game_finished and decisions < 1200:
+            decisions += 1
+            ctl.step_one_player_auto()
+        assert env.game_finished, f"seed {seed} did not finish in {decisions} decisions"
+        slowest = max(slowest, decisions)
+    # Before the fix a normal game cost ~820 decisions and a stuck one never ended.
+    assert slowest < 400
