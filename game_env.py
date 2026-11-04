@@ -66,15 +66,11 @@ LORRY_REWARD = -0.05
 # the old behaviour (BALANCE.md prices it).
 LORRY_COMMITS_THE_SEAT = True
 
-# Where a displaced figure goes. The printed rule (README, planning phase) is
-# "the player moves the opponent to the nearest pit cage in the direction of the
-# lorries", i.e. the victim leaves the mine at the execution phase and banks
-# whatever it has collected. The variant steps the victim onto the next card
-# towards the lorries instead -- or onto its lorry if it was standing on the last
-# card -- so a push steals a rival's depth without handing it a safe exit. See
-# BALANCE.md, "Should a push send the victim to the next card?", for what each
-# rule is worth.
-DISPLACEMENT_STEPS_TO_THE_NEXT_CARD = False
+# Current displacement rule: move the victim to the next free card in its own
+# column towards the lorries (or its lorry if none remains). It keeps its loot
+# and its next planning decision, but receives no free pit-cage shelter.
+# Set False only to reproduce the former printed pit-cage rule.
+DISPLACEMENT_STEPS_TO_THE_NEXT_CARD = True
 
 
 @dataclass(frozen=True)
@@ -899,7 +895,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                 self.players[occupant].cage_index = None
                 if landing is None:
                     # It was standing on the last card: the lorry is next, which
-                    # ends its planning phase without taking it out of the haul.
+                    # commits it to the exit area, but does not remove its next decision.
                     self.players[occupant].position = LORRY
                     self.players[occupant].column = None
                     self.lorry_touched[occupant] = True

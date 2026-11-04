@@ -1774,19 +1774,22 @@ def test_the_counter_does_not_take_a_card_it_has_not_seen():
     assert CounterAgent().act(unknown_only) == int(PIT_CAGE)
 
 
-def test_the_counter_banks_two_gems_and_hands_the_nets_a_losing_table():
+def test_the_counter_banks_two_gems_and_hands_the_nets_a_losing_table(monkeypatch):
     """The measured exploit, as pinned by the numbers in BALANCE.md.
 
-    One counter against three copies of the shipped checkpoint wins about 56% of
+    One counter against three copies of the historical pit-cage checkpoint wins about 56% of
     games outright and takes +4.1 points a seat against their +1.1. The test uses
     a short slice, and both sides are deterministic on the seed, so it is a
     regression guard rather than a sample.
     """
+    import game_env
+
+    monkeypatch.setattr(game_env, "DISPLACEMENT_STEPS_TO_THE_NEXT_CARD", False)
     from agents import CounterAgent, NeuralAgent
     from gui_controller import resolve_checkpoint
     from learning import PolicyNet
 
-    net = PolicyNet.load(resolve_checkpoint("neural:selfplay4"))
+    net = PolicyNet.load(resolve_checkpoint("neural:selfplay4_pitcage"))
     margins = []
     for seed in range(40):
         agents = [CounterAgent()] + [
@@ -2067,13 +2070,16 @@ def test_a_four_net_game_finishes_promptly():
     assert slowest < 400
 
 
-def test_a_push_sends_the_victim_to_a_cage_with_every_card_it_collected():
+def test_a_push_sends_the_victim_to_a_cage_with_every_card_it_collected(monkeypatch):
     """The rule that makes "displace them and take their loot" impossible.
 
     A displaced figure goes to the nearest pit cage, where it leaves the haul and
     keeps every card it has collected -- the push costs it its round, never its
     hand. What the pusher gets is the one card under it, face down.
     """
+    import game_env
+
+    monkeypatch.setattr(game_env, "DISPLACEMENT_STEPS_TO_THE_NEXT_CARD", False)
     from game_env import BACKSIDE_A, BACKSIDE_B, GEM, PIT_CAGE
 
     env = MineEnv(opponents=2)

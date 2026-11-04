@@ -357,7 +357,10 @@ def test_woken_dragon_kills_everyone_still_in_the_mine():
     assert all(player.dead for player in env.players)
 
 
-def test_player_can_displace_occupant_in_that_players_own_column():
+def test_player_can_displace_occupant_in_that_players_own_column(monkeypatch):
+    import game_env
+
+    monkeypatch.setattr(game_env, "DISPLACEMENT_STEPS_TO_THE_NEXT_CARD", False)
     env = MineEnv(opponents=2)
     env.reset(seed=4)
     env.players[0].position = 2
@@ -374,7 +377,7 @@ def test_player_can_displace_occupant_in_that_players_own_column():
     assert env.displacement_events == [(1, 0)]
 
 
-def test_a_pushed_figure_is_not_out_of_the_haul_yet():
+def test_a_pushed_figure_is_not_out_of_the_haul_yet(monkeypatch):
     """A push is not a forced exit: the victim gets another planning turn.
 
     The cage only takes a figure out at the beginning of the execution phase
@@ -383,6 +386,9 @@ def test_a_pushed_figure_is_not_out_of_the_haul_yet():
     lorry instead of leaving -- which is the whole difference between a push
     that costs the victim a round and one that banks its hand for it.
     """
+    import game_env
+
+    monkeypatch.setattr(game_env, "DISPLACEMENT_STEPS_TO_THE_NEXT_CARD", False)
     env = MineEnv(opponents=2)
     env.reset(seed=4)
     env.players[0].position = 2
@@ -593,14 +599,14 @@ def _pushable_board(env, column=1):
     return row, column
 
 
-def test_the_next_card_variant_steps_the_victim_towards_the_lorry(monkeypatch):
+def test_default_displacement_steps_the_victim_towards_the_lorry():
     """``DISPLACEMENT_STEPS_TO_THE_NEXT_CARD``: the victim stays in the mine."""
     import game_env
 
     env = MineEnv(opponents=2)
     env.reset(seed=4)
     row, column = _pushable_board(env)
-    monkeypatch.setattr(game_env, "DISPLACEMENT_STEPS_TO_THE_NEXT_CARD", True)
+    assert game_env.DISPLACEMENT_STEPS_TO_THE_NEXT_CARD
 
     push = row * MAX_COLUMNS + column
     assert env._legal(push)
@@ -1089,3 +1095,26 @@ def test_a_live_locked_round_is_broken_rather_than_left_to_run_away():
 
     assert env.planning_turns == 0            # the round closed
     assert env.haul > haul_before or env.game_finished
+
+
+def test_default_push_preserves_victims_next_decision_and_shelter_choice():
+    """B takes A's dragon; A still gets to choose a cage, not free shelter."""
+    env = MineEnv(opponents=3)
+    env.reset(seed=4)
+    row, victim_index = _pushable_board(env)
+    env.rows[row][victim_index] = (DRAGON, BACKSIDE_A)
+    env.planning_player = 0
+    env.planned_players = [True] * 4
+    old_round = env.round
+    env.step_one_player(row * MAX_COLUMNS + victim_index, force_action=True)
+    victim = env.players[victim_index]
+    assert env.round == old_round
+    assert env.planning_player == victim_index
+    assert victim.position == row - 1
+    assert not victim.escaped
+    assert env._legal(PASS, player_index=victim_index)
+    assert env._legal(PIT_CAGE, player_index=victim_index)
+    env.step_one_player(PIT_CAGE, force_action=True)
+    assert victim.position == PIT_CAGE
+    assert env.players[0].position == row
+    assert env.round == old_round

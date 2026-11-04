@@ -41,7 +41,7 @@ On their turn, a player chooses **one** of the following options:
 *   **Move to a free card:** The player places their figure on an unoccupied card.
 *   **Move to the nearest pit cage:** A pit cage can accommodate any number of players.
 *   **Pass:** The player does not change their announced plan. If it is their turn again later, all options are open to them once more. Passing is not allowed during the first round of the planning phase.
-*   **Displace an opponent:** This is only possible if the opponent is standing on a card within that opponent's own column (the color of the player figure is the same as the color of the lorry). To do this, the player moves the opponent to the nearest pit cage in the direction of the lorries and places their own figure on that opponent's card.
+*   **Displace an opponent:** This is only possible if the opponent is standing on a card within that opponent's own column (the color of the player figure is the same as the color of the lorry). The player places their own figure on the opponent's card and moves the opponent to the next free card towards the lorries in that opponent's own column (skipping empty or occupied cells). If no card remains, the opponent goes to their lorry. The displaced player keeps their loot and their next planning decision. Landing on a card gives no pit-cage shelter: they must choose a cage themselves if they want shelter from a dragon.
 *   **Sit on their lorry:** Anyone who has occupied their lorry at any point during a planning phase can only switch between the last pit cage and their lorry for the remainder of that planning phase.
 
 For the options "free card", "pit cage", and "displace", the following rule applies: The card or pit cage **must be closer to the lorries** than the row the player is currently in.
@@ -123,14 +123,22 @@ Any checkpoint in `checkpoints/` shows up in the **Policy** dropdown as
 network — including whether to announce a blast and which of the three blast
 cards to keep.
 
-`checkpoints/selfplay4.npz` (40 KB) is the one exception to the git-ignore rule
-and ships with the repository, so `neural:selfplay4` is in the dropdown of a
-fresh clone. It is a fresh 60-generation league run on this commit — 48.1% wins
-against three `rule` bots and 38.0% against three `reader` bots over 800 and 400
-games — i.e. a playable network and not the tuned snapshot behind the tables in
-BALANCE.md, which is not distributed.
+`checkpoints/selfplay4.npz` ships with the repository, so `neural:selfplay4`
+works in a fresh clone. It now uses **next-card displacement** and was retrained
+for 120 generations of 64 games (four seats, seed 7001), resuming the previous
+net. That predecessor is preserved as `neural:selfplay4_pitcage`; both play the
+current rule when selected. The training history and the comparison are recorded
+in BALANCE.md. In 200 four-net games the retrained net finished every game, but
+pushed less (0.035 vs 0.105 per game) and chose its own column more (96.1% vs
+92.8%): this run has not yet produced more competition for spots.
 
-Every other checkpoint is local to whichever machine trained it, which is why
+To watch the retrained net:
+
+```sh
+python mine_gui.py --opponents 3 --policy neural:selfplay4 --all-seats
+```
+
+Other generated checkpoints are local to whichever machine trained them, which is why
 the dropdown can be empty. Then the window says so in its message pane, and
 training one (about four minutes on a laptop CPU) adds it on the next **New
 game** — the list is rebuilt every time a game starts, so no restart is needed:
@@ -271,7 +279,8 @@ uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
 | `probe_blast_strategy.py` | is "blast while a dragon is waiting for me" a good rule? paired arms over the blast trigger and the keeper choice |
 | `probe_bait_value.py` | what a move onto a dragon the player can see is worth, forked per opponent (rule bots vs readers vs its own peers) |
 | `probe_push_value.py` | what a single displacement is worth from a real position, forked, split by the card it took |
-| `probe_push_clock.py` | who closes a planning phase after a push: the `push, pass, pass, pushed pass` pattern under the printed rule, the next-card variant and a no-count diagnostic |
+| `probe_push_clock.py` | deprecated historical clock diagnostic; its conclusions are withdrawn (see BALANCE.md) |
+| `probe_nextcard_training.py` | old versus retrained nets under the current rule: actual pushes, own-column card moves, scores and completed games |
 | `probe_backside_reading.py` | does the learner read a backside? risk of the card it takes, against the risk it was offered |
 | `probe_lorry.py` | how often a seat parks on its lorry, and how often a haul is lost to a stand-off because every seat did |
 | `probe_escape.py` | escape rules side by side: how often a haul is thrown away by a herd of empty-handed cage moves, and what each variant is worth |
@@ -475,24 +484,13 @@ The full write-up, with confidence intervals and reproduction commands, is in
   Paired over 200 games the difference is **+0.000** — the line was missing, not
   harmful. The check is kept as a guard, with a test pinning the fact that makes it
   inert. BALANCE.md, "Sit on their lorry".
-* **A proposed rule — "push the victim to the next card" — is priced, and it is
-  a wash.** The variant (`game_env.DISPLACEMENT_STEPS_TO_THE_NEXT_CARD`, off by
-  default) steps a displaced figure onto the next card towards the lorries, or onto
-  its lorry if it was on the last card, instead of into a pit cage. Holding the
-  position *and* the push fixed, it moves the pusher by −0.08 (se 0.11) and the
-  victim by +0.18 (se 0.11): nothing, with the sign against the intent. A pit cage
-  is the harsher destination because it *ends the victim's haul* — it scores what
-  it holds and can earn no more, and 82% of pushed victims hold nothing — while one
-  card nearer the exit keeps its loot and its options. The exchange is indeed
-  rigged, but in the victim's favour for the other reason: a push is a bet on a
-  card the pusher cannot see (aggressor −0.39, victim +0.38; a dragon taken is
-  −2.47 / +2.58, which is the bait). It also does not touch the planning clock:
-  a pushed seat keeps its decision and spends it on a pass, and the exact
-  sequence "push, pass, pass, the pushed seat's pass closes the phase" happens
-  **5%** of pushed rounds under the printed rule and **11%** under the variant,
-  because a figure dropped on a card defends it by passing. BALANCE.md, "Should a
-  push send the victim to the next card?".
-* **Pushing the nets off their cards does not pay, and cannot.** A net that has
+* **Next-card displacement is now the default.** A push contests a rival's
+  chosen spot without giving that rival free pit-cage shelter. The displaced
+  figure keeps its loot and its next decision; a dragon can still make it choose
+  shelter. The aim is competition for spots, not profitable indiscriminate pushing.
+  Earlier pass-count comparisons did not distinguish passing on a card from
+  passing in shelter and do not test that aim. See BALANCE.md for retraining.
+* **Historical pit-cage-rule results: indiscriminate pushing did not pay.** A net that has
   decided its round holds the card it chose (rule 9), and it is usually a gem:
   of the seat-phases that took exactly one card move and then held, **82%** ended
   on a gem. But a displacement is only legal against a figure standing in **its

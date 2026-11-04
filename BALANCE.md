@@ -872,126 +872,73 @@ That is worth writing down plainly: the habit was not only ugly, it *was* the
 exploit. A seat that forfeits the card it chose, a row at a time, hands the haul to
 whoever banks first — which is what the counter was doing.
 
-### Should a push send the victim to the next card? (a proposed rule)
+### Next-card displacement: current rule and retraining
 
-A proposed variant, worth taking seriously because it points at a real fault line:
-*"A displacement should not push the victim onto a pit cage, but to the next card
-(or the lorry, if it has been the last card). This way the aggressor is not
-automatically safe, but has to move himself to a pit cage."* It is implemented as
-`game_env.DISPLACEMENT_STEPS_TO_THE_NEXT_CARD` -- off by default, because the
-printed rule is the game -- with the victim stepping to the nearest free card in
-its own column towards the lorries, or onto its lorry if it was standing on the
-last card.
+The current rule sends a displaced figure to the nearest free card towards the
+lorries in its own column, skipping missing or occupied cards, or to its lorry
+if none remains. It keeps its loot and its next planning decision. It is **not**
+given free pit-cage shelter. `DISPLACEMENT_STEPS_TO_THE_NEXT_CARD = True` is the
+default; False reproduces the former pit-cage rule for historical comparisons.
 
-**The premise is inverted, and it decides the argument.** Today the *aggressor*
-pays and the *victim* is rewarded. Forked from the same position, 139 positions,
-3 continuations an arm, `PusherAgent(tell="any")` against three nets, printed
-rule (`probe_push_value.py --compare-rules`):
+The design goal is to encourage contesting each other's chosen spots rather
+than quietly harvesting one's own column. If A is pushed from row 2 to row 1
+and B takes a dragon on row 2, A must still choose shelter if it wants protection.
+B used its decision to select a contested spot; it did not lose a turn.
 
-| what the push is worth | pusher | victim |
+**Correction of the earlier analysis:** the points price of indiscriminate
+pushes is not a test of this design goal. Nor is the frequency of a pushed
+player's pass: passing on a card is not passing from shelter. The previously
+published clock verdict is withdrawn. `probe_push_clock.py` is a historical,
+flawed diagnostic, not evidence against the rule: it also inferred pushes from
+card moves rather than recording actual displacement events, and its no-count
+hook ran after a pass could already execute the round. Do not use those tables.
+The historical sections below were measured under the former pit-cage rule.
+
+#### Retraining run (next-card rule)
+
+Four seats, three hauls. Resumed the shipped net for **120 generations × 64
+training games = 7,680 games**, seed 7001, otherwise default trainer settings
+(including reward shaping, masks, scripted/older-net league and bonus rules).
+This is continued training, not a fresh-net test or a guarantee of convergence.
+The resulting net is shipped as `checkpoints/selfplay4.npz`; its predecessor is
+`checkpoints/selfplay4_pitcage.npz`. Training history is preserved as
+`checkpoints/selfplay4_nextcard.history.json`.
+
+```sh
+python train_selfplay.py --players 4 --resume checkpoints/selfplay4_pitcage.npz --generations 120 --games-per-generation 64 --seed 7001 --out checkpoints/selfplay4_nextcard.npz
+python probe_nextcard_training.py --games 200
+python profile_agent.py --checkpoints checkpoints/selfplay4_pitcage.npz,checkpoints/selfplay4.npz --games 200 --players 4
+```
+
+Both evaluations below use the **new rule**, temperature 0.7 and seeds starting
+at 424242. Thus they measure adaptation, not the isolated effect of changing the
+rule. Mirror games use four copies of each checkpoint, with identical game and
+agent seeds between runs. Pushes are counted from actual displacement events.
+
+| four-net mirrors, 200 games each | old net | retrained net |
 | :-- | --: | --: |
-| all pushes | **−0.39 (se 0.16)** | **+0.38 (se 0.14)** |
-| ...it took a gem (82 positions) | +0.64 (se 0.18) | −0.54 (se 0.16) |
-| ...it took a dynamite (21) | −0.81 (se 0.34) | +0.22 (se 0.24) |
-| ...it took a dragon (36) | **−2.47 (se 0.32)** | **+2.58 (se 0.28)** |
+| mean score per seat | 2.000 | 2.215 |
+| actual pushes per game (whole table) | 0.105 | 0.035 |
+| card moves in own column | 92.8% | 96.1% |
+| card moves per game (whole table) | 40.625 | 38.590 |
+| gems banked per haul (whole table) | 4.515 | 4.280 |
+| decisions per game | 100.600 | 97.205 |
+| unfinished games | 0 | 0 |
 
-So the aggressor is never automatically safe: it pays a turn and a card for a
-card it could not read, and roughly one in four of those is a dragon. What the
-"gift" really is, is the *bait*: when the push takes a dragon the victim is
-carried off the dragon cell and the pusher wakes it instead, worth +2.58 to the
-victim and −2.47 to the pusher.
+Against three scripted `rule` seats, 200 games per net with seats rotated:
+old/new win rates 74%/77%, margins +5.33/+5.39, scores +5.29/+5.38. These are
+small descriptive differences, not evidence of a reliable strength improvement.
+They are also opponent-conditioned: the scripted opponents leave empty often;
+85%/84% of the evaluated net's escapes banked zero gems. The profile reports
+score when rivals banked loot versus stayed as −0.46/+3.07 (old) and
+−0.41/+3.16 (new). Do not read that benchmark as successful gem competition.
 
-**Holding the position and the push fixed and changing only the rule**, the
-proposal is a wash, and what movement there is runs the wrong way:
-
-| next-card MINUS printed rule | pusher | victim |
-| :-- | --: | --: |
-| all pairs (417) | −0.08 (se 0.11) | **+0.18 (se 0.11)** |
-| ...victim held nothing (342) | −0.11 (se 0.13) | +0.13 (se 0.13) |
-| ...victim held cards (75) | +0.05 (se 0.20) | +0.44 (se 0.18) |
-
-**The printed rule is the harsher one, which is the opposite of the intuition.**
-A pit cage *ends the victim's haul*: it leaves at the execution phase, scores what
-it holds and can earn nothing more -- and 82% of pushed victims hold nothing, so
-for them the cage exit is a zero for the haul. The next card leaves the victim in
-the mine, its loot intact, one move from the exit, still free to collect more and
-to choose when to leave. Being carried *out* caps your haul; being dropped one row
-up does not. That is why the proposal is worth +0.18 to the victim rather than
-−0.4, and why the split by loot reads the way it does: with cards in hand the
-flexibility is worth +0.44.
-
-At game level nothing moves either, for the same reason in both directions --
-the field barely pushes:
-
-| | printed rule | next-card rule | paired difference |
-| :-- | --: | --: | :-- |
-| four nets, mean seat, 200 games | +2.124 | +2.114 | **−0.010 (se 0.010)** |
-| `PusherAgent(tell="any")` margin, 200 games | +1.322 | +1.263 | **−0.058 (se 0.242)** |
-
-Neither rule throws a haul away (0 unfinished games in 200 per arm), and the
-variant is not crueller: what a gem costs the victim is about the same either way
-(−0.54 under the printed rule, and the paired rule effect is +0.18 on average, not
-a swing towards punishment).
-
-**Why it cannot solve the problem it aims at.** The pusher's cost is *information*:
-a displacement is only legal against a figure standing in its own column, and only
-that owner sees the fronts, so every push is a bet on a card the pusher has never
-seen (BALANCE.md, "The parked seat"). That cost sits on the pusher's side of the
-ledger and no rule about *where the victim lands* can touch it. The only two
-levers that could make a push a weapon are therefore (a) what the pusher knows, or
-(b) what the pusher spends -- and, on the victim's side, *time*: under both rules a
-pushed figure takes its next decision normally, so the whole cost of being pushed
-is depth, which is cheap to recover.
-
-#### The clock: the part the destination rule does not touch
-
-The objection that matters is not what a push is worth in points, it is *who
-holds the planning clock*. A pushed figure keeps its decision -- the phase does
-not end on the push -- and a seat that has been carried somewhere safe can spend
-that decision on a pass. With `n - 1` consecutive passes closing the round, that
-pass is a tick of the clock: *"A pushes D. B passes, C passes. Then D passes
-without needing to signal a dragon"*, and the seats still standing on cards have
-to cash out early to be safe. `probe_push_clock.py`, 150 games, one pushing seat
-against three nets, every decision logged and the last decision of a round taken
-as the one that closed it:
-
-| rule | pushed rounds | phase closed on a pushed seat's pass | push -> pass -> pass -> pushed pass | victim's next act is a pass | planning left after the push |
-| :-- | --: | --: | --: | --: | --: |
-| printed | 710 | 31% | **5%** | 34% | 4.83 decisions |
-| **next-card (the proposal)** | 662 | 40% | **11%** | 49% | 4.42 decisions |
-| printed, a pushed pass does not count | 698 | 2% | 0% | 8% | 17.14 decisions |
-
-**The proposed rule doubles the exact sequence it was meant to remove**, 5% to
-11%, and raises "the victim's next act is a pass" from 34% to 49%. The reason is
-the same one that makes the variant look harmless in points: a displaced figure
-that lands on a card *wants to keep that card*, and a pass is how you keep it
-(rule 9's mask holds a seat on the card it chose). The proposal does not give the
-victim back its turn, it gives it a card -- and a card is best defended by
-passing. The free gift changes from *safety* to *position*; the clock stays with
-the pushed seat.
-
-**What actually moves the clock is the pass count, not the destination.** The
-third row is a diagnostic arm, not a proposal: when a pushed seat's pass does not
-tick the counter, the pattern collapses to 0% and 17 decisions of planning are
-left after the push instead of 4.8. It is also plainly too blunt as it stands --
-phases get three times longer, which is its own problem, and nothing here has
-priced that (unfinished games, decisions per game, and whether the extra planning
-buys anything are all unmeasured). Recorded because it identifies the mechanism:
-the round closes on `n - 1` passes by *any* active seat, including the seats that
-are already safe.
-
-So the honest summary of the whole proposal is: right that the pushed seat is
-over-rewarded and over-empowered, wrong about which lever that is, and the change
-moves the number the wrong way. The two levers that could work are (a) the push
-spends the victim's decision -- it sits out the rest of the phase, so there is no
-free pass and no free card, or (b) the seats that are already out stop being the
-clock. Both need their own pricing.
-
-**Verdict.** Interesting, cheap, and correctly aimed at "the pushed seat gets
-something for free" -- but it hands that seat a *card* instead of a *cage*, and a
-card is exactly what a pass protects, so the sequence the rule was written to stop
-happens twice as often under it. Keep it as a switch
-(`DISPLACEMENT_STEPS_TO_THE_NEXT_CARD`), not as the default.
+**What happened to the intended behaviour?** This run did **not** produce more
+contesting. The retrained nets pushed less and chose their own column more.
+The new rule removes free pit-cage shelter, as intended, but the existing
+training setup has not learned the desired competition. All other rules and
+masks were left unchanged. No claim is made that more training alone will fix it.
+Watch the new net and compare the saved predecessor before changing incentives.
 
 ### The parked seat: can a deterministic seat rob the nets by pushing?
 

@@ -1,4 +1,10 @@
-"""Who holds the clock in a planning phase where somebody has been pushed?
+"""DEPRECATED: historical diagnostic; do not use its output as evidence.
+
+It inferred pushes from card moves, conflated passing on cards with shelter,
+and its no-count hook could execute a round before restoring the pass count.
+See BALANCE.md for the withdrawal. Kept only to explain historical results.
+
+Who holds the clock in a planning phase where somebody has been pushed?
 
 The complaint this measures: "A pushes D. B passes, C passes. Then D passes
 without needing to signal a dragon." A displaced figure is carried somewhere

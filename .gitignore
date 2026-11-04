@@ -225,3 +225,6 @@ checkpoints/*
 !checkpoints/selfplay4.npz
 !checkpoints/selfplay4_prehazard.npz
 reports/
+
+!checkpoints/selfplay4_pitcage.npz
+!checkpoints/selfplay4_nextcard.history.json
