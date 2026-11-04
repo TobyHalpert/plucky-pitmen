@@ -3055,3 +3055,27 @@ holds the generated leaderboards plus the JSON behind every table.
   per backside) or the minimum table size must change `MAX_ROWS` with it, and a
   test (`test_action_grid_covers_the_deepest_board_any_deck_can_produce`) fails
   if it does not.
+
+### Seed 7, haul 1: refusing an unrescued known dragon
+
+The four-net viewer replay exposed a concrete action-safeguard bug. P3 stepped
+from its cage onto its own visible dragon at r3c2 late in planning round 4.
+P4, P1 and P2 then passed, closing the phase before P3 could choose shelter.
+The old safeguard allowed this because a deeper rival *could* push P3 off the
+dragon. That was a possible rescue, not a guaranteed next decision. No rival
+was obliged to push. The original haul ended with all four dead.
+
+`doomed_dragon_digs` now rejects a known-dragon dig unless
+`can_wait_on_a_dragon` guarantees another decision, regardless of whether a
+rival could push. Both the ordinary action and its blast twin are filtered when
+a non-doomed alternative is available. Reversible early-phase bait is still
+allowed; charged blasts are still legal. No engine rule or checkpoint weights
+changed. This is a policy safeguard correction, not retraining.
+
+Replaying `python analyze_game.py --seed 7` after the fix: haul 1 has no dead
+figures, all four bank, and banked gems are [4, 3, 1, 3]. That does not certify
+the rest of the policy as rational: the announce/cancel/cage cycling still
+needs separate investigation. Regression coverage includes a reachable rival,
+a legal pass indicating a late decision, the blast twin, and seed-7 actions.
+Historical pusher and training tables above predate this safeguard change and
+should not be treated as measurements of the current policy.

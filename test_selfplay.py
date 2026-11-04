@@ -1785,6 +1785,15 @@ def test_the_counter_banks_two_gems_and_hands_the_nets_a_losing_table(monkeypatc
     import game_env
 
     monkeypatch.setattr(game_env, "DISPLACEMENT_STEPS_TO_THE_NEXT_CARD", False)
+    # Pin the historical action safeguard as well as the historical checkpoint.
+    import features
+    def historical_doomed(ctx):
+        if features.BAIT_IS_ALLOWED and features.can_wait_on_a_dragon(ctx):
+            return set()
+        return {int(a) for a in ctx.legal_actions
+                if features.digs_face_up_dragon(ctx, int(a))
+                and not features.rival_can_push(ctx, int(a))}
+    monkeypatch.setattr(features, "doomed_dragon_digs", historical_doomed)
     from agents import CounterAgent, NeuralAgent
     from gui_controller import resolve_checkpoint
     from learning import PolicyNet
@@ -2241,3 +2250,25 @@ def test_leader_only_does_not_attack_trailer_when_self_leads():
     assert bot._best_push(ctx, set(), list(ctx.legal_actions)) is None
     tied = replaced(ctx, own_score=8)
     assert bot._best_push(tied, set(), list(tied.legal_actions)) == MAX_COLUMNS + 1
+
+
+def test_reachable_rival_does_not_make_a_last_chance_dragon_safe():
+    from features import N_BASE_ACTIONS, action_mask, can_wait_on_a_dragon
+    from analyze_game import transcript
+    from features import digs_face_up_dragon
+
+    # A real seed-7 context, at the move that used to end haul 1 on our dragon.
+    controller, events = transcript(7, 'neural:selfplay4', 3, False, all_seats=True)
+    for event in events:
+        if event['haul'] == 1 and digs_face_up_dragon(event['ctx'], event['action']):
+            assert can_wait_on_a_dragon(event['ctx'])
+    # Also pin the general rule independently of the changed replay path.
+    trap = _trap_context(dragon_row=1, own_row=5, opponents=(_rival(1, 4),))
+    dragon = MAX_COLUMNS
+    ctx = replaced(trap, legal_actions=(dragon, 4 * MAX_COLUMNS, int(PASS)),
+                   private_cards=((DYNAMITE, 1), (DYNAMITE, 1)))
+    assert not can_wait_on_a_dragon(ctx)
+    mask = action_mask(ctx)
+    assert not mask[dragon]
+    assert not mask[dragon + N_BASE_ACTIONS]
+    assert mask.any()

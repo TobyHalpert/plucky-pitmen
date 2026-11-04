@@ -562,25 +562,18 @@ BAIT_IS_ALLOWED = True
 
 
 def doomed_dragon_digs(ctx: PlayerActionContext) -> set[int]:
-    """Face-up-dragon digs that no rival can punish: the digger eats it itself.
+    """Refuse known-dragon digs unless another decision is guaranteed.
 
-    Except when the seat can wait on the dragon safely, in which case every
-    visible dragon in its column is a waiting square rather than a mistake --
-    the deepest row cannot be raided, and the seat steps off at its next
-    decision. See ``can_wait_on_a_dragon``.
+    A reachable rival is not a rescue: it can pass instead of pushing, closing
+    the phase before the dragon sitter acts again (seed 7, haul 1). Bait is only
+    permitted while the sitter can still take its own shelter decision.
     """
-    if can_wait_on_a_dragon(ctx) and BAIT_IS_ALLOWED:
+    if BAIT_IS_ALLOWED and can_wait_on_a_dragon(ctx):
         return set()
-    if not BAIT_IS_ALLOWED:
-        return {
-            int(action)
-            for action in ctx.legal_actions
-            if digs_face_up_dragon(ctx, action)
-        }
     return {
         int(action)
         for action in ctx.legal_actions
-        if digs_face_up_dragon(ctx, action) and not rival_can_push(ctx, action)
+        if digs_face_up_dragon(ctx, int(action))
     }
 
 
