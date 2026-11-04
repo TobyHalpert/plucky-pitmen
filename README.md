@@ -643,3 +643,17 @@ The original test suite still runs, plus tests for the self-play stack:
 python -m pip install pytest
 python -m pytest -q
 ```
+
+### Score-aware deterministic pushers
+
+`pusher-leader` prefers the reachable rival with the most total points.
+`pusher-leader-only` attacks only a rival tied for the table lead. Both retain
+the pusher's banking and risk safeguards. They are selectable scripted policies;
+`pusher` remains the original held-tell version. On 400 fresh games each against
+three retrained nets, outright wins were 33.5% and 33.0%, versus 33.8% for the
+old any-tell pusher and 32.8% without pushing: no clear improvement yet.
+See BALANCE.md and rerun with:
+
+```sh
+python probe_pusher_match.py --games 400 --seed 910000 --score-aware
+```

@@ -20,6 +20,7 @@ def main():
     parser.add_argument('--checkpoint', default='checkpoints/selfplay4.npz')
     parser.add_argument('--games', type=int, default=400)
     parser.add_argument('--seed', type=int, default=424242)
+    parser.add_argument('--score-aware', action='store_true')
     args = parser.parse_args()
     if args.games < 1:
         parser.error('--games must be positive')
@@ -29,13 +30,23 @@ def main():
                          players=4, hauls=3, seed=args.seed,
                          next_card=game_env.DISPLACEMENT_STEPS_TO_THE_NEXT_CARD,
                          net_temperature=0.7)))
-    for label, factory in (
+    controls = [
         ('no pushing', CounterAgent),
-        ('pusher held (default)', PusherAgent),
-        ('pusher any', lambda: PusherAgent(tell='any')),
-        ('pusher any, also after planning',
-         lambda: PusherAgent(tell='any', before_planning=False)),
-    ):
+        ('old any-tell pusher', lambda: PusherAgent(tell='any', before_planning=False)),
+    ]
+    if args.score_aware:
+        controls += [
+            ('prefer top scorer', lambda: PusherAgent(tell='any', before_planning=False,
+                                                     target='top-score')),
+            ('only attack a leader', lambda: PusherAgent(tell='any', before_planning=False,
+                                                       target='leader-only')),
+        ]
+    else:
+        controls += [
+            ('pusher held (default)', PusherAgent),
+            ('pusher any', lambda: PusherAgent(tell='any')),
+        ]
+    for label, factory in controls:
         pushes = [0]
         tracked = [0]
         def displace(env, row, column, player_index):

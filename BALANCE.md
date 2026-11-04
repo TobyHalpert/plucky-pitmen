@@ -978,6 +978,44 @@ abandoning a known gem, reject known dragons, and use a backside-risk bar of
 target. The result describes these policies against these retrained nets, not
 proof that the new displacement rule cannot encourage contesting.
 
+### Score-aware deterministic pushers
+
+Added two deterministic targets: prefer the eligible rival with the highest
+**total score**, or attack only rivals tied for the table lead (including our
+own score in that maximum). No private information is used. Ties resolve by
+shallowest row then action index. Both use the any-tell pusher with pushes also
+allowed after planning, retaining banking, known-gem and dragon-risk safeguards.
+The original pusher is unchanged for comparison. Factory names are
+`pusher-leader` and `pusher-leader-only`.
+
+Fresh seeds 910000–910399, 400 games per arm, four seats rotated, three hauls,
+next-card rule, three retrained nets at temperature 0.7. Matching game and agent
+seeds across arms. These seeds were not used for the earlier pusher comparison.
+
+```sh
+python probe_pusher_match.py --games 400 --seed 910000 --score-aware
+```
+
+| deterministic seat | outright wins | tied top | score | mean rival score | margin | actual pushes |
+| :-- | --: | --: | --: | --: | --: | --: |
+| no pushing | 131 (32.75%) | 48 | 2.960 | 1.716 | +1.244 | 0 |
+| old any-tell pusher, also after planning | 135 (33.75%) | 49 | 2.788 | 1.584 | +1.203 | 1,197 |
+| prefer highest-scoring eligible rival | 134 (33.50%) | 49 | 2.755 | 1.595 | +1.160 | 1,193 |
+| only attack a table leader | 132 (33.00%) | 52 | 2.825 | 1.677 | +1.148 | 768 |
+
+All 1,600 games finished. Paired margin differences versus no pushing are
+−0.041 (give or take 0.190), −0.084 (0.188) and −0.096 (0.179). These are one
+standard error over paired games, not uncertainty on the win rates. The gaps do
+not establish a reliable gain or loss. Banked gems per game were 3.478, 3.865,
+3.848 and 3.715. Scores/margins are conditioned on these opponents and this
+training checkpoint, not universal values of the displacement rule.
+
+**Outcome:** score-aware targeting is now available, but neither variant
+improved wins clearly in this run. Merely preferring the top scorer changed
+little; restricting attacks to leaders removed many pushes without producing a
+win-rate gain. This is a test of two fixed, public-information heuristics, not
+an optimal tactical search. No claim that they are stronger than the old bot.
+
 ### The parked seat: can a deterministic seat rob the nets by pushing?
 
 Rule 9 holds a seat on the card it chose, so a net that has decided its round

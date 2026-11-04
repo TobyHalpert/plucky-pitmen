@@ -2214,3 +2214,30 @@ def test_the_escape_stands_once_taken_is_measured_and_off(monkeypatch):
     assert mask[int(PASS)]
     assert not mask[int(LORRY)]
     assert not mask[0 * MAX_COLUMNS + 0]
+
+
+def test_score_aware_pusher_prefers_total_score_over_shallow_row():
+    from agents import PusherAgent
+    ctx = replaced(
+        _board_context({(0, 1): (GEM, 1), (1, 2): (GEM, 1)},
+                       legal=(1, MAX_COLUMNS + 2, int(PASS)), own_position=3),
+        opponents=(replaced(_rival(1, 0), score=2, card_count=5),
+                   replaced(_rival(2, 1), column=2, score=8, card_count=0)),
+    )
+    assert PusherAgent(tell='any')._best_push(ctx, set(), list(ctx.legal_actions)) == 1
+    for target in ('top-score', 'leader-only'):
+        bot = PusherAgent(tell='any', target=target)
+        assert bot._best_push(ctx, set(), list(ctx.legal_actions)) == MAX_COLUMNS + 2
+
+
+def test_leader_only_does_not_attack_trailer_when_self_leads():
+    from agents import PusherAgent
+    ctx = replaced(
+        _board_context({(1, 1): (GEM, 1)},
+                       legal=(MAX_COLUMNS + 1, int(PASS)), own_position=3),
+        own_score=9, opponents=(replaced(_rival(1, 1), score=8),),
+    )
+    bot = PusherAgent(tell='any', target='leader-only')
+    assert bot._best_push(ctx, set(), list(ctx.legal_actions)) is None
+    tied = replaced(ctx, own_score=8)
+    assert bot._best_push(tied, set(), list(tied.legal_actions)) == MAX_COLUMNS + 1

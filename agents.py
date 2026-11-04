@@ -667,33 +667,14 @@ class CounterAgent(Agent):
 
 
 class PusherAgent(CounterAgent):
-    """A deterministic control that tries to farm the nets by pushing them.
+    """Deterministic counter with optional displacement and score-aware targeting.
 
-    It exists to answer one question with numbers rather than intuition: a net
-    that decides its round and then holds the card it chose (rule 9's mask) looks
-    like it is parking on a gem, so can a plain seat steal that card? The answer,
-    over 300 four-net games, is **no** (BALANCE.md, "The parked seat"):
-
-    * What a push takes: 1,933 pushes took a gem 49% of the time, a dynamite 22%
-      and **a dragon 29%**. The card is face down, so the pusher is buying a
-      1-in-3 shot at ending the haul.
-    * What a push gives up: the card the pusher was standing on. A displacement
-      always moves a figure towards the lorries, so the pusher swaps its own
-      card -- usually a known one, in its own column -- for the rival's unknown
-      one.
-    * What it does **not** take: the victim's loot. A displaced figure goes to
-      the pit cage, where it leaves the mine with every card it has collected.
-      Pushing costs the victim its round, never its hand.
-    * Telling rivals apart does not rescue it. Requiring a rival to have held the
-      cell for one of this seat's turns lifts the gem share to 73%, but it fires
-      rarely enough to be worth exactly nothing: +0.000 (se 0.106) a seat over
-      the same seat with the push switched off.
-
-    Pushing every rival it can reach is worth **-2.75 (se 0.19) a seat**. Only a
-    bot that can *see* the front under the rival gains from it (+1.76, se 0.19,
-    measured with a test-only cheat): the hole is information, not the rules.
-    So ``tell="held"`` is the default -- it does no harm -- and ``"any"`` is kept
-    to reproduce the losing version.
+    ``target="shallowest"`` reproduces the original policy. ``"top-score"``
+    prefers the reachable rival with the most total points; ``"leader-only"``
+    rejects anyone below the table's maximum total score (including our score).
+    Ties are broken by shallowest row, then action index. All information comes
+    from the normal public context. Banking, known-gem and dragon-risk safeguards
+    remain unchanged. See BALANCE.md for measured results, not assumed strength.
     """
 
     name = "pusher"
@@ -706,12 +687,16 @@ class PusherAgent(CounterAgent):
         tell: str = "held",
         push_risk_bar: float = 0.2,
         before_planning: bool = True,
+        target: str = "shallowest",
     ) -> None:
         super().__init__(bank_gems=bank_gems, hazard_bar=hazard_bar)
         if tell not in ("held", "any"):
             raise ValueError(f"unknown push tell: {tell}")
         #: ``"held"``: only a rival this seat has already seen on that cell, so it
         #: has spent a decision not moving. ``"any"``: every rival it can reach.
+        if target not in ("shallowest", "top-score", "leader-only"):
+            raise ValueError(f"unknown push target: {target}")
+        self.target = target
         self.tell = tell
         #: Skip the push when the backside says the card is likely a dragon.
         self.push_risk_bar = float(push_risk_bar)
@@ -789,11 +774,17 @@ class PusherAgent(CounterAgent):
                 # "above the bar" and every push is refused by rounding.
                 if float(risk[int(entry[1])]) > self.push_risk_bar + 1e-6:
                     continue  # the backside says this card is likelier than even
-            candidates.append((row, action))
+            # "Leader" means most total points, not cards held this haul.
+            if self.target == "leader-only" and occupant.score < max(
+                [ctx.own_score] + [other.score for other in ctx.opponents]
+            ):
+                continue
+            priority = -int(occupant.score) if self.target != "shallowest" else 0
+            candidates.append((priority, row, action))
         if not candidates:
             return None
-        # Shallowest first: the card the rival has most recently stepped onto.
-        return min(candidates)[1]
+        # Score priority first when enabled; shallowest row breaks ties.
+        return min(candidates)[2]
 
     # -- the decision --------------------------------------------------
     def act(self, ctx: PlayerActionContext) -> int:
@@ -961,6 +952,8 @@ SCRIPTED = (
     "threat",
     "counter",
     "pusher",
+    "pusher-leader",
+    "pusher-leader-only",
 )
 
 
@@ -987,6 +980,9 @@ def make_scripted_agent(
         return CounterAgent()
     if policy == "pusher":
         return PusherAgent()
+    if policy in ("pusher-leader", "pusher-leader-only"):
+        target = "top-score" if policy == "pusher-leader" else "leader-only"
+        return PusherAgent(tell="any", before_planning=False, target=target)
     raise ValueError(f"unknown scripted agent: {policy}")
 
 
