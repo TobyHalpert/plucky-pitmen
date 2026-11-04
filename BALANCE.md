@@ -3079,3 +3079,15 @@ needs separate investigation. Regression coverage includes a reachable rival,
 a legal pass indicating a late decision, the blast twin, and seed-7 actions.
 Historical pusher and training tables above predate this safeguard change and
 should not be treated as measurements of the current policy.
+
+### Seed 7, haul 2: exact P2 forks
+
+See [SEED7_P2.md](SEED7_P2.md) for 400-continuation paired comparisons of P2's
+push, gem, blast announcement, cancellation, and subsequent lorry move. The
+recorded blast announcement shows no clear final-win gain over the gem without
+a blast (8.25% vs 9.50% outright wins). The no-blast push wins 4.25% on the
+**actual hidden dragon board**, not an average over P2's uncertainty. Keeping
+the blast on P2's next turn and cancelling it both win 9.25%. After cancellation,
+the empty-departure filter forces reconsideration of the cage and permits the
+lorry; that is not evidence of a coherent learned feint. No rules or weights
+changed in this diagnostic. Rerun `python probe_seed7_p2.py --samples 400`.

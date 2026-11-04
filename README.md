@@ -280,6 +280,7 @@ uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
 | `probe_bait_value.py` | what a move onto a dragon the player can see is worth, forked per opponent (rule bots vs readers vs its own peers) |
 | `probe_push_value.py` | what a single displacement is worth from a real position, forked, split by the card it took |
 | `probe_push_clock.py` | deprecated historical clock diagnostic; its conclusions are withdrawn (see BALANCE.md) |
+| `probe_seed7_p2.py` | exact-position forks of seed-7 P2 push, blast and cancellation; limitations and results in SEED7_P2.md |
 | `probe_pusher_match.py` | deterministic pusher versus three retrained nets, rotated seats, no-push control and actual displacement counts |
 | `probe_nextcard_training.py` | old versus retrained nets under the current rule: actual pushes, own-column card moves, scores and completed games |
 | `probe_backside_reading.py` | does the learner read a backside? risk of the card it takes, against the risk it was offered |
