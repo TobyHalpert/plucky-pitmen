@@ -940,6 +940,44 @@ training setup has not learned the desired competition. All other rules and
 masks were left unchanged. No claim is made that more training alone will fix it.
 Watch the new net and compare the saved predecessor before changing incentives.
 
+### Deterministic pusher versus the retrained next-card nets
+
+Rerun requested after next-card retraining. Four seats, three hauls, **400 games
+per arm**, seeds 424242–424641, deterministic seat rotated through all four
+positions. Opponents are three copies of the newly shipped `selfplay4.npz`,
+temperature 0.7, with matching agent seeds across arms. Current next-card rule,
+all other game and shaping defaults unchanged. Actual successful pushes are
+counted in the engine, not inferred from decisions. No private information is
+exposed to the bot.
+
+```sh
+python probe_pusher_match.py --games 400
+```
+
+| deterministic seat | outright wins | tied for top | mean score | mean rival score | score margin | actual pushes |
+| :-- | --: | --: | --: | --: | --: | --: |
+| CounterAgent, no pushing | 141 (35.25%) | 48 (12.00%) | 3.208 | 1.757 | +1.451 | 0 |
+| PusherAgent, held tell (default) | 139 (34.75%) | 50 (12.50%) | 3.190 | 1.756 | +1.434 | 11 |
+| PusherAgent, any tell | 123 (30.75%) | 40 (10.00%) | 2.763 | 1.688 | +1.075 | 629 |
+| PusherAgent, any tell, also after planning | 131 (32.75%) | 47 (11.75%) | 2.865 | 1.571 | +1.294 | 1,115 |
+
+All 1,600 games finished. Outright wins exclude tied tops; ties here mean tied
+on final score, before any tie breaker. The paired score-margin changes against
+no pushing are −0.017 (give or take 0.027), −0.376 (0.158), and −0.157 (0.180).
+These uncertainties are one standard error over paired games, not win-rate
+uncertainties. Banked gems per game are 3.470, 3.485, 3.645 and 3.828 respectively.
+Thus the pushing versions bank more gems but do not win more often in this run.
+
+**Interpretation:** the deterministic seat wins more often than a symmetric
+four-seat baseline, but these pushes do not improve on the no-push control.
+The default held-tell pusher barely pushes, so its result is not a strong test
+of displacement. The two explicit any-tell arms supply that test. These are
+still the existing pusher heuristics: they retain banking priorities, avoid
+abandoning a known gem, reject known dragons, and use a backside-risk bar of
+0.2. They are not an optimal pusher, nor a bot that blindly pushes every legal
+target. The result describes these policies against these retrained nets, not
+proof that the new displacement rule cannot encourage contesting.
+
 ### The parked seat: can a deterministic seat rob the nets by pushing?
 
 Rule 9 holds a seat on the card it chose, so a net that has decided its round
