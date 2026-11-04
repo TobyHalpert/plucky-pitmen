@@ -56,6 +56,16 @@ HANG_BREAKER_TURNS = 64
 PIT_CAGE_REWARD = 0.0
 LORRY_REWARD = -0.05
 
+# "Anyone who has occupied their lorry at any point during a planning phase can
+# only switch between the last pit cage and their lorry for the remainder of that
+# planning phase." (README, "Sit on their lorry".) Enforcement was missing, and
+# its absence is what a spectator sees as a figure that walks into a pit cage and
+# straight back out: from the lorry the cage is legal, and from the cage a card
+# used to be legal again, so the seat could go card -> lorry -> cage -> card and
+# re-enter the mine from an exit it had already taken. Set to False to reproduce
+# the old behaviour (BALANCE.md prices it).
+LORRY_COMMITS_THE_SEAT = True
+
 
 @dataclass(frozen=True)
 class OpponentPublicView:
@@ -211,6 +221,13 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.starting_player = 0
         self.planning_player = 0
         self.planned_players: list[bool] = [False] * self.n_players
+        #: Whether this seat has sat on its lorry at any point in the current
+        #: planning phase. The printed rule is "anyone who has occupied their
+        #: lorry at any point during a planning phase can only switch between
+        #: the last pit cage and their lorry for the remainder of that phase"
+        #: (README, "Sit on their lorry"), so once this is set the seat may not
+        #: step onto a card again until the round ends.
+        self.lorry_touched: list[bool] = [False] * self.n_players
         self.haul = 1
         self.tie_breaker_contenders: list[int] = []
         self.tie_breaker_turn = 0
@@ -247,6 +264,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.displacement_events = []
         self.planning_player = self.starting_player
         self.planned_players = [False] * self.n_players
+        self.lorry_touched = [False] * self.n_players
         self.game_finished = False
         self.haul_history = []
         return self._observation(), {"round": self.round, "haul": self.haul}
@@ -316,6 +334,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
 
         self.consecutive_passes = 0
         self.planning_turns = 0
+        self.lorry_touched = [False] * self.n_players
         reward, info = self._execute_round()
         self.last_reward = reward
 
@@ -415,6 +434,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.planning_turns = 0
         self.planning_player = 0
         self.planned_players = [False] * self.n_players
+        self.lorry_touched = [False] * self.n_players
         reward, info = self._execute_round()
         self.last_reward = reward
 
@@ -530,6 +550,10 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         previous_position = player.position
         player.position = action
         player.column = None
+        if action == LORRY:
+            # "Sit on their lorry": from here the seat may only switch between
+            # the last pit cage and the lorry for the rest of the phase.
+            self.lorry_touched[player_index] = True
         if action == PIT_CAGE:
             if player.cage_index is None:
                 player.cage_index = (
@@ -665,6 +689,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.planning_turns = 0
         self.planning_player = self.starting_player
         self.planned_players = [False] * self.n_players
+        self.lorry_touched = [False] * self.n_players
         self.tie_breaker_contenders = []
         self.tie_breaker_turn = 0
         self.tie_breaker_shortage = False
@@ -744,6 +769,10 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             return False
         if action < PIT_CAGE:
             if player.position == LORRY:
+                return False
+            if LORRY_COMMITS_THE_SEAT and self.lorry_touched[player_index]:
+                # It has sat on its lorry this phase: the printed rule leaves it
+                # the last pit cage and the lorry, nothing else.
                 return False
             row, column = divmod(action, MAX_COLUMNS)
             movement_depth = self._movement_depth(player)

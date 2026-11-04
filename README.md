@@ -460,6 +460,28 @@ The full write-up, with confidence intervals and reproduction commands, is in
   viewer's default opponent, `rule_policy`, had the same habit — 520 steps out of a
   cage in 40 games — and now holds a banked escape too. BALANCE.md, "Out of the
   cage is out".
+* **A seat that sits on its lorry stays out of the mine.** The printed rule —
+  *"anyone who has occupied their lorry at any point during a planning phase can
+  only switch between the last pit cage and their lorry for the remainder of that
+  phase"* — was not enforced: from the lorry the cage was legal, and from a cage
+  at index 1 or deeper the mine opened again, so `card -> lorry -> cage -> card`
+  was a legal way back into a mine a figure had already left. `LORRY_COMMITS_THE_SEAT`
+  now refuses the card move for the rest of the phase. It changes nothing and it
+  cannot: sitting on the lorry is the seat's decision for that phase, so no seat
+  that has done it is asked again before the round ends (0 of 30 games), and a
+  figure still on the lorry when a round starts cannot step onto a card either.
+  Paired over 200 games the difference is **+0.000** — the line was missing, not
+  harmful. The check is kept as a guard, with a test pinning the fact that makes it
+  inert. BALANCE.md, "Sit on their lorry".
+* **The "keeps moving forward" is the rules, not the seat.** `MineEnv` puts every
+  surviving figure back at the mouth of the mine when a round is dealt, so the
+  first dig of every planning phase is mandatory. Of 1,836 seat-phases in 60
+  four-net games, 1,291 digs held the card, 249 (**13.6%**) were abandoned before
+  the cards turned — and of those, 124 left through a cage or lorry already taken
+  and 111 stepped off a dragon they could see under themselves (the printed bait
+  that pays when a rival pushes them off it). Holding a seat to the card it just
+  stepped onto was priced at **−0.06** a seat and dropped, and banning the bait
+  costs **−0.23**: `BAIT_IS_ALLOWED` stays `True`. BALANCE.md, same section.
 * **A seat holds the card it chose.** A figure scores the card under it when the
   planning phase closes, and movement is one-way, so a second move in the same
   phase gives up that card for a shallower one — and at the bottom of the column

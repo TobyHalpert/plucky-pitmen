@@ -550,6 +550,17 @@ def can_wait_on_a_dragon(ctx: PlayerActionContext) -> bool:
     return order.index(ctx.player_index) < len(order) - 1
 
 
+# Whether a seat may stand on a dragon it can see in its own column as bait.
+# The printed rules make this a real tactic: a rival that pushes the figure off
+# the dragon stands on the card and turns it, and the rule that stops the bait --
+# stepping onto a known dragon with no rival in reach to punish it (rule 1,
+# ``doomed_dragon_digs``) -- cannot tell those two cases apart. Measured over 200
+# four-net games it pays for the seats that set it: banning it costs 0.23 a seat.
+# It is also the most confusing thing the nets do on screen, because such a seat
+# leaves the card unturned on purpose. Set to False to ban the play outright.
+BAIT_IS_ALLOWED = True
+
+
 def doomed_dragon_digs(ctx: PlayerActionContext) -> set[int]:
     """Face-up-dragon digs that no rival can punish: the digger eats it itself.
 
@@ -558,8 +569,14 @@ def doomed_dragon_digs(ctx: PlayerActionContext) -> set[int]:
     the deepest row cannot be raided, and the seat steps off at its next
     decision. See ``can_wait_on_a_dragon``.
     """
-    if can_wait_on_a_dragon(ctx):
+    if can_wait_on_a_dragon(ctx) and BAIT_IS_ALLOWED:
         return set()
+    if not BAIT_IS_ALLOWED:
+        return {
+            int(action)
+            for action in ctx.legal_actions
+            if digs_face_up_dragon(ctx, action)
+        }
     return {
         int(action)
         for action in ctx.legal_actions
@@ -1326,6 +1343,7 @@ __all__ = [
     "cage_banks_nothing",
     "climbs_off_the_card_it_chose",
     "steps_out_of_the_cage",
+    "BAIT_IS_ALLOWED",
     "the_escape_stands_once_taken",
     "ESCAPE_STANDS_ONCE_TAKEN",
     "can_wait_on_a_dragon",

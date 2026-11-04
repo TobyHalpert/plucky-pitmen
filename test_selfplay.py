@@ -2067,6 +2067,41 @@ def test_a_four_net_game_finishes_promptly():
     assert slowest < 400
 
 
+def test_the_bait_on_a_visible_dragon_is_allowed_and_priced(monkeypatch):
+    """Standing on a dragon you can see, waiting to be pushed off it, is a tactic.
+
+    Rule 1 refuses a dig onto a known dragon when no rival can punish it, because
+    the seat then has to eat the card itself. The bait is the mirror image: with a
+    rival deep enough to push, the seat is *paid* to stand there, so the rule has
+    to let it through. Banning the bait over 200 four-net games costs 0.23 a seat
+    (hauls thrown away 14% -> 24%), so ``BAIT_IS_ALLOWED`` is on; this pins both
+    the flag and the mask it changes.
+    """
+    import features
+    from features import action_mask, can_wait_on_a_dragon, doomed_dragon_digs
+
+    assert features.BAIT_IS_ALLOWED is True
+
+    dragon = 1 * MAX_COLUMNS + 0
+    ctx = replaced(
+        _board_context(
+            {(1, 0): (DRAGON, 1)},
+            legal=(dragon, int(LORRY)),
+            own_position=2,
+        ),
+        opponents=(_rival(1, 4),),  # deeper in the mine: it can push the bait
+    )
+    assert can_wait_on_a_dragon(ctx), "first decision of the round, not last in order"
+    assert doomed_dragon_digs(ctx) == set(), "the rival can push: bait is on offer"
+    assert action_mask(ctx)[dragon]
+
+    monkeypatch.setattr(features, "BAIT_IS_ALLOWED", False)
+    assert doomed_dragon_digs(ctx) == {dragon}  # nobody there to punish it: no bait
+    mask = action_mask(ctx)
+    assert not mask[dragon]
+    assert mask[int(LORRY)]
+
+
 def test_the_escape_stands_once_taken_is_measured_and_off(monkeypatch):
     """The stronger version of the cage rule, kept behind a flag.
 

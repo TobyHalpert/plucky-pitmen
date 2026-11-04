@@ -702,6 +702,86 @@ mouth of the mine when the round is dealt (``_set_players_to_starting_positions`
 so every seat digs again at the start of every planning phase. A spectactor who
 sees "it never stays in the first row" is seeing that rule, not a policy.
 
+### Sit on their lorry
+
+The printed rule is one line in the planning section: *"Anyone who has occupied
+their lorry at any point during a planning phase can only switch between the last
+pit cage and their lorry for the remainder of that planning phase."* `MineEnv`
+never enforced it. From the lorry the cage is legal, and from a cage at index 1 or
+deeper the whole mine is legal again (`_movement_depth` returns the cage index), so
+`card -> lorry -> cage -> card` was a legal sequence and a figure could re-enter
+the mine from an exit it had already taken. That is the shape of the move the
+viewer reports, so the rule is now enforced: `LORRY_COMMITS_THE_SEAT` is `True`,
+`_apply_action` records that the seat has sat on its lorry, and `_legal` refuses a
+card move for the rest of the phase.
+
+**It changes nothing, and it cannot.** 200 paired four-net games, same seeds, flag
+on and off:
+
+| | rule off | **rule on** |
+| :-- | --: | --: |
+| mean seat score | +2.204 | **+2.204** |
+| gems per haul | 4.33 | **4.33** |
+| hauls thrown away | 14% | **14%** |
+| decisions per game | 97.4 | **97.4** |
+| worst game | 197 | 197 |
+| lorry hauls | 128 | 128 |
+| games that finish | 200/200 | 200/200 |
+
+Paired difference: **+0.000**. The reason is not that the nets behave: sitting on
+the lorry *is* the seat's planning decision for that phase, so it is never handed
+another question before the round ends. Measured both ways — 30 four-net games
+through the controller, and 60 random-action games through the single-agent
+`step()` path that `--pass-rule` and the evaluators use — a seat that had sat on
+its lorry was asked to plan again in the same phase **0 times**; a figure still on
+the lorry when a new round starts cannot step onto a card either, because `_legal`
+refuses every card move from the lorry. So the old code could not have let a seat
+re-enter the mine, and the missing line was dead rather than wrong.
+
+The check stays as a guard — it is what the rules say, it costs nothing, and the
+first change to the planning order makes it live —
+`test_a_seat_that_has_sat_on_its_lorry_is_not_asked_again_in_the_phase` pins the
+fact that makes it inert, so a future change that breaks that fact fails a test
+instead of quietly reopening the rule.
+
+**What the figure on screen is actually doing.** The shipped net digs, holds the
+card, and stays; over 60 four-net games and 1,836 seat-phases:
+
+| | |
+| :-- | --: |
+| dug a card and still held it when the cards turned | 1,291 |
+| dug, then left the phase before the cards turned | **249 (13.6%)** |
+| dug and was still standing on a card when the game ended | 262 |
+| never dug | 34 |
+
+Of the 249, **124 left through a cage or the lorry it had already taken**,
+**111 stepped off a dragon it could see under itself** — the printed bait: a
+rival that pushes the figure off the dragon stands on it and turns it — 11 were
+plain and 3 were a reaction to a charged blast. Almost every abandoned dig is a
+deliberate one.
+
+Holding a seat to the card it just stepped onto (rule 12, `DIG_COMMITS_THE_SEAT`)
+was tried and rejected: over 200 games it does not bite the case it was written for
+(abandoned digs 892 of 6,534 seat-phases off, 876 of 6,568 on) and costs **−0.06**
+a seat (+2.204 → +2.141). Banning the bait outright is worse still, because the
+lure pays: **−0.23** a seat (+2.204 → +1.974), gems per haul 4.33 → 5.63 but
+hauls thrown away 14% → 24% and decisions up 97 → 118. `BAIT_IS_ALLOWED` is
+therefore `True` and the constant exists only so the trade can be re-measured.
+
+**The motion that is left is the rules.** `_set_players_to_starting_positions`
+puts every surviving figure back at the mouth of the mine when a round is dealt,
+so **the first dig of every planning phase is mandatory** — a seat cannot stay in
+row 0, and it cannot keep the row it finished the last phase on. The visible
+pattern "it moves forward again and again" is that rule plus the `n - 1` pass
+count, which asks the other three seats again before a round can close.
+
+**One inconsistency found and not fixed.** The single-agent `step()` path resets
+`planned_players` only in `reset()`, not when a round executes, so a seat that has
+left the mine can be asked again and get an empty mask (seeds 3-6 under random
+play; `test_random_game_terminates` fails if the reset is added there). It is
+pre-existing, it is not reachable through the controller, and fixing it changes
+`step()` behaviour, so it is recorded here rather than slipped into a rule fix.
+
 ### The card you are standing on
 
 A seat scores the card **under its figure when the planning phase closes**, and a

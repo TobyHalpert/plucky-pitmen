@@ -1,3 +1,4 @@
+import random
 from collections import Counter
 
 from game_env import (
@@ -576,6 +577,71 @@ def test_lorry_allows_only_previous_cage_or_pass():
     env.step(PIT_CAGE)
     assert env.players[0].position == PIT_CAGE
     assert env.players[0].cage_index == 0
+
+
+def test_sitting_on_the_lorry_keeps_the_seat_out_of_the_mine_for_the_phase():
+    """README, "Sit on their lorry": lorry and last pit cage only, for the phase."""
+    import game_env
+
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    env.players[0].position = PIT_CAGE
+    env.players[0].cage_index = 2  # deep enough that the mine is still open
+
+    # With the rule lifted, the seat standing in the cage gets the mine back.
+    assert game_env.LORRY_COMMITS_THE_SEAT is True
+    try:
+        game_env.LORRY_COMMITS_THE_SEAT = False
+        cards_from_the_cage = [a for a in range(PIT_CAGE) if env._legal(a)]
+    finally:
+        game_env.LORRY_COMMITS_THE_SEAT = True
+    assert cards_from_the_cage
+
+    # Having sat on the lorry, it may only switch between cage and lorry.
+    env.lorry_touched[0] = True
+    assert not any(env._legal(a) for a in range(PIT_CAGE))
+    assert env._legal(LORRY)
+
+
+def test_a_seat_that_has_sat_on_its_lorry_is_not_asked_again_in_the_phase():
+    """Why the lorry rule never fires today: the lorry closes the seat's phase.
+
+    The check is kept as a guard -- it is what the printed rule says, and a change
+    to the planning order would make it live -- but measured over play a seat that
+    has sat on the lorry is never handed another decision before the round ends, so
+    the old code could not have let it re-enter the mine either. That is also why
+    the rule A/B measures exactly zero (BALANCE.md, "Sit on their lorry").
+    """
+    import game_env
+
+    rng = random.Random(0)
+    asked_again = 0
+    original = game_env.MineEnv._legal
+
+    def spy(self, action, player_index=None):
+        nonlocal asked_again
+        seat = self.planning_player if player_index is None else player_index
+        if self.lorry_touched[seat] and not self.planned_players[seat]:
+            asked_again += 1
+        if player_index is None:
+            return original(self, action)
+        return original(self, action, player_index)
+
+    game_env.MineEnv._legal = spy
+    try:
+        for seed in range(6):
+            env = MineEnv(opponents=3)
+            env.reset(seed=seed)
+            for _ in range(600):
+                if env.game_finished:
+                    break
+                legal = [a for a in range(env.action_space.n) if env.action_mask()[a]]
+                if not legal:
+                    break
+                env.step(rng.choice(legal))
+    finally:
+        game_env.MineEnv._legal = original
+    assert asked_again == 0
 
 
 def test_haul_scores_when_only_one_player_remains_for_next_planning_phase():
