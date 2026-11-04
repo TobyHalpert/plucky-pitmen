@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+from collections import Counter
 
 import numpy as np
 import game_env
@@ -22,6 +23,7 @@ from game_env import PASS, PIT_CAGE
 def evaluate(source, action, blast, samples, seed):
     scores = []
     aborted = 0
+    next_p2 = Counter()
     for index in range(samples):
         branch = copy.copy(source)
         branch.env = copy.deepcopy(source.env)
@@ -33,8 +35,21 @@ def evaluate(source, action, blast, samples, seed):
         if outcome[-1].get('illegal_action'):
             raise ValueError('illegal branch action')
         steps = 0
+        seen_next = False
         while not branch.env.game_finished and steps < 1200:
+            before_turns = branch.env.planning_turns
+            before_seat = branch.env.planning_player
+            before_haul = branch.env.haul
+            before_round = branch.env.round
             branch.step_one_player_auto()
+            if (not seen_next and before_seat == 1
+                    and before_haul == source.env.haul
+                    and before_round == source.env.round
+                    and branch.env.planning_turns != before_turns):
+                choice = branch.last_choice
+                if choice is not None:
+                    next_p2[str(int(choice.action)) + ('+blast' if choice.announce_blast else '')] += 1
+                    seen_next = True
             steps += 1
         aborted += int(not branch.env.game_finished)
         scores.append([p.score for p in branch.env.players])
@@ -44,14 +59,15 @@ def evaluate(source, action, blast, samples, seed):
     wins = own > rivals.max(axis=1)
     tied = own == rivals.max(axis=1)
     return dict(outright_win_rate=float(wins.mean()), tied_top_rate=float(tied.mean()),
-                mean_scores=scores.mean(axis=0).tolist(), unfinished=aborted), wins
+                mean_scores=scores.mean(axis=0).tolist(), unfinished=aborted,
+                next_p2_actions=dict(next_p2)), wins
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--samples', type=int, default=400)
     parser.add_argument('--seed', type=int, default=920000)
-    parser.add_argument('--stage', default='all', choices=('all', 'lorry'))
+    parser.add_argument('--stage', default='all', choices=('all', 'lorry', 'placement'))
     args = parser.parse_args()
     controller, events = transcript(7, 'neural:selfplay4', 3, False, all_seats=True)
     initial = next(i for i, e in enumerate(events)
@@ -66,7 +82,8 @@ def main():
         ('initial choice', initial, [('own gem, no blast', 1, False),
                                      ('own gem + blast (recorded)', 1, True),
                                      ('push P1, no blast', 0, False),
-                                     ('push P1 + blast', 0, True)]),
+                                     ('push P1 + blast', 0, True),
+                                     ('own row 2 + blast', 11, True)]),
         ('next P2 turn after recorded blast', cancel,
          [('cage, cancel blast (recorded)', int(PIT_CAGE), False),
           ('pass, carry out blast', int(PASS), False)]),
@@ -76,6 +93,11 @@ def main():
     ):
         if args.stage == 'lorry' and index != lorry:
             continue
+        if args.stage == 'placement' and index != initial:
+            continue
+        if args.stage == 'placement':
+            arms = [('own row 0 + blast', 1, True),
+                    ('own row 2 + blast', 11, True)]
         source, _ = scripted_replay(controller, events[:index], 7, play_out=False)
         assert source.env.planning_player == 1
         ctx = source.env.player_action_context(1)

@@ -90,3 +90,37 @@ announces a blast, then cancels it, interacting with a shelter mask that forces
 reconsideration. No new rule, mask, reward or checkpoint change was made for
 this diagnostic. In particular, legitimate shelter from a charged blast remains
 available.
+
+## Correction: compare the placement of the blast, not only the announcement
+
+The user's point was the loss of movement options: if P2 later cancels its
+blast, row 0 leaves no card ahead, whereas row 2 preserves the gem at row 0.
+The original four-way comparison did not isolate that issue.
+
+```sh
+python probe_seed7_p2.py --samples 400 --stage placement
+```
+
+Same exact initial position and 400 paired continuations per placement:
+
+| blast placement | next P2 move: cage/cancel | next P2 move: row-0 gem/cancel | outright final wins |
+| :-- | --: | --: | --: |
+| row 0 | 400/400 (100%) | 0/400 | 8.25% |
+| row 2 | 239/400 (59.75%) | 161/400 (40.25%) | 9.50% |
+
+Neither branch retains its blast at P2's next decision in any of these
+continuations. The row-2 branch makes the preserved option concrete: in 161
+cases P2 cancels by taking its row-0 gem rather than abandoning card collection
+for shelter. The difference in final wins is only +1.25 percentage points,
+give or take 1.56, so it is not established as a reliable strength gain.
+
+Row 2 is a dragon P2 itself can see, not a safe dynamite. This first decision
+still guarantees P2 another decision, so it can cancel and step away. That
+reversibility is the relevant distinction from the late known-dragon mistake
+fixed earlier. Other players cannot see that front. Row 0 is a gem and would
+be useful if P2 actually retained its blast; under these continuations it never
+does. This is evidence of poor coordination between the initial placement and
+the later cancellation, not evidence that the network literally knows its
+future action. No policy restriction or net weights changed in this comparison.
+All 800 placement continuations finished. As above, hidden board and deck are
+fixed, future policies unchanged, and ties excluded from outright wins.
