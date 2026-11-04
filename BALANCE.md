@@ -943,12 +943,55 @@ levers that could make a push a weapon are therefore (a) what the pusher knows, 
 pushed figure takes its next decision normally, so the whole cost of being pushed
 is depth, which is cheap to recover.
 
-**Verdict.** Interesting, cheap, and correctly aimed at "the exchange is rigged in
-favour of the pushed seat" -- but it rigs it slightly further, because a forced
-exit is a cap on the victim's haul while a card one row up is not. Keep it as a
-switch (`DISPLACEMENT_STEPS_TO_THE_NEXT_CARD`), not as the default, and if the
-goal is "pushing should be a weapon", the next experiment is a variant that costs
-the victim its *turn* (it may not act again this phase), not its destination.
+#### The clock: the part the destination rule does not touch
+
+The objection that matters is not what a push is worth in points, it is *who
+holds the planning clock*. A pushed figure keeps its decision -- the phase does
+not end on the push -- and a seat that has been carried somewhere safe can spend
+that decision on a pass. With `n - 1` consecutive passes closing the round, that
+pass is a tick of the clock: *"A pushes D. B passes, C passes. Then D passes
+without needing to signal a dragon"*, and the seats still standing on cards have
+to cash out early to be safe. `probe_push_clock.py`, 150 games, one pushing seat
+against three nets, every decision logged and the last decision of a round taken
+as the one that closed it:
+
+| rule | pushed rounds | phase closed on a pushed seat's pass | push -> pass -> pass -> pushed pass | victim's next act is a pass | planning left after the push |
+| :-- | --: | --: | --: | --: | --: |
+| printed | 710 | 31% | **5%** | 34% | 4.83 decisions |
+| **next-card (the proposal)** | 662 | 40% | **11%** | 49% | 4.42 decisions |
+| printed, a pushed pass does not count | 698 | 2% | 0% | 8% | 17.14 decisions |
+
+**The proposed rule doubles the exact sequence it was meant to remove**, 5% to
+11%, and raises "the victim's next act is a pass" from 34% to 49%. The reason is
+the same one that makes the variant look harmless in points: a displaced figure
+that lands on a card *wants to keep that card*, and a pass is how you keep it
+(rule 9's mask holds a seat on the card it chose). The proposal does not give the
+victim back its turn, it gives it a card -- and a card is best defended by
+passing. The free gift changes from *safety* to *position*; the clock stays with
+the pushed seat.
+
+**What actually moves the clock is the pass count, not the destination.** The
+third row is a diagnostic arm, not a proposal: when a pushed seat's pass does not
+tick the counter, the pattern collapses to 0% and 17 decisions of planning are
+left after the push instead of 4.8. It is also plainly too blunt as it stands --
+phases get three times longer, which is its own problem, and nothing here has
+priced that (unfinished games, decisions per game, and whether the extra planning
+buys anything are all unmeasured). Recorded because it identifies the mechanism:
+the round closes on `n - 1` passes by *any* active seat, including the seats that
+are already safe.
+
+So the honest summary of the whole proposal is: right that the pushed seat is
+over-rewarded and over-empowered, wrong about which lever that is, and the change
+moves the number the wrong way. The two levers that could work are (a) the push
+spends the victim's decision -- it sits out the rest of the phase, so there is no
+free pass and no free card, or (b) the seats that are already out stop being the
+clock. Both need their own pricing.
+
+**Verdict.** Interesting, cheap, and correctly aimed at "the pushed seat gets
+something for free" -- but it hands that seat a *card* instead of a *cage*, and a
+card is exactly what a pass protects, so the sequence the rule was written to stop
+happens twice as often under it. Keep it as a switch
+(`DISPLACEMENT_STEPS_TO_THE_NEXT_CARD`), not as the default.
 
 ### The parked seat: can a deterministic seat rob the nets by pushing?
 

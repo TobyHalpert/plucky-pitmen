@@ -271,6 +271,7 @@ uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
 | `probe_blast_strategy.py` | is "blast while a dragon is waiting for me" a good rule? paired arms over the blast trigger and the keeper choice |
 | `probe_bait_value.py` | what a move onto a dragon the player can see is worth, forked per opponent (rule bots vs readers vs its own peers) |
 | `probe_push_value.py` | what a single displacement is worth from a real position, forked, split by the card it took |
+| `probe_push_clock.py` | who closes a planning phase after a push: the `push, pass, pass, pushed pass` pattern under the printed rule, the next-card variant and a no-count diagnostic |
 | `probe_backside_reading.py` | does the learner read a backside? risk of the card it takes, against the risk it was offered |
 | `probe_lorry.py` | how often a seat parks on its lorry, and how often a haul is lost to a stand-off because every seat did |
 | `probe_escape.py` | escape rules side by side: how often a haul is thrown away by a herd of empty-handed cage moves, and what each variant is worth |
@@ -485,8 +486,12 @@ The full write-up, with confidence intervals and reproduction commands, is in
   card nearer the exit keeps its loot and its options. The exchange is indeed
   rigged, but in the victim's favour for the other reason: a push is a bet on a
   card the pusher cannot see (aggressor −0.39, victim +0.38; a dragon taken is
-  −2.47 / +2.58, which is the bait). BALANCE.md, "Should a push send the victim to
-  the next card?".
+  −2.47 / +2.58, which is the bait). It also does not touch the planning clock:
+  a pushed seat keeps its decision and spends it on a pass, and the exact
+  sequence "push, pass, pass, the pushed seat's pass closes the phase" happens
+  **5%** of pushed rounds under the printed rule and **11%** under the variant,
+  because a figure dropped on a card defends it by passing. BALANCE.md, "Should a
+  push send the victim to the next card?".
 * **Pushing the nets off their cards does not pay, and cannot.** A net that has
   decided its round holds the card it chose (rule 9), and it is usually a gem:
   of the seat-phases that took exactly one card move and then held, **82%** ended
