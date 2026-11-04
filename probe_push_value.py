@@ -11,10 +11,13 @@ This script measures the exchange instead of arguing about it. It forks every
 decision where a deterministic seat wants to push: one copy plays the push, the
 other makes the same policy pick again with the push targets removed, and both
 play out. The difference in that seat's final score is what the push was worth
-there. The results are split afterwards by the front under the victim -- the
+there -- and the difference in the *victim's* score is what being pushed was
+worth to it, which is the number the proposed "push it to the next card" rule
+moves. The results are split afterwards by the front under the victim -- the
 policy never sees it, so that split is analysis, not information.
 
     python probe_push_value.py --games 60 --continuations 3
+    python probe_push_value.py --games 60 --displacement next-card
 """
 
 from __future__ import annotations
@@ -73,10 +76,30 @@ def main() -> None:
         choices=("any", "held"),
         help="which rivals the tracked seat is willing to push",
     )
+    parser.add_argument(
+        "--displacement",
+        default="cage",
+        choices=("cage", "next-card"),
+        help="cage: the printed rule. next-card: DISPLACEMENT_STEPS_TO_THE_NEXT_CARD",
+    )
+    parser.add_argument(
+        "--compare-rules",
+        action="store_true",
+        help=(
+            "from the same position and the same push, play it out under both "
+            "displacement rules: the only difference left is where the victim goes"
+        ),
+    )
     args = parser.parse_args()
 
+    import game_env
+
+    want_next = args.displacement == "next-card"
+    game_env.DISPLACEMENT_STEPS_TO_THE_NEXT_CARD = want_next
     net = PolicyNet.load(args.checkpoint)
-    rows: list[tuple[int | None, int | None, list[float], int]] = []
+    #: (front taken, front given up, pusher deltas, victim deltas, victim's hand)
+    rows: list[tuple[int | None, int | None, list[float], list[float], int]] = []
+    rule_rows: list[tuple[float, float, int]] = []
 
     for seed in range(args.games):
         env = MineEnv(opponents=args.players - 1)
@@ -116,6 +139,9 @@ def main() -> None:
                     ),
                 )
                 deltas: list[float] = []
+                victim_deltas: list[float] = []
+                rule_deltas: list[float] = []
+                rule_victim: list[float] = []
                 for continuation in range(args.continuations):
                     # Re-roll the rivals' sampling identically for both arms, so a
                     # pair differs in the one decision and nothing else.
@@ -142,32 +168,96 @@ def main() -> None:
                         result_b = play_game(agents_b, seed=seed, env=env_b)
                     except (ValueError, IndexError):
                         continue
+                    if args.compare_rules:
+                        # Same position, same push, the other displacement rule:
+                        # the only thing left to differ is where the victim lands.
+                        try:
+                            env_c = copy.deepcopy(env)
+                            agents_c = copy.deepcopy(fork)
+                            game_env.DISPLACEMENT_STEPS_TO_THE_NEXT_CARD = not want_next
+                            env_c.step_one_player(action, force_action=True)
+                            result_c = play_game(agents_c, seed=seed, env=env_c)
+                        except (ValueError, IndexError):
+                            pass
+                        else:
+                            sign = 1.0 if want_next else -1.0
+                            rule_deltas.append(
+                                sign
+                                * float(
+                                    result_a.scores[TRACKED] - result_c.scores[TRACKED]
+                                )
+                            )
+                            if victim is not None:
+                                rule_victim.append(
+                                    sign
+                                    * float(
+                                        result_a.scores[victim] - result_c.scores[victim]
+                                    )
+                                )
+                        finally:
+                            game_env.DISPLACEMENT_STEPS_TO_THE_NEXT_CARD = want_next
                     deltas.append(
                         float(result_a.scores[TRACKED] - result_b.scores[TRACKED])
                     )
+                    if victim is not None:
+                        victim_deltas.append(
+                            float(result_a.scores[victim] - result_b.scores[victim])
+                        )
                 if deltas:
-                    rows.append((taken, own, deltas, victim_cards))
+                    rows.append((taken, own, deltas, victim_deltas, victim_cards))
+                rule_rows.extend(
+                    (move, hurt, victim_cards)
+                    for move, hurt in zip(rule_deltas, rule_victim)
+                )
                 forked = True
             env.step_one_player(action, force_action=True)
+
+    def _mean(values: list[float]) -> str:
+        if not values:
+            return "     --      "
+        spread = float(np.std(values, ddof=1) / np.sqrt(len(values))) if len(values) > 1 else 0.0
+        return f"{float(np.mean(values)):+.2f} (se {spread:.2f})"
 
     def show(label: str, subset) -> None:
         if not subset:
             return
-        values = [value for row in subset for value in row[2]]
-        spread = float(np.std(values, ddof=1) / np.sqrt(len(values))) if len(values) > 1 else 0.0
+        pusher = [value for row in subset for value in row[2]]
+        victim = [value for row in subset for value in row[3]]
         print(
-            f"{label:34s} positions {len(subset):3d}  value of the push "
-            f"{float(np.mean(values)):+.2f} (se {spread:.2f})"
+            f"{label:34s} positions {len(subset):3d}  pusher {_mean(pusher)}"
+            f"  victim {_mean(victim)}"
         )
 
-    print(f"checkpoint {args.checkpoint}, {args.games} games, tell={args.tell}")
+    print(
+        f"checkpoint {args.checkpoint}, {args.games} games, tell={args.tell}, "
+        f"displacement={args.displacement}"
+    )
     show("all pushes", rows)
     for front, label in ((GEM, "gem"), (DYNAMITE, "dynamite"), (DRAGON, "dragon")):
         show(f"  ...it took a {label}", [row for row in rows if row[0] == front])
     show("  ...it gave up its own card", [row for row in rows if row[1] is not None])
     show("  ...it was standing on nothing", [row for row in rows if row[1] is None])
+    if args.compare_rules and rule_rows:
+        move = [row[0] for row in rule_rows]
+        hurt = [row[1] for row in rule_rows]
+        print(
+            "next-card MINUS printed rule, same position and same push: "
+            f"pusher {_mean(move)}  victim {_mean(hurt)}"
+        )
+        for hand, label in ((0, "victim held nothing"), (1, "victim held cards")):
+            subset = [
+                row
+                for row in rule_rows
+                if (row[2] == 0) == (hand == 0)
+            ]
+            if subset:
+                print(
+                    f"  ...{label:22s} n={len(subset):4d}  "
+                    f"pusher {_mean([row[0] for row in subset])}  "
+                    f"victim {_mean([row[1] for row in subset])}"
+                )
     if rows:
-        hands = [row[3] for row in rows]
+        hands = [row[4] for row in rows]
         print(
             f"victim's collected cards at the push: mean {np.mean(hands):.1f}, "
             f"empty-handed {100 * sum(1 for hand in hands if hand == 0) / len(hands):.0f}%"

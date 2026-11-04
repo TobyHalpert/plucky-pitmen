@@ -872,6 +872,84 @@ That is worth writing down plainly: the habit was not only ugly, it *was* the
 exploit. A seat that forfeits the card it chose, a row at a time, hands the haul to
 whoever banks first — which is what the counter was doing.
 
+### Should a push send the victim to the next card? (a proposed rule)
+
+A proposed variant, worth taking seriously because it points at a real fault line:
+*"A displacement should not push the victim onto a pit cage, but to the next card
+(or the lorry, if it has been the last card). This way the aggressor is not
+automatically safe, but has to move himself to a pit cage."* It is implemented as
+`game_env.DISPLACEMENT_STEPS_TO_THE_NEXT_CARD` -- off by default, because the
+printed rule is the game -- with the victim stepping to the nearest free card in
+its own column towards the lorries, or onto its lorry if it was standing on the
+last card.
+
+**The premise is inverted, and it decides the argument.** Today the *aggressor*
+pays and the *victim* is rewarded. Forked from the same position, 139 positions,
+3 continuations an arm, `PusherAgent(tell="any")` against three nets, printed
+rule (`probe_push_value.py --compare-rules`):
+
+| what the push is worth | pusher | victim |
+| :-- | --: | --: |
+| all pushes | **−0.39 (se 0.16)** | **+0.38 (se 0.14)** |
+| ...it took a gem (82 positions) | +0.64 (se 0.18) | −0.54 (se 0.16) |
+| ...it took a dynamite (21) | −0.81 (se 0.34) | +0.22 (se 0.24) |
+| ...it took a dragon (36) | **−2.47 (se 0.32)** | **+2.58 (se 0.28)** |
+
+So the aggressor is never automatically safe: it pays a turn and a card for a
+card it could not read, and roughly one in four of those is a dragon. What the
+"gift" really is, is the *bait*: when the push takes a dragon the victim is
+carried off the dragon cell and the pusher wakes it instead, worth +2.58 to the
+victim and −2.47 to the pusher.
+
+**Holding the position and the push fixed and changing only the rule**, the
+proposal is a wash, and what movement there is runs the wrong way:
+
+| next-card MINUS printed rule | pusher | victim |
+| :-- | --: | --: |
+| all pairs (417) | −0.08 (se 0.11) | **+0.18 (se 0.11)** |
+| ...victim held nothing (342) | −0.11 (se 0.13) | +0.13 (se 0.13) |
+| ...victim held cards (75) | +0.05 (se 0.20) | +0.44 (se 0.18) |
+
+**The printed rule is the harsher one, which is the opposite of the intuition.**
+A pit cage *ends the victim's haul*: it leaves at the execution phase, scores what
+it holds and can earn nothing more -- and 82% of pushed victims hold nothing, so
+for them the cage exit is a zero for the haul. The next card leaves the victim in
+the mine, its loot intact, one move from the exit, still free to collect more and
+to choose when to leave. Being carried *out* caps your haul; being dropped one row
+up does not. That is why the proposal is worth +0.18 to the victim rather than
+−0.4, and why the split by loot reads the way it does: with cards in hand the
+flexibility is worth +0.44.
+
+At game level nothing moves either, for the same reason in both directions --
+the field barely pushes:
+
+| | printed rule | next-card rule | paired difference |
+| :-- | --: | --: | :-- |
+| four nets, mean seat, 200 games | +2.124 | +2.114 | **−0.010 (se 0.010)** |
+| `PusherAgent(tell="any")` margin, 200 games | +1.322 | +1.263 | **−0.058 (se 0.242)** |
+
+Neither rule throws a haul away (0 unfinished games in 200 per arm), and the
+variant is not crueller: what a gem costs the victim is about the same either way
+(−0.54 under the printed rule, and the paired rule effect is +0.18 on average, not
+a swing towards punishment).
+
+**Why it cannot solve the problem it aims at.** The pusher's cost is *information*:
+a displacement is only legal against a figure standing in its own column, and only
+that owner sees the fronts, so every push is a bet on a card the pusher has never
+seen (BALANCE.md, "The parked seat"). That cost sits on the pusher's side of the
+ledger and no rule about *where the victim lands* can touch it. The only two
+levers that could make a push a weapon are therefore (a) what the pusher knows, or
+(b) what the pusher spends -- and, on the victim's side, *time*: under both rules a
+pushed figure takes its next decision normally, so the whole cost of being pushed
+is depth, which is cheap to recover.
+
+**Verdict.** Interesting, cheap, and correctly aimed at "the exchange is rigged in
+favour of the pushed seat" -- but it rigs it slightly further, because a forced
+exit is a cap on the victim's haul while a card one row up is not. Keep it as a
+switch (`DISPLACEMENT_STEPS_TO_THE_NEXT_CARD`), not as the default, and if the
+goal is "pushing should be a weapon", the next experiment is a variant that costs
+the victim its *turn* (it may not act again this phase), not its destination.
+
 ### The parked seat: can a deterministic seat rob the nets by pushing?
 
 Rule 9 holds a seat on the card it chose, so a net that has decided its round

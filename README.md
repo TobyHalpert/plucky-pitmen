@@ -474,6 +474,19 @@ The full write-up, with confidence intervals and reproduction commands, is in
   Paired over 200 games the difference is **+0.000** — the line was missing, not
   harmful. The check is kept as a guard, with a test pinning the fact that makes it
   inert. BALANCE.md, "Sit on their lorry".
+* **A proposed rule — "push the victim to the next card" — is priced, and it is
+  a wash.** The variant (`game_env.DISPLACEMENT_STEPS_TO_THE_NEXT_CARD`, off by
+  default) steps a displaced figure onto the next card towards the lorries, or onto
+  its lorry if it was on the last card, instead of into a pit cage. Holding the
+  position *and* the push fixed, it moves the pusher by −0.08 (se 0.11) and the
+  victim by +0.18 (se 0.11): nothing, with the sign against the intent. A pit cage
+  is the harsher destination because it *ends the victim's haul* — it scores what
+  it holds and can earn no more, and 82% of pushed victims hold nothing — while one
+  card nearer the exit keeps its loot and its options. The exchange is indeed
+  rigged, but in the victim's favour for the other reason: a push is a bet on a
+  card the pusher cannot see (aggressor −0.39, victim +0.38; a dragon taken is
+  −2.47 / +2.58, which is the bait). BALANCE.md, "Should a push send the victim to
+  the next card?".
 * **Pushing the nets off their cards does not pay, and cannot.** A net that has
   decided its round holds the card it chose (rule 9), and it is usually a gem:
   of the seat-phases that took exactly one card move and then held, **82%** ended

@@ -66,6 +66,16 @@ LORRY_REWARD = -0.05
 # the old behaviour (BALANCE.md prices it).
 LORRY_COMMITS_THE_SEAT = True
 
+# Where a displaced figure goes. The printed rule (README, planning phase) is
+# "the player moves the opponent to the nearest pit cage in the direction of the
+# lorries", i.e. the victim leaves the mine at the execution phase and banks
+# whatever it has collected. The variant steps the victim onto the next card
+# towards the lorries instead -- or onto its lorry if it was standing on the last
+# card -- so a push steals a rival's depth without handing it a safe exit. See
+# BALANCE.md, "Should a push send the victim to the next card?", for what each
+# rule is worth.
+DISPLACEMENT_STEPS_TO_THE_NEXT_CARD = False
+
 
 @dataclass(frozen=True)
 class OpponentPublicView:
@@ -853,16 +863,54 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         occupant = self._card_occupant(row, column)
         return occupant is not None and occupant != player_index and occupant == column
 
+    def _next_card_towards_the_lorries(
+        self, occupant: int, row: int, column: int
+    ) -> int | None:
+        """Row of the nearest free card between ``row`` and the lorries, or None.
+
+        Only used when ``DISPLACEMENT_STEPS_TO_THE_NEXT_CARD`` is on. "The next
+        card" is the nearest row *towards the lorries* (smaller row index) that
+        still holds a card in the victim's own column and has no figure on it:
+        collected cards leave an empty cell, and a rival raiding the column can
+        hold one, so the rule needs a definition rather than ``row - 1``. None
+        means there is no card left -- the lorry.
+        """
+        player_index = occupant
+        for candidate in range(row - 1, -1, -1):
+            if candidate >= len(self.rows):
+                continue
+            if column >= len(self.rows[candidate]):
+                continue
+            if self.rows[candidate][column] is None:
+                continue
+            if self._card_occupied(candidate, column, ignore_player=player_index):
+                continue
+            return candidate
+        return None
+
     def _displace(self, row: int, column: int, player_index: int) -> None:
         if not self._can_displace(row, column, player_index):
             return
         occupant = self._card_occupant(row, column)
         if occupant is not None:
             self.players[player_index].displacements += 1
-            cage_index = min(self.players[occupant].position, len(self.rows) - 1)
-            self.players[occupant].position = PIT_CAGE
-            self.players[occupant].column = None
-            self.players[occupant].cage_index = cage_index
+            if DISPLACEMENT_STEPS_TO_THE_NEXT_CARD:
+                landing = self._next_card_towards_the_lorries(occupant, row, column)
+                self.players[occupant].cage_index = None
+                if landing is None:
+                    # It was standing on the last card: the lorry is next, which
+                    # ends its planning phase without taking it out of the haul.
+                    self.players[occupant].position = LORRY
+                    self.players[occupant].column = None
+                    self.lorry_touched[occupant] = True
+                else:
+                    self.players[occupant].position = landing
+                    self.players[occupant].column = column
+            else:
+                cage_index = min(self.players[occupant].position, len(self.rows) - 1)
+                self.players[occupant].position = PIT_CAGE
+                self.players[occupant].column = None
+                self.players[occupant].cage_index = cage_index
             self.displacement_events.append((occupant, player_index))
 
     # ------------------------------------------------------------------

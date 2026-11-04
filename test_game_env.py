@@ -579,6 +579,76 @@ def test_lorry_allows_only_previous_cage_or_pass():
     assert env.players[0].cage_index == 0
 
 
+def _pushable_board(env, column=1):
+    """Put player ``column`` on a card in its own column with the pusher deeper."""
+    row = next(
+        row
+        for row in range(2, len(env.rows))
+        if all(env.rows[other][column] is not None for other in range(row))
+    )
+    victim = env.players[column]
+    victim.position, victim.column = row, column
+    victim.collected_cards = [(GEM, BACKSIDE_A)]
+    env.players[0].position, env.players[0].column = row + 1, 0
+    return row, column
+
+
+def test_the_next_card_variant_steps_the_victim_towards_the_lorry(monkeypatch):
+    """``DISPLACEMENT_STEPS_TO_THE_NEXT_CARD``: the victim stays in the mine."""
+    import game_env
+
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    row, column = _pushable_board(env)
+    monkeypatch.setattr(game_env, "DISPLACEMENT_STEPS_TO_THE_NEXT_CARD", True)
+
+    push = row * MAX_COLUMNS + column
+    assert env._legal(push)
+    env._apply_action(0, push)
+
+    victim = env.players[column]
+    assert victim.position == row - 1, "one card closer to the lorries, not a cage"
+    assert victim.column == column, "still on its own column, so still in the game"
+    assert not victim.escaped, "a push no longer takes it out of the haul"
+    assert victim.cage_index is None
+    assert len(victim.collected_cards) == 1, "it still keeps what it collected"
+    assert env.players[0].position == row, "the pusher still stands on the card"
+
+
+def test_the_next_card_variant_puts_a_victim_off_the_last_card_on_the_lorry(monkeypatch):
+    import game_env
+
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    column = 1
+    env.rows[0][column] = (GEM, BACKSIDE_A)
+    victim = env.players[column]
+    victim.position, victim.column = 0, column
+    env.players[0].position, env.players[0].column = 3, 0
+    monkeypatch.setattr(game_env, "DISPLACEMENT_STEPS_TO_THE_NEXT_CARD", True)
+
+    push = 0 * MAX_COLUMNS + column
+    assert env._legal(push), "row 0 is the last card before the lorries"
+    env._apply_action(0, push)
+
+    assert env.players[column].position == LORRY
+    assert env.players[column].column is None
+    assert env.lorry_touched[column], "the lorry rule binds the phase for it too"
+
+
+def test_the_next_card_variant_skips_an_empty_cell(monkeypatch):
+    import game_env
+
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    row, column = _pushable_board(env)
+    monkeypatch.setattr(game_env, "DISPLACEMENT_STEPS_TO_THE_NEXT_CARD", True)
+    target = env._next_card_towards_the_lorries(column, row, column)
+    assert target == row - 1
+    env.rows[row - 1][column] = None  # the card was collected earlier
+    assert env._next_card_towards_the_lorries(column, row, column) == row - 2
+
+
 def test_sitting_on_the_lorry_keeps_the_seat_out_of_the_mine_for_the_phase():
     """README, "Sit on their lorry": lorry and last pit cage only, for the phase."""
     import game_env
