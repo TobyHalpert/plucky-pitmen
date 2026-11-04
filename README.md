@@ -272,6 +272,8 @@ uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
 | `agents.py` | `Agent` interface, scripted baselines (incl. `rusher`, `leaver`, `threat`, `reader` — `rule` without the "a quiet rival means a safe card" inference — and `counter`, the deterministic seat that farms the trained net), `NeuralAgent` |
 | `learning.py` | masked-softmax MLP policy + value baseline, REINFORCE, Adam, save/load |
 | `selfplay.py` | full-game driver: every seat controlled, blasts, tie-breaks, per-player returns |
+| `train_tactical.py` | branch-based tactical distillation from sampled hidden worlds and full-game win-share comparisons |
+| `evaluate_tactical.py` | fresh-game candidate comparison against three unchanged nets, with actual blast behaviour |
 | `train_selfplay.py` | league self-play trainer with checkpoints and a learning curve |
 | `evaluate_balance.py` | benchmarks, pairwise dominance, luck analysis, markdown report |
 | `analyze_blasts.py` | is a blast worth it, does the learner threaten, does it react, and is the threat real |
@@ -658,3 +660,11 @@ See BALANCE.md and rerun with:
 ```sh
 python probe_pusher_match.py --games 400 --seed 910000 --score-aware
 ```
+
+### Branch-based tactical training
+
+The experimental `neural:selfplay4_tactical` checkpoint is trained on generated
+blast, cancellation and attack positions using branch continuations, not seed-7
+imitation. The ordinary `neural:selfplay4` remains unchanged. See
+[TACTICAL_TRAINING.md](TACTICAL_TRAINING.md) for the method, hidden-information
+limitations, reproducible commands and evaluation.

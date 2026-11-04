@@ -3091,3 +3091,21 @@ the blast on P2's next turn and cancelling it both win 9.25%. After cancellation
 the empty-departure filter forces reconsideration of the cage and permits the
 lorry; that is not evidence of a coherent learned feint. No rules or weights
 changed in this diagnostic. Rerun `python probe_seed7_p2.py --samples 400`.
+
+### Branch-based tactical training: first experiment
+
+Implemented in `train_tactical.py` and `PolicyNet.fit_tactical`. See
+[TACTICAL_TRAINING.md](TACTICAL_TRAINING.md) for the sampling method, limitations
+and full results. The optional `selfplay4_tactical.npz` learned from 64 generated
+positions / 6,480 branch continuations, with 32 disjoint held-out positions /
+2,688 continuations. No seed-7 training and no new masks or game-rule changes.
+Labels use final-score win share, with equal shares for ties, and hidden fronts
+are resampled rather than teaching from the watched hidden dragon.
+
+This run did **not** improve reliably: held-out conditional estimated win share
+22.59% -> 22.11%; fresh-game outright wins against three unchanged nets
+20.5% -> 19.5% (200 games per arm; paired difference −1.0 percentage point,
+give or take 3.47). All fresh games finished. Announcements/cancellations fell
+420/361 -> 270/212, but fired-blast hauls stayed 56 -> 55. The candidate remains
+optional; `selfplay4.npz` is unchanged. The local seed-7 row-0 blast probability
+fell 60.3% -> 41.7%, which is not enough to call the training successful.

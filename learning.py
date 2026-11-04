@@ -369,6 +369,41 @@ class PolicyNet:
         stats["value_loss"] += value_loss
         stats["entropy"] += float(entropy.mean())
 
+    def fit_tactical(self, examples, *, epochs: int = 30, seed: int = 0) -> list[float]:
+        """Distil branch win-share targets; value weights are left untouched.
+
+        Targets are distributions over legal actions, not hidden-information
+        labels. The caller supplies soft targets mixed with the frozen policy
+        to limit forgetting. Unlike ``fit``, examples are independent positions:
+        no return-to-go is propagated between them.
+        """
+        if not examples:
+            raise ValueError("tactical examples must not be empty")
+        prepared = []
+        for ctx, target in examples:
+            target = np.asarray(target, dtype=np.float32)
+            mask = action_mask(ctx)
+            if (target.shape != (N_ACTIONS,) or not np.isfinite(target).all()
+                    or np.any(target < 0) or np.any(target[~mask] > 0)
+                    or not np.isclose(target.sum(), 1.0)):
+                raise ValueError("tactical target must be a legal probability distribution")
+            prepared.append((state_action_matrix(ctx), mask, target))
+        rng = np.random.default_rng(seed)
+        losses = []
+        for _ in range(epochs):
+            total = 0.0
+            for index in rng.permutation(len(prepared)):
+                matrix, mask, target = prepared[index]
+                scores, cache = self._policy_forward(matrix)
+                scores = np.where(mask, scores, -1e30)
+                exp = np.exp(scores - scores.max())
+                probs = exp / exp.sum()
+                total -= float((target * np.log(probs + 1e-12)).sum())
+                grads = self._policy_backward(cache, probs - target)
+                self.optimizer.step(self.params, grads)
+            losses.append(total / len(prepared))
+        return losses
+
     # -- persistence ---------------------------------------------------
     def save(self, path: str | Path) -> Path:
         path = Path(path)
