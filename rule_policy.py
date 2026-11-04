@@ -319,8 +319,20 @@ def deterministic_policy(
     if has_planned:
         if current_pos == LORRY:
             return int(PASS)
-        if current_pos == PIT_CAGE and (must_escape or dragon_under_opponent):
-            return int(PASS)
+        if current_pos == PIT_CAGE:
+            # The cage is a departure, not a place to dig from. A figure in a
+            # cage is out of the mine at the execution phase and keeps its loot,
+            # so stepping back onto a card undoes the escape -- and it is worth
+            # -0.72 a move against taking the departure (BALANCE.md, "Out of the
+            # cage is out"). So once the seat has planned and is standing in one:
+            # hold the escape if it banks something, otherwise stay in the haul
+            # on the lorry and dig again next round from the front.
+            # Only the bank that exists: with loot in hand (or a dragon about to
+            # be turned) the escape is the point and the seat holds it. With
+            # nothing to bank there is nothing to undo, and digging out is the
+            # same trade the net keeps (BALANCE.md, "Out of the cage is out").
+            if own_gems >= 1 or dragon_under_opponent or signaled_threat:
+                return int(PASS)
 
     # Escape / retreat triggers: allow cage only when needed.
     if must_escape or dragon_under_opponent or signaled_threat:

@@ -448,6 +448,18 @@ The full write-up, with confidence intervals and reproduction commands, is in
   1,985 seat-phases take exactly one card move**, and every remaining second dig is
   a re-entry from a cage or a step off a visible dragon. BALANCE.md, "The card you
   are standing on".
+* **A seat that has walked into a cage leaves it.** A figure in a cage keeps its
+  loot and is out of the haul at the execution phase, so a card move taken from
+  there undoes the escape. The shipped net did it **604 times in 60 games**, 313
+  of them while holding a gem the escape would have banked, and it is worth
+  **−0.72 (se 0.12)** a move. Rule 10 refuses it when there is a bank to forfeit
+  (`+0.029`, se 0.032 — it removes a move with no upside). The harder version,
+  holding the seat to its departure so the figure cannot walk in and out of the
+  cage, is priced and **left off**: +0.145 a seat and a third fewer decisions, at
+  the cost of 28% of the gems in the mine (`ESCAPE_STANDS_ONCE_TAKEN`). The
+  viewer's default opponent, `rule_policy`, had the same habit — 520 steps out of a
+  cage in 40 games — and now holds a banked escape too. BALANCE.md, "Out of the
+  cage is out".
 * **A seat holds the card it chose.** A figure scores the card under it when the
   planning phase closes, and movement is one-way, so a second move in the same
   phase gives up that card for a shallower one — and at the bottom of the column

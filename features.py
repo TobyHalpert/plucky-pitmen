@@ -1004,6 +1004,77 @@ def takes_the_gem_over_the_dynamite(ctx: PlayerActionContext) -> set[int]:
     return dynamite_digs if gem_legal else set()
 
 
+# Whether a seat that has walked into a cage is held to the departure for the
+# rest of the phase. Measured on the shipped checkpoint, 200 paired four-net
+# games: **+0.145 a seat (se 0.042)**, decisions per game 97 -> 55, every game
+# finishing -- and **gems per haul 4.33 -> 3.13** with hauls thrown away (three
+# or more seats out, two gems between them) 14% -> 34%. That is the whole tension
+# in one number: a seat held to its escape leaves earlier, dies less, and takes
+# the loot with it. Off by default because "the table gave the haul away" is the
+# complaint this file already fixed once (#27); flip it to True to trade loot for
+# score, and the mask reads it at decision time.
+ESCAPE_STANDS_ONCE_TAKEN = False
+
+
+def the_escape_stands_once_taken(ctx: PlayerActionContext) -> bool:
+    """True when a seat has already committed to leaving the haul this phase.
+
+    A figure in a cage leaves the mine when the cards are turned, so a seat that
+    walked into one has made its decision. Rule 4 then re-reads that decision on
+    the seat's *next* turn of the same phase -- and the hazard it reads has moved,
+    because every other seat has moved since: the table that looked dangerous
+    when the seat entered the cage can look calm by the time it is asked again.
+    The mask then refuses the escape it just allowed, puts the seat back on the
+    lorry, and the seat digs its way out of the cage instead. On screen that is a
+    figure that walks into the pit cage and straight back out, which is the
+    "keeps moving forward because it keeps being asked" the viewer reports.
+
+    Once the seat has planned and is standing in a cage, the decision is the
+    departure; this rule is what makes the mask stop re-litigating it.
+    """
+    return int(ctx.own_position) == PIT_CAGE and bool(ctx.own_planned)
+
+
+def steps_out_of_the_cage(ctx: PlayerActionContext) -> set[int]:
+    """Card moves taken from inside a pit cage.
+
+    A figure in a cage leaves the mine at the start of the execution phase and
+    keeps its loot, so a seat standing there has exactly two decisions left: take
+    the departure, or stay in the haul on the lorry (and dig again next round,
+    from the mouth of the mine). Stepping back **onto a card** is neither. It
+    undoes the escape the seat just made, and because the figure then stands on a
+    card the departure is gone for the rest of the phase — the seat re-enters the
+    mine one row shallower than where it started.
+
+    Measured on the shipped checkpoint, 60 four-net games: of **1,235 decisions
+    taken from inside a cage**, 604 stepped back onto a card and **313 of those
+    were holding a gem the escape would have banked**. Priced from the identical
+    position against taking the departure, 20 re-rolled continuations each, the
+    step back is worth **−0.72 (se 0.12)** a move — the same in the empty-handed
+    bucket (−0.71) as in the carrying one (−0.73), so it is not a close call about
+    loot: it is a round spent re-entering a mine the seat had just left safely.
+
+    This is the "figure that keeps moving forward because it keeps being asked"
+    the viewer reports.
+
+    **Only when the escape banks something.** An empty-handed seat has nothing to
+    undo: leaving is worth nothing to it, a card in the mine is not, and staying in
+    the haul on the lorry costs it a round — so the lorry, the departure and the
+    dig are all real options and the net picks. Masking those too is a different
+    rule with a different price: it gains more score (+0.18 a seat) but collects
+    18% fewer gems and ends half again as many hauls with the table picked clean,
+    which is the trade #27 was about. So the line is drawn at "there is loot in
+    hand to forfeit", not at "the seat is in a cage".
+    """
+    if int(ctx.own_position) != PIT_CAGE:
+        return set()
+    if cage_banks_nothing(ctx):
+        return set()  # nothing to forfeit; digging out is a real option
+    return {
+        int(action) for action in ctx.legal_actions if 0 <= int(action) < PIT_CAGE
+    }
+
+
 def climbs_off_the_card_it_chose(ctx: PlayerActionContext) -> set[int]:
     """Card moves that give up the card the figure is already standing on.
 
@@ -1067,7 +1138,7 @@ def climbs_off_the_card_it_chose(ctx: PlayerActionContext) -> set[int]:
 def action_mask(ctx: PlayerActionContext) -> np.ndarray:
     """Legal policy actions, including legal blast announcements.
 
-    Nine narrow rules ride on top of the legal moves, all of them policies rather
+    Eleven narrow rules ride on top of the legal moves, all of them policies rather
     than rules of the game, which is why they live here and not in the
     environment (see BALANCE.md):
 
@@ -1108,6 +1179,18 @@ def action_mask(ctx: PlayerActionContext) -> np.ndarray:
        offer the cage from the lorry, and every one of them is a real escape --
        a blast is charged -- so the mask has nothing to remove).
 
+    11. (Off by default, ``ESCAPE_STANDS_ONCE_TAKEN``.) A seat that has walked
+        into a cage has decided to leave, and this stops the mask re-litigating
+        it: on its next turn the departure is the only move offered. Without it
+        the escape rule re-reads a hazard that has moved since the seat planned,
+        refuses the escape it just allowed, and the figure digs its way back out
+        -- the "in and straight back out of the cage" the viewer reports. Priced:
+        +0.145 a seat and a third fewer decisions, at the cost of 28% of the gems
+        in the mine. ``the_escape_stands_once_taken``.
+    10. A figure in a cage has made its escape: it leaves at the execution phase
+        and keeps its loot, so the only decisions left are the departure and the
+        lorry. Stepping back onto a card undoes the escape and costs -0.72 a move.
+        ``steps_out_of_the_cage``.
     9. The card a seat scores is the one under its figure when the phase closes,
        and movement is one-way, so a second move in the same phase forfeits the
        card already chosen for a shallower one -- at the bottom of the column,
@@ -1142,7 +1225,16 @@ def action_mask(ctx: PlayerActionContext) -> np.ndarray:
         for primitive in passed:
             mask[primitive] = False
             mask[join_action(primitive, True)] = False
-    if int(ctx.own_position) == PIT_CAGE:
+    if ESCAPE_STANDS_ONCE_TAKEN and the_escape_stands_once_taken(ctx):
+        # It has already walked in: the departure is the move. Nothing else is
+        # offered, so the mask cannot talk it back into the mine.
+        trial = np.zeros(N_ACTIONS, dtype=bool)
+        if mask[int(PASS)]:
+            trial[int(PASS)] = True
+        else:  # pragma: no cover - planned seats always may pass
+            trial = mask.copy()
+        mask = trial
+    elif int(ctx.own_position) == PIT_CAGE:
         # From a cage the escape is already half taken: a figure still in a cage
         # when the cards are turned leaves the mine.  So the lorry/pass pair has
         # to be read together.  A departure that banks nothing is refused and the
@@ -1194,6 +1286,16 @@ def action_mask(ctx: PlayerActionContext) -> np.ndarray:
         trial[join_action(int(PIT_CAGE), True)] = False
         if trial.any():
             mask = trial
+    out_of_the_cage = {
+        action for action in steps_out_of_the_cage(ctx) if mask[int(action)]
+    }
+    if out_of_the_cage:
+        trial = mask.copy()
+        for primitive in out_of_the_cage:
+            trial[primitive] = False
+            trial[join_action(primitive, True)] = False
+        if trial.any():  # the lorry (or the pass) is always there to hold with
+            mask = trial
     climbs = {action for action in climbs_off_the_card_it_chose(ctx) if mask[int(action)]}
     if climbs:
         trial = mask.copy()
@@ -1223,6 +1325,9 @@ __all__ = [
     "backside_stats",
     "cage_banks_nothing",
     "climbs_off_the_card_it_chose",
+    "steps_out_of_the_cage",
+    "the_escape_stands_once_taken",
+    "ESCAPE_STANDS_ONCE_TAKEN",
     "can_wait_on_a_dragon",
     "cell_dragon_risk",
     "digs_face_up_dragon",

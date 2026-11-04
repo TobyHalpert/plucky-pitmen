@@ -611,6 +611,97 @@ The lesson is the one this file keeps relearning: an A/B is only worth the thing
 actually changes. Patching a function's *result* is not the same as switching off
 the rule inside it.
 
+### Out of the cage is out
+
+A figure in a pit cage leaves the mine at the execution phase and **keeps its
+loot**, so a seat standing there has made its escape. What the shipped checkpoint
+did with its next decision of the same phase, over 60 four-net games:
+
+| | |
+| :-- | --: |
+| decisions taken from inside a cage | 1,235 |
+| ... stepped back **onto a card** | **604** |
+| ... of those, while holding a gem the escape would have banked | 313 |
+| ... took the lorry (stayed in the haul) | 344 |
+| ... held the departure | 171 |
+
+Priced from the identical position, 20 re-rolled continuations an arm, leaving
+against stepping back out:
+
+| position | step out − leave |
+| :-- | --: |
+| all 24 positions | **−0.72 (se 0.12)** |
+| holding no gems | −0.71 |
+| holding at least one gem | −0.73 |
+
+So it is not a close call about loot: **a seat walks out of a safe exit and back
+into a mine one row shallower than where it started, and it is worth −0.72 a
+time.** Rule 10 (`steps_out_of_the_cage`) refuses the card move when there is a
+bank to forfeit, which is the case that cannot be defended: 54 of 107 such
+decisions in 30 games before, **0 after**. It costs nothing measurable — 200
+paired four-net games, **+0.029 (se 0.032)**, gems per haul unchanged at 4.33 —
+because it removes a move the seat had no reason to want.
+
+**The empty-handed case is left alone on purpose.** With nothing to bank there is
+nothing to undo: leaving is worth nothing to that seat, a card in the mine is not,
+and the lorry is a round spent for nothing — so all three are real options and the
+net picks. Masking those as well is a different rule with a different price
+(+0.176 a seat, but gems per haul 4.33 → 3.55 and hauls thrown away 12% → 27%),
+and it is the trade #27 was about.
+
+**Why the figure still looks like it dithers.** A seat that walks into a cage can
+have the escape *refused* on its next turn: rule 4 re-reads the table, and the
+table has moved since it planned, so a hazard that was above the bar can fall
+below it and the mask puts the seat back on the lorry — whereupon it digs its way
+out of the cage instead. On screen that is a figure that goes into the pit cage and
+straight back out. Pinning the departure fixes it, and it is priced:
+
+| | rule off | **escape stands** |
+| :-- | --: | --: |
+| mean seat score | +2.204 | **+2.349** |
+| decisions per game | 97 | **55** |
+| worst game | 197 | 90 |
+| games that finish | 200/200 | 200/200 |
+| **gems per haul** | **4.33** | **3.13** |
+| hauls thrown away | 14% | **34%** |
+
+`ESCAPE_STANDS_ONCE_TAKEN` is therefore **off** by default: it is worth +0.145 a
+seat (se 0.042) and a third fewer decisions, and it costs 28% of the gems in the
+mine and doubles the hauls the table abandons. A seat held to its escape leaves
+earlier, dies less, and takes the loot with it. Flip the constant to trade loot
+for score; the mask reads it at decision time and a test pins what it does.
+
+**The rule bot had the same habit, and worse.** `rule_policy.deterministic_policy`
+— the viewer's default opponent, and the policy behind every seat the controller
+does not own — walked back out of a cage 520 times in 40 rule-vs-rule games, and
+its "re-entry from cage" section is why. It now holds the departure when the
+escape banks something (the narrow rule, same as the net), which takes its card
+moves from **1.43 to 1.12 a seat-phase**, phases with two or more card moves from
+**40% to 23%**, and the steps out of a cage to **171**. It also makes the bot
+harder to farm: a `rusher` against two of them fell from **+2.83 to +1.18** points
+with the solo bonus (and +0.33 → +0.20 without), which is why
+`test_rusher_loses_its_edge_without_the_solo_bonus` now asserts the bonus is worth
+0.7 rather than 1.0 of the rusher's score: the field stopped handing it points.
+
+**A retrain under the rule is a wash**, as every retrain since the cage bar has
+been: 20 generations from the shipped weights, native +2.20 a seat against +2.26,
+head to head **−0.09 (se 0.17)** and **+0.07 (se 0.18)** over 300 games a side
+(`checkpoints/selfplay4_cage.npz`, not shipped). The mask is the fix; nothing in the
+training signal charges the seat for the move it is not making.
+
+**What is left is the rules, not the policy.** The net still makes about 2.8
+decisions per seat-phase, and the pass rule is why: a round closes on `n - 1`
+consecutive passes, so three of the four seats have to be asked again before every
+round can end. Those extra turns are mostly *passes* (1,765 of 3,345 repeat
+decisions). What changed is the ones that move a figure: 0.92 extra card moves a
+seat-phase before rule 9, 0.28 after, and the remainder are the visible-gem swaps
+the rules keep on purpose.
+
+And the first decision of every round is not optional: a figure is reset to the
+mouth of the mine when the round is dealt (``_set_players_to_starting_positions``),
+so every seat digs again at the start of every planning phase. A spectactor who
+sees "it never stays in the first row" is seeing that rule, not a policy.
+
 ### The card you are standing on
 
 A seat scores the card **under its figure when the planning phase closes**, and a

@@ -451,7 +451,96 @@ def test_rushing_beats_camping_but_not_collecting():
     assert float(np.mean(collecting)) < float(np.mean(campers))
 
 
+def test_a_seat_in_a_cage_does_not_dig_its_way_back_out():
+    """The escape is the decision; walking out of it is not.
+
+    A figure in a cage is out of the mine at the execution phase and keeps its
+    loot, so a card move taken from there undoes the escape. Over 60 four-net
+    games the shipped checkpoint took 604 of them, 313 while holding a gem the
+    escape would have banked, and they are worth **-0.72 (se 0.12)** a move
+    against taking the departure (BALANCE.md, "Out of the cage is out").
+    """
+    from features import action_mask, cage_banks_nothing, steps_out_of_the_cage
+
+    # In a cage, holding a gem, with a rival standing on a dragon in this seat's
+    # own column: that is a bank worth taking, so the escape stands and the only
+    # move left is the departure.
+    base = _board_context(
+        {(0, 0): (None, 1), (1, 0): (DRAGON, 1)},
+        legal=(0 * MAX_COLUMNS + 0, int(PASS), int(LORRY)),
+        own_position=PIT_CAGE,
+    )
+    in_a_cage = dataclasses.replace(
+        base,
+        private_cards=((GEM, 1),),
+        own_cage_index=3,
+        own_column=None,
+        opponents=(dataclasses.replace(_rival(1, 0), column=0, position=1),),
+    )
+    assert cage_banks_nothing(in_a_cage) is False
+    assert steps_out_of_the_cage(in_a_cage) == {0 * MAX_COLUMNS + 0}
+    mask = action_mask(in_a_cage)
+    assert not mask[0 * MAX_COLUMNS + 0]
+    assert mask[int(PASS)] or mask[int(LORRY)]
+
+    # Empty-handed and nothing to run from there is nothing to undo, so digging
+    # out stays available (the lorry is offered too: stay in the haul).
+    empty = dataclasses.replace(
+        in_a_cage, private_cards=(), opponents=()
+    )
+    assert cage_banks_nothing(empty) is True
+    assert steps_out_of_the_cage(empty) == set()
+    assert action_mask(empty)[0 * MAX_COLUMNS + 0]
+
+    # And a seat that is not in a cage is untouched by the rule.
+    on_a_card = _board_context(
+        {(0, 0): (None, 1)}, legal=(0 * MAX_COLUMNS + 0,), own_position=3
+    )
+    assert steps_out_of_the_cage(on_a_card) == set()
+
+
+def test_the_rule_bot_holds_the_escape_it_has_already_made():
+    """``rule`` (the viewer's default opponent) had the same habit, and worse.
+
+    It re-entered the mine from the cage on its second decision of a phase: 520
+    times in 40 rule-vs-rule games. It now holds the departure when the escape
+    banks something, so a rule game takes 1.12 card moves a seat-phase instead of
+    1.43, and the steps out of a cage fall to the empty-handed ones it still has
+    a reason to take.
+    """
+    from agents import RuleAgent
+    from game_env import PlayerActionContext
+
+    env = MineEnv(opponents=2)
+    env.reset(seed=5)
+    ctx = env.player_action_context(0)
+    # Standing in a cage, planned, holding a gem, with a card to step onto.
+    cage = dataclasses.replace(
+        ctx,
+        own_position=PIT_CAGE,
+        own_cage_index=3,
+        own_column=None,
+        private_cards=((GEM, 1),),
+        legal_actions=(0, int(PASS), int(LORRY)),
+        opponents=(),
+        consecutive_passes=0,
+        passes_to_close=2,
+    )
+    assert RuleAgent().act(cage) == int(PASS)
+    without_loot = dataclasses.replace(cage, private_cards=())
+    assert RuleAgent().act(without_loot) in (int(PASS), int(LORRY), 0)
+
+
 def test_rusher_loses_its_edge_without_the_solo_bonus():
+    """The empty escape is worth nothing, so the bonus is the rusher's whole edge.
+
+    The numbers moved when the rule bot stopped forfeiting a banked escape
+    (``rule_policy``, the stability guard): against a field that banks, the
+    camper scores +1.18 with the solo bonus and +0.20 without it, where it used
+    to score +2.83 and +0.33 against a bot that dug its way back out of the cage
+    it had just walked into. So the bonus is still the edge -- 0.98 of a 1.18
+    score -- but the field is no longer handing the rusher free points.
+    """
     from agents import RusherAgent
 
     def mean_score(bonus: bool) -> float:
@@ -465,7 +554,7 @@ def test_rusher_loses_its_edge_without_the_solo_bonus():
         ]
         return float(np.mean(scores))
 
-    assert mean_score(True) > mean_score(False) + 1.0
+    assert mean_score(True) > mean_score(False) + 0.7
     assert mean_score(False) < 1.0
 
 
@@ -1976,3 +2065,40 @@ def test_a_four_net_game_finishes_promptly():
         slowest = max(slowest, decisions)
     # A game that cannot close a phase would blow straight past this.
     assert slowest < 400
+
+
+def test_the_escape_stands_once_taken_is_measured_and_off(monkeypatch):
+    """The stronger version of the cage rule, kept behind a flag.
+
+    Holding a seat to the departure makes the visible "into the cage and straight
+    back out" impossible and is worth +0.145 a seat, but it costs 28% of the gems
+    in the mine (4.33 -> 3.13 a haul) and doubles the hauls the table throws away.
+    It is off by default; this pins both the flag and what it does to the mask.
+    """
+    import features
+    from features import action_mask, the_escape_stands_once_taken
+
+    assert features.ESCAPE_STANDS_ONCE_TAKEN is False
+
+    base = _board_context(
+        {(0, 0): (None, 1), (1, 0): (DRAGON, 1)},
+        legal=(0 * MAX_COLUMNS + 0, int(PASS), int(LORRY)),
+        own_position=PIT_CAGE,
+    )
+    committed = dataclasses.replace(
+        base,
+        private_cards=((GEM, 1),),
+        own_cage_index=3,
+        own_column=None,
+        own_planned=True,
+        opponents=(dataclasses.replace(_rival(1, 0), column=0, position=1),),
+    )
+    assert the_escape_stands_once_taken(committed) is True
+    # Off: the dig is refused by rule 10 but the lorry is still a way back in.
+    assert not action_mask(committed)[0 * MAX_COLUMNS + 0]
+    # On: the departure is the only move left.
+    monkeypatch.setattr(features, "ESCAPE_STANDS_ONCE_TAKEN", True)
+    mask = action_mask(committed)
+    assert mask[int(PASS)]
+    assert not mask[int(LORRY)]
+    assert not mask[0 * MAX_COLUMNS + 0]
