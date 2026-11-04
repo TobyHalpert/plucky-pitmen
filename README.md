@@ -270,6 +270,7 @@ uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
 | `probe_blast_value.py` | what a single blast is worth from a real position (forked rollouts), and whether backside knowledge improves the blind choice |
 | `probe_blast_strategy.py` | is "blast while a dragon is waiting for me" a good rule? paired arms over the blast trigger and the keeper choice |
 | `probe_bait_value.py` | what a move onto a dragon the player can see is worth, forked per opponent (rule bots vs readers vs its own peers) |
+| `probe_push_value.py` | what a single displacement is worth from a real position, forked, split by the card it took |
 | `probe_backside_reading.py` | does the learner read a backside? risk of the card it takes, against the risk it was offered |
 | `probe_lorry.py` | how often a seat parks on its lorry, and how often a haul is lost to a stand-off because every seat did |
 | `probe_escape.py` | escape rules side by side: how often a haul is thrown away by a herd of empty-handed cage moves, and what each variant is worth |
@@ -473,6 +474,27 @@ The full write-up, with confidence intervals and reproduction commands, is in
   Paired over 200 games the difference is **+0.000** — the line was missing, not
   harmful. The check is kept as a guard, with a test pinning the fact that makes it
   inert. BALANCE.md, "Sit on their lorry".
+* **Pushing the nets off their cards does not pay, and cannot.** A net that has
+  decided its round holds the card it chose (rule 9), and it is usually a gem:
+  of the seat-phases that took exactly one card move and then held, **82%** ended
+  on a gem. But a displacement is only legal against a figure standing in **its
+  own column**, and only that owner sees the fronts — so **every legal push takes
+  a card the pusher has never seen** (4 gems, 4 dynamite, 2 dragons in 10).
+  Priced from the identical position over 109 forked positions: a push is worth
+  **−0.41 (se 0.18)**, because the 59% that take a **gem** are worth +0.69 and the
+  **27% that take a dragon are worth −2.48**, and a net never stays on a dragon it
+  can see — the ones a pusher meets are the bait. Nor does a push take the
+  victim's loot: a displaced figure leaves through the pit cage with every card
+  it collected (0.2 cards on average, and 83% of victims had nothing yet). The
+  more it pushes the worse it gets: −0.55 at 522 pushes, −2.75 at 1,933.
+  `agents.PusherAgent` is the control, `probe_push_value.py` prices one push.
+  BALANCE.md, "The parked seat".
+* **A plain deterministic seat beats the trained nets: +2.19 a game.** One
+  `CounterAgent` against three `selfplay4` seats, seats rotated, 300 games:
+  +3.60 a seat, best score in 56% of games. What does the work is digging,
+  banking two gems and leaving — the push adds −0.003. Against the viewer's
+  default opposition (three `rule` bots) the same seat scores +0.88 and a margin
+  of −1.37: the field matters more than the tactic.
 * **The "keeps moving forward" is the rules, not the seat.** `MineEnv` puts every
   surviving figure back at the mouth of the mine when a round is dealt, so the
   first dig of every planning phase is mandatory. Of 1,836 seat-phases in 60

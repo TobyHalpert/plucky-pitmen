@@ -666,6 +666,161 @@ class CounterAgent(Agent):
         return legal[0]
 
 
+class PusherAgent(CounterAgent):
+    """A deterministic control that tries to farm the nets by pushing them.
+
+    It exists to answer one question with numbers rather than intuition: a net
+    that decides its round and then holds the card it chose (rule 9's mask) looks
+    like it is parking on a gem, so can a plain seat steal that card? The answer,
+    over 300 four-net games, is **no** (BALANCE.md, "The parked seat"):
+
+    * What a push takes: 1,933 pushes took a gem 49% of the time, a dynamite 22%
+      and **a dragon 29%**. The card is face down, so the pusher is buying a
+      1-in-3 shot at ending the haul.
+    * What a push gives up: the card the pusher was standing on. A displacement
+      always moves a figure towards the lorries, so the pusher swaps its own
+      card -- usually a known one, in its own column -- for the rival's unknown
+      one.
+    * What it does **not** take: the victim's loot. A displaced figure goes to
+      the pit cage, where it leaves the mine with every card it has collected.
+      Pushing costs the victim its round, never its hand.
+    * Telling rivals apart does not rescue it. Requiring a rival to have held the
+      cell for one of this seat's turns lifts the gem share to 73%, but it fires
+      rarely enough to be worth exactly nothing: +0.000 (se 0.106) a seat over
+      the same seat with the push switched off.
+
+    Pushing every rival it can reach is worth **-2.75 (se 0.19) a seat**. Only a
+    bot that can *see* the front under the rival gains from it (+1.76, se 0.19,
+    measured with a test-only cheat): the hole is information, not the rules.
+    So ``tell="held"`` is the default -- it does no harm -- and ``"any"`` is kept
+    to reproduce the losing version.
+    """
+
+    name = "pusher"
+
+    def __init__(
+        self,
+        bank_gems: int = 2,
+        hazard_bar: float = 0.45,
+        *,
+        tell: str = "held",
+        push_risk_bar: float = 0.2,
+        before_planning: bool = True,
+    ) -> None:
+        super().__init__(bank_gems=bank_gems, hazard_bar=hazard_bar)
+        if tell not in ("held", "any"):
+            raise ValueError(f"unknown push tell: {tell}")
+        #: ``"held"``: only a rival this seat has already seen on that cell, so it
+        #: has spent a decision not moving. ``"any"``: every rival it can reach.
+        self.tell = tell
+        #: Skip the push when the backside says the card is likely a dragon.
+        self.push_risk_bar = float(push_risk_bar)
+        #: Only push on the decision that decides this seat's round. Pushing after
+        #: planning is climbing off the card it chose, which the mask refuses for
+        #: every seat: the pusher would be buying an unknown card with a known one.
+        self.before_planning = bool(before_planning)
+        self.pushes = 0
+
+    # -- what the seat can see -----------------------------------------
+    def _held_cells(self, ctx: PlayerActionContext) -> set[tuple[int, int]]:
+        """Cells a rival was already standing on at this seat's previous turn."""
+        held: set[tuple[int, int]] = set()
+        for opponent in ctx.opponents:
+            if opponent.escaped or opponent.dead or opponent.column is None:
+                continue
+            if not 0 <= int(opponent.position) < int(PIT_CAGE):
+                continue
+            if int(opponent.column) != int(opponent.player_index):
+                continue  # only a card in the rival's own column can be pushed
+            recorded = self._seen.get(int(opponent.player_index))
+            if (
+                recorded is not None
+                and recorded[0] == int(ctx.haul)
+                and recorded[1] == int(opponent.position)
+                and recorded[2] == int(opponent.column)
+            ):
+                held.add((int(opponent.position), int(opponent.column)))
+        return held
+
+    def _own_card_is_a_gem(self, ctx: PlayerActionContext) -> bool:
+        if ctx.own_column != ctx.player_index:
+            return False
+        row = int(ctx.own_position)
+        if not 0 <= row < len(ctx.public_rows):
+            return False
+        entry = ctx.public_rows[row][ctx.player_index]
+        return entry is not None and entry[0] == GEM
+
+    def _best_push(
+        self,
+        ctx: PlayerActionContext,
+        held: set[tuple[int, int]],
+        legal: list[int],
+    ) -> int | None:
+        known = self._known_dragon_cells(ctx)
+        _dragons, _safe, _unknown, risk = backside_stats(ctx)
+        candidates = []
+        for action in legal:
+            row, column = divmod(action, MAX_COLUMNS)
+            if column == ctx.player_index or row >= len(ctx.public_rows):
+                continue
+            occupant = next(
+                (
+                    opponent
+                    for opponent in ctx.opponents
+                    if not (opponent.escaped or opponent.dead)
+                    and opponent.column is not None
+                    and int(opponent.position) == row
+                    and int(opponent.column) == column
+                    and int(opponent.column) == int(opponent.player_index)
+                ),
+                None,
+            )
+            if occupant is None:
+                continue  # nothing there, or not a pushable position
+            if (row, column) in known:
+                continue  # it left empty-handed with no blast to run from
+            if self.tell == "held" and (row, column) not in held:
+                continue
+            entry = ctx.public_rows[row][column]
+            if entry is not None:
+                # ``risk`` is float32; comparing it to a Python float needs a
+                # tolerance, or the base rate (2 dragons in 10 = 0.2) reads as
+                # "above the bar" and every push is refused by rounding.
+                if float(risk[int(entry[1])]) > self.push_risk_bar + 1e-6:
+                    continue  # the backside says this card is likelier than even
+            candidates.append((row, action))
+        if not candidates:
+            return None
+        # Shallowest first: the card the rival has most recently stepped onto.
+        return min(candidates)[1]
+
+    # -- the decision --------------------------------------------------
+    def act(self, ctx: PlayerActionContext) -> int:
+        legal = [int(a) for a in ctx.legal_actions]
+        held = self._held_cells(ctx)
+        self._observe(ctx)
+        if not legal:
+            return int(PASS)
+
+        gems = self._gems(ctx)
+        blast = ctx.own_blast_pending or any(
+            opponent.blast_pending for opponent in ctx.opponents
+        )
+        banking = int(PIT_CAGE) in legal and (
+            (gems >= 1 and blast)
+            or gems >= self.bank_gems
+            or (gems >= 1 and self._alone(ctx))
+        )
+        decided = ctx.own_planned and self.before_planning
+        if not banking and not decided and not self._own_card_is_a_gem(ctx):
+            target = self._best_push(ctx, held, legal)
+            if target is not None:
+                self.pushes += 1
+                return int(target)
+        return super().act(ctx)
+
+
 def visible_dragon_ahead(ctx: PlayerActionContext) -> tuple[int, int] | None:
     """A dragon the player can see in its own column, if it can still be forced onto it.
 
@@ -805,6 +960,7 @@ SCRIPTED = (
     "leaver",
     "threat",
     "counter",
+    "pusher",
 )
 
 
@@ -829,6 +985,8 @@ def make_scripted_agent(
         return ThreatAgent(blast=blast)
     if policy == "counter":
         return CounterAgent()
+    if policy == "pusher":
+        return PusherAgent()
     raise ValueError(f"unknown scripted agent: {policy}")
 
 
@@ -839,6 +997,7 @@ __all__ = [
     "CounterAgent",
     "GreedyAgent",
     "NeuralAgent",
+    "PusherAgent",
     "RandomAgent",
     "ReaderAgent",
     "RuleAgent",

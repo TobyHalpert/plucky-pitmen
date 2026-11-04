@@ -2067,6 +2067,77 @@ def test_a_four_net_game_finishes_promptly():
     assert slowest < 400
 
 
+def test_a_push_sends_the_victim_to_a_cage_with_every_card_it_collected():
+    """The rule that makes "displace them and take their loot" impossible.
+
+    A displaced figure goes to the nearest pit cage, where it leaves the haul and
+    keeps every card it has collected -- the push costs it its round, never its
+    hand. What the pusher gets is the one card under it, face down.
+    """
+    from game_env import BACKSIDE_A, BACKSIDE_B, GEM, PIT_CAGE
+
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+
+    # A real card in player 1's column, with room above it for the pusher.
+    row, column = next(
+        (row, 1)
+        for row in range(len(env.rows) - 1)
+        for column in (1,)
+        if env.rows[row][column] is not None
+    )
+    victim = env.players[1]
+    victim.position, victim.column = row, column
+    victim.collected_cards = [(GEM, BACKSIDE_A), (GEM, BACKSIDE_B)]
+    env.players[0].position, env.players[0].column = row + 1, 0
+
+    push = row * MAX_COLUMNS + column
+    assert env._legal(push), "a rival in its own column, deeper than the pusher"
+    env._apply_action(0, push)  # the decision only; no round is executed here
+
+    assert env.players[1].position == PIT_CAGE
+    assert env.players[1].column is None
+    assert env.players[0].position == row and env.players[0].column == column
+    assert len(env.players[1].collected_cards) == 2, "the loot is still the victim's"
+
+
+def test_the_pusher_leaves_a_card_it_can_see_a_gem_alone():
+    """A push always moves towards the lorries: it gives up the card underneath."""
+    from agents import PusherAgent
+    from game_env import GEM
+
+    ctx = replaced(
+        _board_context(
+            {(2, 0): (GEM, 1), (1, 1): (GEM, 1)},
+            legal=(2 * MAX_COLUMNS + 0, 1 * MAX_COLUMNS + 1),
+            own_position=2,
+        ),
+        opponents=(_rival(1, 1),),
+    )
+    assert PusherAgent(tell="any").act(ctx) == 2 * MAX_COLUMNS + 0
+
+
+def test_the_pusher_needs_a_previous_sighting_for_its_held_tell():
+    """``tell="held"`` only takes a card from a rival that stayed put for a turn."""
+    from agents import PusherAgent
+
+    ctx = replaced(
+        _board_context(
+            {(1, 1): (GEM, 1)},
+            legal=(1 * MAX_COLUMNS + 1, int(PASS)),
+            own_position=3,
+        ),
+        opponents=(_rival(1, 1),),
+    )
+    held = PusherAgent(tell="held")
+    assert held.act(ctx) != 1 * MAX_COLUMNS + 1, "first sighting: not a parked seat yet"
+    assert held.act(ctx) == 1 * MAX_COLUMNS + 1, "seen on that cell before: take it"
+
+    # The looser tell takes it straight away, which is the configuration that
+    # measures -0.59 a seat (BALANCE.md, "The parked seat").
+    assert PusherAgent(tell="any").act(ctx) == 1 * MAX_COLUMNS + 1
+
+
 def test_the_bait_on_a_visible_dragon_is_allowed_and_priced(monkeypatch):
     """Standing on a dragon you can see, waiting to be pushed off it, is a tactic.
 

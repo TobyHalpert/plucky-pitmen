@@ -872,6 +872,102 @@ That is worth writing down plainly: the habit was not only ugly, it *was* the
 exploit. A seat that forfeits the card it chose, a row at a time, hands the haul to
 whoever banks first — which is what the counter was doing.
 
+### The parked seat: can a deterministic seat rob the nets by pushing?
+
+Rule 9 holds a seat on the card it chose, so a net that has decided its round
+stops moving and sits there. It looks farmable: displace it, take its card. It is
+not, and the reason is in the rules rather than in the nets.
+
+**The read is correct.** 60 four-net games, 887 seat-phases that ended with a
+figure on a card:
+
+| where the figure closed the phase | share that are gems |
+| :-- | --: |
+| any card | 57% |
+| a card in its own column | 60% |
+| **its own column, after exactly one card move** | **82%** (39 of the 50 that a rival could reach) |
+
+So "it hops onto a gem and then passes" is an accurate description. The problem
+is what a push costs.
+
+**Three rules close the door.**
+
+1. *You can only push a figure standing in its own column.* "This is only
+   possible if the opponent is standing on a card within that opponent's own
+   column" (README, planning phase). And a column's fronts are seen only by its
+   owner: "a seat's own column is a card only that seat can see." **So every
+   legal push takes a card the pusher has never seen** -- 4 gems, 4 dynamite and
+   2 dragons in a set of 10, whatever the tell.
+2. *You pay the move you had.* A displacement is a move: your figure ends on the
+   rival's card, and every move goes towards the lorries. The sane way to use it
+   is on the decision that decides your round -- the first one, when the figure
+   stands at the mouth of the mine with nothing under it -- so the real choice is
+   "a face-down card under a rival" against "a card in my own column I can see",
+   which is exactly what the fork below compares. Used later in the phase it
+   also gives up the card already chosen, which is the drift rule 9 exists to
+   stop.
+3. *You do not get their loot.* A displaced figure goes to the nearest pit cage,
+   where it leaves the haul and keeps every card it has collected. A push costs a
+   rival its round, never its hand -- the correction in #29 applies to every
+   push, not just the polite one. At the moment of a push the victim held **0.2
+   collected cards**, and 83% of victims had collected nothing at all.
+
+**What one push is worth**, forked from the identical position (`probe_push_value.py`,
+120 games, 3 continuations an arm, 109 positions): the copy that pushes plays out
+against the copy that makes the same policy pick again with the push targets
+removed.
+
+| the push took | positions | value of the push |
+| :-- | --: | --: |
+| all | 109 | **−0.41 (se 0.18)** |
+| a gem | 64 (59%) | **+0.69 (se 0.20)** |
+| a dynamite | 15 (14%) | −0.96 (se 0.38) |
+| **a dragon** | 30 (27%) | **−2.48 (se 0.34)** |
+
+The tell *works* -- it finds a gem 59% of the time against a 40% base rate -- and
+it does not matter, because one push in four takes a dragon and one dragon costs
+three and a half gems. A net does not stay on a dragon it can see (only 5% of the
+cards nets close a phase on are dragons), so the dragons a pusher meets are the
+ones a seat was allowed to stand on for a single decision: the mask only permits
+a visible-dragon dig when the seat is guaranteed another decision, or when a
+rival is deep enough to push it -- the bait.
+
+**More pushing is monotonically worse.** 300 paired four-net games, the same
+deterministic seat, only the push rule changed:
+
+| pushes taken | margin over 3 nets | paired vs no push |
+| --: | --: | --: |
+| 0 (the plain `counter` seat) | +2.193 | -- |
+| 6 (held tell, deciding turn only -- the shipped default) | +2.190 | −0.003 (se 0.020) |
+| 98 (held tell, any turn) | +2.167 | −0.027 (se 0.109) |
+| 522 (any rival, deciding turn) | +1.642 | **−0.551 (se 0.231)** |
+| 988 (any rival, any turn) | +1.274 | **−0.919 (se 0.234)** |
+| 1,933 (any rival, any turn, no risk filter) | +0.85 | **−2.747 (se 0.188)** |
+
+**The hole is information, not the rules.** A test-only bot that is allowed to
+*see* the front under each rival -- a cheat, not a policy -- pushes 1,376 times in
+300 games, every one of them onto a gem, and is worth **+1.76 (se 0.19) a seat**
+over the same seat without pushing, taking the nets from +1.45 to +0.75 a seat.
+That is the shape of the exploit the nets *would* be open to if fronts were
+public. Under the printed information rules it is not reachable.
+
+**So: yes, the nets are beatable by a plain deterministic seat.** 300 four-net
+games, one `agents.CounterAgent` against three `selfplay4` seats, seats rotated:
+**+3.60 a seat, margin +2.19, best score in 56% of games**. What does the work is
+digging, banking two gems and leaving; the push adds **−0.003 (se 0.020)**. The
+weapon is patience, not displacement.
+
+**The field matters more than the tactic.** Against the *viewer's* default
+opposition -- three `rule` bots, which is what the controller seats when no
+checkpoint is loaded -- the same seat scores +0.88 a seat and a margin of −1.37:
+three copies of the scripted policy outscore one of anything. Check which table
+you are looking at before concluding that the AI is weak.
+
+`agents.PusherAgent` keeps the experiment: `tell="held"` (the default, and the
+shipped configuration, which is harmless) and `tell="any"`, plus
+`before_planning=False`, reproduce each row above. `probe_push_value.py` prices a
+single push from a real position.
+
 ### The counter: a deterministic seat that farms this field
 
 `agents.CounterAgent` (policy name `counter`) is forty lines of rules, no dice and
