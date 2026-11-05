@@ -417,6 +417,39 @@ class GameController:
     def legal_actions(self) -> list[int]:
         return [i for i, ok in enumerate(self.env.action_mask()) if ok]
 
+    def can_announce_blast_for_action(self, action: int, player_index: int = 0) -> bool:
+        """Mirror the engine's blast-announcement precondition for one move."""
+        player = self.env.players[player_index]
+        return (
+            player.dynamite >= 2
+            and not player.blast_pending
+            and 0 <= action < PIT_CAGE
+            and action < self.movement_depth() * MAX_COLUMNS
+            and self.env._legal(action, player_index)
+        )
+
+    def card_action_label(self, action: int, player_index: int = 0) -> str:
+        """Name a card destination, making a legal displacement explicit.
+
+        An occupied card can be a legal move only when the seat there is on its
+        own column and can be displaced.  Showing that entry as just "Card row..."
+        makes the legal push look like a move onto an unavailable card.
+        """
+        if not 0 <= action < PIT_CAGE:
+            return f"Action {action}"
+        row, column = divmod(action, MAX_COLUMNS)
+        occupant = self.env._card_occupant(row, column)
+        if (
+            occupant is not None
+            and occupant != player_index
+            and self.env._can_displace(row, column, player_index)
+        ):
+            return (
+                f"Displace Player {occupant + 1}: "
+                f"card row {row}, column {column + 1}"
+            )
+        return f"Card row {row}, column {column + 1}"
+
     def movement_depth(self) -> int:
         # Wraps the env's private helper so callers stay decoupled.
         return self.env._movement_depth(self.player)

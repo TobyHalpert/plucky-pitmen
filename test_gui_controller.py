@@ -499,3 +499,65 @@ def test_a_deep_mine_still_offers_its_front_rows_to_the_viewer():
     front_row = [action for action in legal if action // MAX_COLUMNS == 0]
     assert front_row, "the front row must be nameable"
     assert max(action // MAX_COLUMNS for action in legal if action < PIT_CAGE) == 5
+
+
+def test_dropdown_labels_a_legal_push_as_a_push(tmp_path):
+    """Occupied cards must not look like ordinary destinations."""
+    pytest.importorskip("tkinter")
+    from game_env import BACKSIDE_A, GEM, MAX_COLUMNS
+    from mine_gui import MineViewer
+
+    controller = GameController(3, "simple", seed=1)
+    controller.reset(3, "simple", seed=1)
+    controller.env.rows[0][1] = (GEM, BACKSIDE_A)
+    controller.env.players[0].position = 2
+    controller.env.players[0].column = None
+    controller.env.players[1].position = 0
+    controller.env.players[1].column = 1
+
+    action = 0 * MAX_COLUMNS + 1
+    assert action in controller.legal_actions()
+    assert controller.card_action_label(action).startswith("Displace Player 2")
+
+    # An occupant not standing in its own column cannot be displaced.
+    controller.env.players[1].column = 0
+    assert action not in controller.legal_actions()
+    assert not controller.card_action_label(action).startswith("Displace")
+
+    choices = [("Displace Player 2: card row 0, column 2", action, False)]
+
+    class Menu:
+        def __init__(self):
+            self.values = []
+            self.value = ""
+        def configure(self, **kwargs):
+            self.values = kwargs["values"]
+        def get(self):
+            return self.value
+        def set(self, value):
+            self.value = value
+
+    class IntVar:
+        def __init__(self, value=0):
+            self._value = value
+        def set(self, value):
+            self._value = value
+        def get(self):
+            return self._value
+
+    viewer = MineViewer.__new__(MineViewer)
+    viewer.action_menu = Menu()
+    viewer.action_var = IntVar(-1)
+    viewer.blast_requested = False
+    viewer._action_choice_by_label = {}
+    MineViewer._apply_action_choices(viewer, choices)
+    assert viewer.action_var.get() == action
+    assert viewer.blast_requested is False
+
+    # A displayed-but-no-longer-offered entry must not keep its hidden action.
+    viewer.action_menu.set("row 9, column 9")
+    viewer._update_action_options = lambda preferred_label=None: MineViewer._apply_action_choices(
+        viewer, [("Pass", action, False)], preferred_label=preferred_label
+    )
+    MineViewer._action_label_selected(viewer, None)
+    assert viewer.action_var.get() == action

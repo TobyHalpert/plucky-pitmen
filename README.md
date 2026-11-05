@@ -114,7 +114,7 @@ To watch the players move through the mine in a graphical interface:
 python mine_gui.py --policy random
 ```
 
-Use **Take action** to choose the learner's destination, or **Autoplay** to run the simulation automatically. The viewer shows card backs only; opponent gems and dynamite remain hidden.
+Use **Take action** to choose the learner's destination, or **Autoplay** to run the simulation automatically. The viewer shows card backs only; opponent gems and dynamite remain hidden. The action menu is rebuilt from the current legal-action mask, so an occupied card appears only when it is a legal displacement, labelled **Displace Player N**; selecting it takes the move and any stale action is rejected before it can reach the engine.
 
 ### Watching the trained agents
 

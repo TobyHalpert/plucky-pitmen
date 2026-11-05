@@ -287,6 +287,7 @@ class MineViewer:
         self.message_var = tk.StringVar()
         self.action_var = tk.IntVar(value=0)
         self.blast_requested = False
+        self._action_choice_by_label: dict[str, tuple[int, bool]] = {}
         self.policy_var = tk.StringVar(value=policy)
         self.opponents_var = tk.IntVar(value=opponents)
         self.seed_var = tk.IntVar(value=seed)
@@ -418,28 +419,23 @@ class MineViewer:
 
     def _action_label_selected(self, _event: tk.Event) -> None:
         selected = self.action_menu.get()
-        labels = list(self.action_menu["values"])
-
-        if self.controller.in_tie_breaker or self.controller.blast_pending:
-            if selected in labels:
-                self.action_var.set(labels.index(selected))
+        choice = self._action_choice_by_label.get(selected)
+        if choice is None:
+            # The displayed value can be stale if the state changed without a
+            # dropdown selection.  Rebuild the current legal choices rather than
+            # letting the hidden action variable retain an unavailable action.
+            self._update_action_options()
             return
-
-        self.blast_requested = selected.startswith(BLAST_ACTION_PREFIX)
-        if self.blast_requested:
-            selected = selected[len(BLAST_ACTION_PREFIX):]
-        for action in range(self.controller.env.action_space.n):
-            if self._action_label(action) == selected:
-                self.action_var.set(action)
-                return
+        action, blast_requested = choice
+        self.action_var.set(action)
+        self.blast_requested = blast_requested
 
     def _action_label(self, action: int) -> str:
         if action >= ANNOUNCE_OFFSET:
             return f"{BLAST_ACTION_PREFIX}{self._action_label(action - ANNOUNCE_OFFSET)}"
         if action in SPECIAL_ACTION_LABELS:
             return SPECIAL_ACTION_LABELS[action]
-        row, col = divmod(action, 5)
-        return f"Card row {row}, column {col + 1}"
+        return self.controller.card_action_label(action)
 
     # -- lifecycle ---------------------------------------------------------
 
@@ -501,23 +497,52 @@ class MineViewer:
 
     def take_action(self) -> None:
         if self.controller.in_tie_breaker:
+            option_count = len(self.controller.tie_break_options())
+            selected = int(self.action_var.get())
+            if not 0 <= selected < option_count:
+                self._update_action_options()
+                self.draw_scene()
+                return
             self._process_results(
-                self.controller.resolve_tie_break_choice(int(self.action_var.get()))
+                self.controller.resolve_tie_break_choice(selected)
             )
             self._update_action_options()
             self.draw_scene()
             return
 
         if self.controller.blast_pending:
-            result = self.controller.resolve_player_blast(int(self.action_var.get()))
+            option_count = len(self.controller.player.blast_cards)
+            selected = int(self.action_var.get())
+            if not 0 <= selected < option_count:
+                self._update_action_options()
+                self.draw_scene()
+                return
+            result = self.controller.resolve_player_blast(selected)
             self._process_results([result])
             self._update_action_options()
             self.draw_scene()
             return
 
+        selected = int(self.action_var.get())
+        legal = self.controller.legal_actions()
+        if selected not in legal:
+            # A click can arrive after another viewer action changed the board.
+            # Refresh instead of sending a stale (possibly occupied) destination
+            # to the engine.
+            self._update_action_options()
+            self._post_message("That action is no longer legal. Choose again.")
+            self.draw_scene()
+            return
+
         blast_requested = self.blast_requested
         self.blast_requested = False
-        result = self.controller.take_player_action(int(self.action_var.get()), blast_requested)
+        if blast_requested and not self.controller.can_announce_blast_for_action(selected):
+            self._update_action_options()
+            self._post_message("That blast announcement is no longer available. Choose again.")
+            self.draw_scene()
+            return
+
+        result = self.controller.take_player_action(selected, blast_requested)
         self._process_results([result])
         self._update_action_options()
         self.draw_scene()
@@ -558,12 +583,18 @@ class MineViewer:
 
     def _run_single_player_step(self) -> None:
         self._process_results([self.controller.step_one_player_auto()])
-        self._update_action_options()
+        preferred_label = None
         choice = self.controller.last_choice
         if choice is not None and self.controller.last_choice_seat == 0:
-            # Show what the agent actually chose, rather than sampling it twice.
-            self.action_var.set(int(choice.action))
-            self.action_menu.set(self._action_label(int(choice.action)))
+            # Show what the agent actually chose. ``_apply_action_choices`` will
+            # keep the first legal option instead if that action is now stale.
+            base_label = self._action_label(int(choice.action))
+            preferred_label = (
+                f"{BLAST_ACTION_PREFIX}{base_label}"
+                if choice.announce_blast
+                else base_label
+            )
+        self._update_action_options(preferred_label=preferred_label)
         self.draw_scene()
 
     # -- result handling ---------------------------------------------------
@@ -655,45 +686,64 @@ class MineViewer:
 
     # -- action menu -------------------------------------------------------
 
-    def _update_action_options(self) -> None:
+    def _apply_action_choices(
+        self,
+        choices: list[tuple[str, int, bool]],
+        *,
+        preferred_label: str | None = None,
+    ) -> None:
+        """Publish one exact label per action and bind it to its hidden value."""
+        self._action_choice_by_label = {
+            label: (action, blast_requested)
+            for label, action, blast_requested in choices
+        }
+        labels = list(self._action_choice_by_label)
+        self.action_menu.configure(values=labels)
+
+        if not choices:
+            self.action_var.set(0)
+            self.blast_requested = False
+            self.action_menu.set("")
+            return
+
+        selected_label = preferred_label if preferred_label in labels else labels[0]
+        action, blast_requested = self._action_choice_by_label[selected_label]
+        self.action_var.set(action)
+        self.blast_requested = blast_requested
+        self.action_menu.set(selected_label)
+
+    def _update_action_options(self, preferred_label: str | None = None) -> None:
         if self.controller.in_tie_breaker:
-            labels = [
-                "Draw from deck" if src == "deck"
-                else f"Draw from mine (row {r}, column {c + 1})"
-                for src, r, c in self.controller.tie_break_options()
+            choices = [
+                (
+                    "Draw from deck" if src == "deck"
+                    else f"Draw from mine (row {r}, column {c + 1})",
+                    index,
+                    False,
+                )
+                for index, (src, r, c) in enumerate(self.controller.tie_break_options())
             ]
-            self._set_action_labels(labels)
+            self._apply_action_choices(choices)
             return
 
         player = self.controller.player
         if self.controller.blast_pending:
-            labels = [
-                f"Blast choice {i + 1} ({BACKSIDE_SYMBOLS[card[1]]})"
-                for i, card in enumerate(player.blast_cards)
+            choices = [
+                (f"Blast choice {index + 1} ({BACKSIDE_SYMBOLS[card[1]]})", index, False)
+                for index, card in enumerate(player.blast_cards)
             ]
-            self._set_action_labels(labels)
+            self._apply_action_choices(choices)
             return
 
         legal = self.controller.legal_actions()
-        labels = [self._action_label(a) for a in legal]
+        choices = [(self._action_label(action), action, False) for action in legal]
         if player.dynamite >= 2:
-            depth = self.controller.movement_depth()
-            labels.extend(
-                f"{BLAST_ACTION_PREFIX}{self._action_label(a)}"
-                for a in legal if a < PIT_CAGE and a // 5 < depth
+            choices.extend(
+                (f"{BLAST_ACTION_PREFIX}{self._action_label(action)}", action, True)
+                for action in legal
+                if self.controller.can_announce_blast_for_action(action)
             )
-        self.action_menu.configure(values=labels)
-        if legal:
-            self.action_var.set(legal[0])
-            self.action_menu.set(labels[0])
-        else:
-            self.action_var.set(0)
-            self.action_menu.set("")
-
-    def _set_action_labels(self, labels: list[str]) -> None:
-        self.action_menu.configure(values=labels)
-        self.action_var.set(0)
-        self.action_menu.set(labels[0] if labels else "")
+        self._apply_action_choices(choices, preferred_label=preferred_label)
 
 
 # ---------------------------------------------------------------------------
