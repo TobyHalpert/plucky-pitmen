@@ -3109,3 +3109,22 @@ give or take 3.47). All fresh games finished. Announcements/cancellations fell
 420/361 -> 270/212, but fired-blast hauls stayed 56 -> 55. The candidate remains
 optional; `selfplay4.npz` is unchanged. The local seed-7 row-0 blast probability
 fell 60.3% -> 41.7%, which is not enough to call the training successful.
+
+### Last-haul branch curriculum
+
+[LAST_HAUL_TRAINING.md](LAST_HAUL_TRAINING.md) records a second tactical run:
+96 score/hand-varied final-haul positions, 13,824 training continuations, plus
+48 held-out positions / 7,632 continuations. Half the generated boards target
+round 3 after actual safe execution rounds. A completion-plan teacher explores
+keeping blasts; the saved policy and evaluation have no forced-pass override.
+Held-out trailing pending-blast keep probability rose 0.14% -> 8.72%.
+Ordinary-policy trailing wins rose 22.50% -> 24.64%, all-position wins
+35.94% -> 38.54% and round-3 wins 26.00% -> 28.50% (384 independently sampled
+continuations per policy, seed 2800000 onwards, repeated positions clustered by
+source; overall paired +2.60 percentage points, give or take 1.08). A 200-game
+general check showed 23.5% -> 20.0% outright wins. The targeted scenario result
+is promising but not a demonstrated general improvement, so the candidate
+`selfplay4_last_haul.npz` stays optional and the default net is unchanged.
+The fixed seed-7 third-planning-phase P2 keep probability rose 0.12% -> 6.57%,
+but P2 still cancels in the actual boundary-switched replay. Behaviour changed;
+the problem is not solved.

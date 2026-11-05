@@ -668,3 +668,20 @@ blast, cancellation and attack positions using branch continuations, not seed-7
 imitation. The ordinary `neural:selfplay4` remains unchanged. See
 [TACTICAL_TRAINING.md](TACTICAL_TRAINING.md) for the method, hidden-information
 limitations, reproducible commands and evaluation.
+
+### Last-haul tactical curriculum
+
+`neural:selfplay4_last_haul` is an optional candidate trained from final-haul
+positions with varied scores, 0/1/2/4/6 starting dynamite, and both initial and
+round-3 boards. It more often retains a pending blast and has a promising
+targeted-scenario result, but **no demonstrated general-play gain**; the default
+checkpoint is unchanged. See
+[LAST_HAUL_TRAINING.md](LAST_HAUL_TRAINING.md) for results and limitations.
+
+```sh
+python mine_gui.py --opponents 3 --policy neural:selfplay4_last_haul --all-seats
+python train_last_haul.py --diagnose-seed7
+```
+
+The second command switches weights only at the watched game's haul-3 boundary,
+so earlier hauls cannot explain the difference.

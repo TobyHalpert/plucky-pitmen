@@ -1,0 +1,6824 @@
+{
+  "config": {
+    "resume": "checkpoints/selfplay4.npz",
+    "out": "checkpoints/selfplay4_last_haul.npz",
+    "positions": 96,
+    "held_out": 48,
+    "samples": 48,
+    "epochs": 30,
+    "seed": 2300000
+  },
+  "loss": [
+    1.1724396869540215,
+    1.0551542077834408,
+    0.9819220699525127,
+    0.9561437646237513,
+    0.9486261423056325,
+    0.9454471487551928,
+    0.942569721955806,
+    0.9409848148934543,
+    0.9388447526531914,
+    0.9376654742906491,
+    0.935988734010607,
+    0.9349860575360557,
+    0.9335851059295237,
+    0.9325505920375387,
+    0.9315297484087447,
+    0.9306033730196456,
+    0.9299478939113518,
+    0.9289068408931295,
+    0.9279268582661947,
+    0.9273522033666571,
+    0.9259132461932799,
+    0.9257876886986196,
+    0.924602584913373,
+    0.923796274078389,
+    0.9229545787287255,
+    0.9223161335103214,
+    0.9215495369086663,
+    0.9208904678622881,
+    0.9204297618319591,
+    0.9191216287824014
+  ],
+  "train_before": {
+    "conditional_estimated_win_share": 0.34125279444913187,
+    "mean_candidate_probability_mass": 0.9775400018940369,
+    "teacher_best": 0.49025245949074076
+  },
+  "train_after": {
+    "conditional_estimated_win_share": 0.3597549335289156,
+    "mean_candidate_probability_mass": 0.9670097964505354,
+    "teacher_best": 0.49025245949074076
+  },
+  "held_before": {
+    "conditional_estimated_win_share": 0.43384785570048456,
+    "mean_candidate_probability_mass": 0.9780953402320544,
+    "teacher_best": 0.5650679976851851
+  },
+  "held_after": {
+    "conditional_estimated_win_share": 0.4403441292168279,
+    "mean_candidate_probability_mass": 0.9669177606701851,
+    "teacher_best": 0.5650679976851851
+  },
+  "held_behaviour_before": {
+    "trailing_initial": {
+      "count": 21,
+      "blast_probability": 0.45541618447412346,
+      "pass_probability": 0.0
+    },
+    "leading_initial": {
+      "count": 7,
+      "blast_probability": 0.5838632784531715,
+      "pass_probability": 0.0
+    },
+    "trailing_pending": {
+      "count": 14,
+      "blast_probability": 0.0,
+      "pass_probability": 0.0013522477571054228
+    },
+    "round3_initial": {
+      "count": 15,
+      "blast_probability": 0.45293196019127513,
+      "pass_probability": 0.0
+    }
+  },
+  "held_behaviour_after": {
+    "trailing_initial": {
+      "count": 21,
+      "blast_probability": 0.48162153161441285,
+      "pass_probability": 0.0
+    },
+    "leading_initial": {
+      "count": 7,
+      "blast_probability": 0.6284984566736966,
+      "pass_probability": 0.0
+    },
+    "trailing_pending": {
+      "count": 14,
+      "blast_probability": 0.0,
+      "pass_probability": 0.08719716992761407
+    },
+    "round3_initial": {
+      "count": 15,
+      "blast_probability": 0.47819465342909095,
+      "pass_probability": 0.0
+    }
+  },
+  "evaluation": [
+    {
+      "policy": "baseline",
+      "groups": {
+        "trailing": {
+          "continuations": 280,
+          "outright_win_rate": 0.225
+        },
+        "round3": {
+          "continuations": 200,
+          "outright_win_rate": 0.26
+        }
+      },
+      "continuations": 384,
+      "outright_win_rate": 0.359375,
+      "tied_top_rate": 0.028645833333333332,
+      "score": 5.192708333333333,
+      "announcements": 310,
+      "cancellations": 377,
+      "fired_blast_hauls": 81,
+      "unfinished": 0,
+      "paired_win_change": 0.0,
+      "source_cluster_give_or_take": 0.0
+    },
+    {
+      "policy": "last_haul",
+      "groups": {
+        "trailing": {
+          "continuations": 280,
+          "outright_win_rate": 0.24642857142857144
+        },
+        "round3": {
+          "continuations": 200,
+          "outright_win_rate": 0.285
+        }
+      },
+      "continuations": 384,
+      "outright_win_rate": 0.3854166666666667,
+      "tied_top_rate": 0.033854166666666664,
+      "score": 5.25,
+      "announcements": 316,
+      "cancellations": 373,
+      "fired_blast_hauls": 96,
+      "unfinished": 0,
+      "paired_win_change": 0.026041666666666668,
+      "source_cluster_give_or_take": 0.010765146038794991
+    }
+  ],
+  "training_continuations": 13824,
+  "held_continuations": 7632,
+  "source_positions": [
+    {
+      "split": "train",
+      "seed": 2300000,
+      "seat": 1,
+      "round": 0,
+      "scores": [
+        6,
+        0,
+        5,
+        0
+      ],
+      "dynamite": [
+        2,
+        2,
+        2,
+        1
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        2,
+        2,
+        2,
+        1
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300000,
+      "seat": 1,
+      "round": 0,
+      "scores": [
+        6,
+        0,
+        5,
+        0
+      ],
+      "dynamite": [
+        2,
+        2,
+        2,
+        1
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        2,
+        2,
+        2,
+        1
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300001,
+      "seat": 3,
+      "round": 3,
+      "scores": [
+        0,
+        3,
+        0,
+        0
+      ],
+      "dynamite": [
+        7,
+        3,
+        1,
+        1
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        6,
+        2,
+        0,
+        0
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300002,
+      "seat": 0,
+      "round": 0,
+      "scores": [
+        3,
+        5,
+        6,
+        1
+      ],
+      "dynamite": [
+        2,
+        2,
+        2,
+        6
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        2,
+        2,
+        2,
+        6
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300002,
+      "seat": 0,
+      "round": 0,
+      "scores": [
+        3,
+        5,
+        6,
+        1
+      ],
+      "dynamite": [
+        2,
+        2,
+        2,
+        6
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        2,
+        2,
+        2,
+        6
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300003,
+      "seat": 0,
+      "round": 3,
+      "scores": [
+        1,
+        6,
+        6,
+        9
+      ],
+      "dynamite": [
+        7,
+        0,
+        6,
+        8
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        6,
+        0,
+        6,
+        6
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300003,
+      "seat": 0,
+      "round": 3,
+      "scores": [
+        1,
+        6,
+        6,
+        9
+      ],
+      "dynamite": [
+        7,
+        0,
+        6,
+        8
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        6,
+        0,
+        6,
+        6
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300004,
+      "seat": 0,
+      "round": 0,
+      "scores": [
+        3,
+        0,
+        0,
+        0
+      ],
+      "dynamite": [
+        0,
+        4,
+        0,
+        6
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        0,
+        4,
+        0,
+        6
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300005,
+      "seat": 0,
+      "round": 3,
+      "scores": [
+        1,
+        9,
+        1,
+        6
+      ],
+      "dynamite": [
+        7,
+        0,
+        8,
+        1
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        6,
+        0,
+        6,
+        0
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300005,
+      "seat": 0,
+      "round": 3,
+      "scores": [
+        1,
+        9,
+        1,
+        6
+      ],
+      "dynamite": [
+        7,
+        0,
+        8,
+        1
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        6,
+        0,
+        6,
+        0
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300007,
+      "seat": 0,
+      "round": 3,
+      "scores": [
+        3,
+        0,
+        0,
+        6
+      ],
+      "dynamite": [
+        4,
+        5,
+        4,
+        6
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        4,
+        4,
+        1,
+        6
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300007,
+      "seat": 0,
+      "round": 3,
+      "scores": [
+        3,
+        0,
+        0,
+        6
+      ],
+      "dynamite": [
+        4,
+        5,
+        4,
+        6
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        4,
+        4,
+        1,
+        6
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300008,
+      "seat": 2,
+      "round": 0,
+      "scores": [
+        3,
+        0,
+        0,
+        0
+      ],
+      "dynamite": [
+        2,
+        0,
+        0,
+        2
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        2,
+        0,
+        0,
+        2
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300009,
+      "seat": 0,
+      "round": 3,
+      "scores": [
+        9,
+        12,
+        9,
+        7
+      ],
+      "dynamite": [
+        2,
+        7,
+        1,
+        6
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        0,
+        4,
+        1,
+        6
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300009,
+      "seat": 0,
+      "round": 3,
+      "scores": [
+        9,
+        12,
+        9,
+        7
+      ],
+      "dynamite": [
+        2,
+        7,
+        1,
+        6
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        0,
+        4,
+        1,
+        6
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300010,
+      "seat": 1,
+      "round": 0,
+      "scores": [
+        3,
+        0,
+        6,
+        5
+      ],
+      "dynamite": [
+        2,
+        6,
+        2,
+        0
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        2,
+        6,
+        2,
+        0
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300010,
+      "seat": 1,
+      "round": 0,
+      "scores": [
+        3,
+        0,
+        6,
+        5
+      ],
+      "dynamite": [
+        2,
+        6,
+        2,
+        0
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        2,
+        6,
+        2,
+        0
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300011,
+      "seat": 3,
+      "round": 3,
+      "scores": [
+        6,
+        1,
+        4,
+        9
+      ],
+      "dynamite": [
+        7,
+        5,
+        1,
+        5
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        6,
+        4,
+        0,
+        4
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300011,
+      "seat": 3,
+      "round": 3,
+      "scores": [
+        6,
+        1,
+        4,
+        9
+      ],
+      "dynamite": [
+        7,
+        5,
+        1,
+        5
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        6,
+        4,
+        0,
+        4
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300012,
+      "seat": 0,
+      "round": 0,
+      "scores": [
+        12,
+        9,
+        9,
+        7
+      ],
+      "dynamite": [
+        4,
+        6,
+        1,
+        2
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        4,
+        6,
+        1,
+        2
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300012,
+      "seat": 0,
+      "round": 0,
+      "scores": [
+        12,
+        9,
+        9,
+        7
+      ],
+      "dynamite": [
+        4,
+        6,
+        1,
+        2
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        4,
+        6,
+        1,
+        2
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300014,
+      "seat": 0,
+      "round": 0,
+      "scores": [
+        3,
+        0,
+        6,
+        1
+      ],
+      "dynamite": [
+        2,
+        1,
+        6,
+        4
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        2,
+        1,
+        6,
+        4
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300014,
+      "seat": 0,
+      "round": 0,
+      "scores": [
+        3,
+        0,
+        6,
+        1
+      ],
+      "dynamite": [
+        2,
+        1,
+        6,
+        4
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        2,
+        1,
+        6,
+        4
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300015,
+      "seat": 1,
+      "round": 3,
+      "scores": [
+        0,
+        3,
+        5,
+        6
+      ],
+      "dynamite": [
+        0,
+        1,
+        1,
+        4
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        0,
+        0,
+        1,
+        2
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300016,
+      "seat": 2,
+      "round": 0,
+      "scores": [
+        12,
+        7,
+        9,
+        4
+      ],
+      "dynamite": [
+        0,
+        0,
+        2,
+        2
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        0,
+        0,
+        2,
+        2
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300016,
+      "seat": 2,
+      "round": 0,
+      "scores": [
+        12,
+        7,
+        9,
+        4
+      ],
+      "dynamite": [
+        0,
+        0,
+        2,
+        2
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        0,
+        0,
+        2,
+        2
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300017,
+      "seat": 2,
+      "round": 3,
+      "scores": [
+        4,
+        9,
+        6,
+        8
+      ],
+      "dynamite": [
+        5,
+        5,
+        2,
+        1
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        4,
+        2,
+        1,
+        1
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300017,
+      "seat": 2,
+      "round": 3,
+      "scores": [
+        4,
+        9,
+        6,
+        8
+      ],
+      "dynamite": [
+        5,
+        5,
+        2,
+        1
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        4,
+        2,
+        1,
+        1
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300018,
+      "seat": 2,
+      "round": 0,
+      "scores": [
+        11,
+        7,
+        12,
+        7
+      ],
+      "dynamite": [
+        2,
+        1,
+        0,
+        6
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        2,
+        1,
+        0,
+        6
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300021,
+      "seat": 0,
+      "round": 3,
+      "scores": [
+        3,
+        6,
+        5,
+        5
+      ],
+      "dynamite": [
+        6,
+        4,
+        3,
+        6
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        6,
+        1,
+        1,
+        6
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300021,
+      "seat": 0,
+      "round": 3,
+      "scores": [
+        3,
+        6,
+        5,
+        5
+      ],
+      "dynamite": [
+        6,
+        4,
+        3,
+        6
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        6,
+        1,
+        1,
+        6
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300022,
+      "seat": 1,
+      "round": 0,
+      "scores": [
+        0,
+        0,
+        3,
+        0
+      ],
+      "dynamite": [
+        2,
+        6,
+        2,
+        4
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        2,
+        6,
+        2,
+        4
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300022,
+      "seat": 1,
+      "round": 0,
+      "scores": [
+        0,
+        0,
+        3,
+        0
+      ],
+      "dynamite": [
+        2,
+        6,
+        2,
+        4
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        2,
+        6,
+        2,
+        4
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300023,
+      "seat": 0,
+      "round": 3,
+      "scores": [
+        2,
+        0,
+        2,
+        3
+      ],
+      "dynamite": [
+        1,
+        2,
+        7,
+        2
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        1,
+        0,
+        6,
+        1
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300024,
+      "seat": 2,
+      "round": 0,
+      "scores": [
+        12,
+        9,
+        4,
+        7
+      ],
+      "dynamite": [
+        6,
+        2,
+        6,
+        1
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        6,
+        2,
+        6,
+        1
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300024,
+      "seat": 2,
+      "round": 0,
+      "scores": [
+        12,
+        9,
+        4,
+        7
+      ],
+      "dynamite": [
+        6,
+        2,
+        6,
+        1
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        6,
+        2,
+        6,
+        1
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300025,
+      "seat": 0,
+      "round": 3,
+      "scores": [
+        0,
+        3,
+        0,
+        2
+      ],
+      "dynamite": [
+        0,
+        4,
+        7,
+        2
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        0,
+        2,
+        6,
+        2
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300026,
+      "seat": 3,
+      "round": 0,
+      "scores": [
+        0,
+        0,
+        3,
+        0
+      ],
+      "dynamite": [
+        1,
+        2,
+        1,
+        6
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        1,
+        2,
+        1,
+        6
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300026,
+      "seat": 3,
+      "round": 0,
+      "scores": [
+        0,
+        0,
+        3,
+        0
+      ],
+      "dynamite": [
+        1,
+        2,
+        1,
+        6
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        1,
+        2,
+        1,
+        6
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300027,
+      "seat": 2,
+      "round": 3,
+      "scores": [
+        1,
+        1,
+        1,
+        6
+      ],
+      "dynamite": [
+        0,
+        3,
+        6,
+        2
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        0,
+        2,
+        4,
+        0
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300027,
+      "seat": 2,
+      "round": 3,
+      "scores": [
+        1,
+        1,
+        1,
+        6
+      ],
+      "dynamite": [
+        0,
+        3,
+        6,
+        2
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        0,
+        2,
+        4,
+        0
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300028,
+      "seat": 0,
+      "round": 0,
+      "scores": [
+        6,
+        5,
+        1,
+        5
+      ],
+      "dynamite": [
+        6,
+        0,
+        6,
+        6
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        6,
+        0,
+        6,
+        6
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300028,
+      "seat": 0,
+      "round": 0,
+      "scores": [
+        6,
+        5,
+        1,
+        5
+      ],
+      "dynamite": [
+        6,
+        0,
+        6,
+        6
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        6,
+        0,
+        6,
+        6
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300029,
+      "seat": 1,
+      "round": 3,
+      "scores": [
+        0,
+        3,
+        0,
+        0
+      ],
+      "dynamite": [
+        6,
+        6,
+        3,
+        0
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        4,
+        6,
+        0,
+        0
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300029,
+      "seat": 1,
+      "round": 3,
+      "scores": [
+        0,
+        3,
+        0,
+        0
+      ],
+      "dynamite": [
+        6,
+        6,
+        3,
+        0
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        4,
+        6,
+        0,
+        0
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300030,
+      "seat": 0,
+      "round": 0,
+      "scores": [
+        8,
+        1,
+        9,
+        6
+      ],
+      "dynamite": [
+        0,
+        4,
+        6,
+        6
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        0,
+        4,
+        6,
+        6
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300031,
+      "seat": 0,
+      "round": 3,
+      "scores": [
+        4,
+        4,
+        4,
+        9
+      ],
+      "dynamite": [
+        1,
+        4,
+        7,
+        3
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        1,
+        4,
+        6,
+        1
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300033,
+      "seat": 2,
+      "round": 3,
+      "scores": [
+        0,
+        3,
+        0,
+        0
+      ],
+      "dynamite": [
+        2,
+        5,
+        4,
+        5
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        1,
+        4,
+        2,
+        4
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300033,
+      "seat": 2,
+      "round": 3,
+      "scores": [
+        0,
+        3,
+        0,
+        0
+      ],
+      "dynamite": [
+        2,
+        5,
+        4,
+        5
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        1,
+        4,
+        2,
+        4
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300034,
+      "seat": 1,
+      "round": 0,
+      "scores": [
+        0,
+        0,
+        3,
+        0
+      ],
+      "dynamite": [
+        1,
+        1,
+        1,
+        6
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        1,
+        1,
+        1,
+        6
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300035,
+      "seat": 0,
+      "round": 3,
+      "scores": [
+        5,
+        0,
+        5,
+        6
+      ],
+      "dynamite": [
+        2,
+        6,
+        3,
+        2
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        2,
+        4,
+        2,
+        0
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300035,
+      "seat": 0,
+      "round": 3,
+      "scores": [
+        5,
+        0,
+        5,
+        6
+      ],
+      "dynamite": [
+        2,
+        6,
+        3,
+        2
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        2,
+        4,
+        2,
+        0
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300036,
+      "seat": 0,
+      "round": 0,
+      "scores": [
+        12,
+        11,
+        7,
+        7
+      ],
+      "dynamite": [
+        6,
+        6,
+        2,
+        0
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        6,
+        6,
+        2,
+        0
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300036,
+      "seat": 0,
+      "round": 0,
+      "scores": [
+        12,
+        11,
+        7,
+        7
+      ],
+      "dynamite": [
+        6,
+        6,
+        2,
+        0
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        6,
+        6,
+        2,
+        0
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300037,
+      "seat": 0,
+      "round": 3,
+      "scores": [
+        0,
+        6,
+        0,
+        0
+      ],
+      "dynamite": [
+        3,
+        7,
+        6,
+        4
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        2,
+        6,
+        4,
+        4
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300037,
+      "seat": 0,
+      "round": 3,
+      "scores": [
+        0,
+        6,
+        0,
+        0
+      ],
+      "dynamite": [
+        3,
+        7,
+        6,
+        4
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        2,
+        6,
+        4,
+        4
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300038,
+      "seat": 2,
+      "round": 0,
+      "scores": [
+        0,
+        0,
+        3,
+        2
+      ],
+      "dynamite": [
+        2,
+        6,
+        4,
+        0
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        2,
+        6,
+        4,
+        0
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300038,
+      "seat": 2,
+      "round": 0,
+      "scores": [
+        0,
+        0,
+        3,
+        2
+      ],
+      "dynamite": [
+        2,
+        6,
+        4,
+        0
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        2,
+        6,
+        4,
+        0
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300039,
+      "seat": 1,
+      "round": 3,
+      "scores": [
+        1,
+        8,
+        1,
+        9
+      ],
+      "dynamite": [
+        8,
+        6,
+        6,
+        2
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        6,
+        4,
+        6,
+        1
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300039,
+      "seat": 1,
+      "round": 3,
+      "scores": [
+        1,
+        8,
+        1,
+        9
+      ],
+      "dynamite": [
+        8,
+        6,
+        6,
+        2
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        6,
+        4,
+        6,
+        1
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300041,
+      "seat": 0,
+      "round": 3,
+      "scores": [
+        8,
+        9,
+        4,
+        4
+      ],
+      "dynamite": [
+        2,
+        1,
+        2,
+        2
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        1,
+        1,
+        0,
+        0
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300041,
+      "seat": 0,
+      "round": 3,
+      "scores": [
+        8,
+        9,
+        4,
+        4
+      ],
+      "dynamite": [
+        2,
+        1,
+        2,
+        2
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        1,
+        1,
+        0,
+        0
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300043,
+      "seat": 0,
+      "round": 3,
+      "scores": [
+        7,
+        7,
+        9,
+        12
+      ],
+      "dynamite": [
+        8,
+        2,
+        3,
+        3
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        6,
+        2,
+        1,
+        2
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300043,
+      "seat": 0,
+      "round": 3,
+      "scores": [
+        7,
+        7,
+        9,
+        12
+      ],
+      "dynamite": [
+        8,
+        2,
+        3,
+        3
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        6,
+        2,
+        1,
+        2
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300045,
+      "seat": 3,
+      "round": 3,
+      "scores": [
+        2,
+        3,
+        0,
+        2
+      ],
+      "dynamite": [
+        7,
+        6,
+        3,
+        3
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        6,
+        6,
+        1,
+        2
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300045,
+      "seat": 3,
+      "round": 3,
+      "scores": [
+        2,
+        3,
+        0,
+        2
+      ],
+      "dynamite": [
+        7,
+        6,
+        3,
+        3
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        6,
+        6,
+        1,
+        2
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300046,
+      "seat": 1,
+      "round": 0,
+      "scores": [
+        0,
+        0,
+        3,
+        0
+      ],
+      "dynamite": [
+        6,
+        0,
+        4,
+        6
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        6,
+        0,
+        4,
+        6
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300047,
+      "seat": 1,
+      "round": 3,
+      "scores": [
+        1,
+        1,
+        6,
+        9
+      ],
+      "dynamite": [
+        2,
+        3,
+        4,
+        1
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        1,
+        2,
+        2,
+        1
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300047,
+      "seat": 1,
+      "round": 3,
+      "scores": [
+        1,
+        1,
+        6,
+        9
+      ],
+      "dynamite": [
+        2,
+        3,
+        4,
+        1
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        1,
+        2,
+        2,
+        1
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300048,
+      "seat": 2,
+      "round": 0,
+      "scores": [
+        6,
+        1,
+        0,
+        0
+      ],
+      "dynamite": [
+        4,
+        4,
+        1,
+        2
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        4,
+        4,
+        1,
+        2
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300049,
+      "seat": 1,
+      "round": 3,
+      "scores": [
+        1,
+        9,
+        4,
+        8
+      ],
+      "dynamite": [
+        5,
+        4,
+        2,
+        4
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        4,
+        4,
+        0,
+        4
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300049,
+      "seat": 1,
+      "round": 3,
+      "scores": [
+        1,
+        9,
+        4,
+        8
+      ],
+      "dynamite": [
+        5,
+        4,
+        2,
+        4
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        4,
+        4,
+        0,
+        4
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300050,
+      "seat": 1,
+      "round": 0,
+      "scores": [
+        0,
+        3,
+        6,
+        1
+      ],
+      "dynamite": [
+        4,
+        2,
+        6,
+        2
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        4,
+        2,
+        6,
+        2
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300050,
+      "seat": 1,
+      "round": 0,
+      "scores": [
+        0,
+        3,
+        6,
+        1
+      ],
+      "dynamite": [
+        4,
+        2,
+        6,
+        2
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        4,
+        2,
+        6,
+        2
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300051,
+      "seat": 0,
+      "round": 3,
+      "scores": [
+        9,
+        11,
+        11,
+        12
+      ],
+      "dynamite": [
+        3,
+        7,
+        7,
+        2
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        2,
+        6,
+        4,
+        2
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300051,
+      "seat": 0,
+      "round": 3,
+      "scores": [
+        9,
+        11,
+        11,
+        12
+      ],
+      "dynamite": [
+        3,
+        7,
+        7,
+        2
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        2,
+        6,
+        4,
+        2
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300052,
+      "seat": 3,
+      "round": 0,
+      "scores": [
+        12,
+        4,
+        9,
+        7
+      ],
+      "dynamite": [
+        0,
+        4,
+        2,
+        4
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        0,
+        4,
+        2,
+        4
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300052,
+      "seat": 3,
+      "round": 0,
+      "scores": [
+        12,
+        4,
+        9,
+        7
+      ],
+      "dynamite": [
+        0,
+        4,
+        2,
+        4
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        0,
+        4,
+        2,
+        4
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300053,
+      "seat": 2,
+      "round": 3,
+      "scores": [
+        11,
+        12,
+        9,
+        9
+      ],
+      "dynamite": [
+        3,
+        3,
+        0,
+        7
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        2,
+        2,
+        0,
+        6
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300054,
+      "seat": 3,
+      "round": 0,
+      "scores": [
+        5,
+        0,
+        6,
+        0
+      ],
+      "dynamite": [
+        0,
+        2,
+        4,
+        1
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        0,
+        2,
+        4,
+        1
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300055,
+      "seat": 2,
+      "round": 3,
+      "scores": [
+        1,
+        4,
+        8,
+        9
+      ],
+      "dynamite": [
+        7,
+        5,
+        3,
+        5
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        6,
+        4,
+        2,
+        4
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300055,
+      "seat": 2,
+      "round": 3,
+      "scores": [
+        1,
+        4,
+        8,
+        9
+      ],
+      "dynamite": [
+        7,
+        5,
+        3,
+        5
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        6,
+        4,
+        2,
+        4
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300057,
+      "seat": 1,
+      "round": 3,
+      "scores": [
+        3,
+        6,
+        0,
+        3
+      ],
+      "dynamite": [
+        7,
+        2,
+        6,
+        4
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        6,
+        1,
+        6,
+        1
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300057,
+      "seat": 1,
+      "round": 3,
+      "scores": [
+        3,
+        6,
+        0,
+        3
+      ],
+      "dynamite": [
+        7,
+        2,
+        6,
+        4
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        6,
+        1,
+        6,
+        1
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300058,
+      "seat": 0,
+      "round": 0,
+      "scores": [
+        0,
+        0,
+        3,
+        0
+      ],
+      "dynamite": [
+        6,
+        2,
+        0,
+        0
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        6,
+        2,
+        0,
+        0
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300058,
+      "seat": 0,
+      "round": 0,
+      "scores": [
+        0,
+        0,
+        3,
+        0
+      ],
+      "dynamite": [
+        6,
+        2,
+        0,
+        0
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        6,
+        2,
+        0,
+        0
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300059,
+      "seat": 0,
+      "round": 3,
+      "scores": [
+        9,
+        9,
+        7,
+        12
+      ],
+      "dynamite": [
+        2,
+        1,
+        7,
+        1
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        0,
+        0,
+        6,
+        0
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300059,
+      "seat": 0,
+      "round": 3,
+      "scores": [
+        9,
+        9,
+        7,
+        12
+      ],
+      "dynamite": [
+        2,
+        1,
+        7,
+        1
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        0,
+        0,
+        6,
+        0
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300060,
+      "seat": 2,
+      "round": 0,
+      "scores": [
+        9,
+        1,
+        1,
+        1
+      ],
+      "dynamite": [
+        6,
+        6,
+        2,
+        0
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        6,
+        6,
+        2,
+        0
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300060,
+      "seat": 2,
+      "round": 0,
+      "scores": [
+        9,
+        1,
+        1,
+        1
+      ],
+      "dynamite": [
+        6,
+        6,
+        2,
+        0
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        6,
+        6,
+        2,
+        0
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300061,
+      "seat": 1,
+      "round": 3,
+      "scores": [
+        1,
+        9,
+        4,
+        6
+      ],
+      "dynamite": [
+        2,
+        7,
+        6,
+        4
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        1,
+        6,
+        4,
+        4
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300061,
+      "seat": 1,
+      "round": 3,
+      "scores": [
+        1,
+        9,
+        4,
+        6
+      ],
+      "dynamite": [
+        2,
+        7,
+        6,
+        4
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        1,
+        6,
+        4,
+        4
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300062,
+      "seat": 2,
+      "round": 0,
+      "scores": [
+        5,
+        3,
+        6,
+        0
+      ],
+      "dynamite": [
+        6,
+        6,
+        1,
+        6
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        6,
+        6,
+        1,
+        6
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300063,
+      "seat": 3,
+      "round": 3,
+      "scores": [
+        8,
+        6,
+        4,
+        9
+      ],
+      "dynamite": [
+        2,
+        2,
+        0,
+        7
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        1,
+        0,
+        0,
+        6
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300063,
+      "seat": 3,
+      "round": 3,
+      "scores": [
+        8,
+        6,
+        4,
+        9
+      ],
+      "dynamite": [
+        2,
+        2,
+        0,
+        7
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        1,
+        0,
+        0,
+        6
+      ]
+    },
+    {
+      "split": "train",
+      "seed": 2300064,
+      "seat": 0,
+      "round": 0,
+      "scores": [
+        6,
+        0,
+        3,
+        1
+      ],
+      "dynamite": [
+        6,
+        6,
+        1,
+        2
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        6,
+        6,
+        1,
+        2
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400000,
+      "seat": 2,
+      "round": 0,
+      "scores": [
+        6,
+        1,
+        3,
+        3
+      ],
+      "dynamite": [
+        6,
+        2,
+        6,
+        2
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        6,
+        2,
+        6,
+        2
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400000,
+      "seat": 2,
+      "round": 0,
+      "scores": [
+        6,
+        1,
+        3,
+        3
+      ],
+      "dynamite": [
+        6,
+        2,
+        6,
+        2
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        6,
+        2,
+        6,
+        2
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400001,
+      "seat": 2,
+      "round": 3,
+      "scores": [
+        8,
+        9,
+        6,
+        1
+      ],
+      "dynamite": [
+        3,
+        6,
+        1,
+        6
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        2,
+        6,
+        0,
+        4
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400002,
+      "seat": 1,
+      "round": 0,
+      "scores": [
+        0,
+        2,
+        3,
+        0
+      ],
+      "dynamite": [
+        0,
+        0,
+        0,
+        4
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        0,
+        0,
+        0,
+        4
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400003,
+      "seat": 2,
+      "round": 3,
+      "scores": [
+        1,
+        1,
+        8,
+        9
+      ],
+      "dynamite": [
+        3,
+        2,
+        8,
+        5
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        2,
+        1,
+        6,
+        4
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400003,
+      "seat": 2,
+      "round": 3,
+      "scores": [
+        1,
+        1,
+        8,
+        9
+      ],
+      "dynamite": [
+        3,
+        2,
+        8,
+        5
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        2,
+        1,
+        6,
+        4
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400004,
+      "seat": 1,
+      "round": 0,
+      "scores": [
+        3,
+        0,
+        2,
+        2
+      ],
+      "dynamite": [
+        4,
+        6,
+        6,
+        0
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        4,
+        6,
+        6,
+        0
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400004,
+      "seat": 1,
+      "round": 0,
+      "scores": [
+        3,
+        0,
+        2,
+        2
+      ],
+      "dynamite": [
+        4,
+        6,
+        6,
+        0
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        4,
+        6,
+        6,
+        0
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400005,
+      "seat": 3,
+      "round": 3,
+      "scores": [
+        0,
+        3,
+        0,
+        0
+      ],
+      "dynamite": [
+        2,
+        4,
+        3,
+        1
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        2,
+        2,
+        2,
+        0
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400006,
+      "seat": 2,
+      "round": 0,
+      "scores": [
+        9,
+        7,
+        12,
+        4
+      ],
+      "dynamite": [
+        1,
+        1,
+        6,
+        6
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        1,
+        1,
+        6,
+        6
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400006,
+      "seat": 2,
+      "round": 0,
+      "scores": [
+        9,
+        7,
+        12,
+        4
+      ],
+      "dynamite": [
+        1,
+        1,
+        6,
+        6
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        1,
+        1,
+        6,
+        6
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400007,
+      "seat": 2,
+      "round": 3,
+      "scores": [
+        8,
+        1,
+        6,
+        9
+      ],
+      "dynamite": [
+        0,
+        4,
+        5,
+        8
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        0,
+        2,
+        4,
+        6
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400007,
+      "seat": 2,
+      "round": 3,
+      "scores": [
+        8,
+        1,
+        6,
+        9
+      ],
+      "dynamite": [
+        0,
+        4,
+        5,
+        8
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        0,
+        2,
+        4,
+        6
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400008,
+      "seat": 0,
+      "round": 0,
+      "scores": [
+        6,
+        5,
+        0,
+        3
+      ],
+      "dynamite": [
+        4,
+        0,
+        6,
+        1
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        4,
+        0,
+        6,
+        1
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400008,
+      "seat": 0,
+      "round": 0,
+      "scores": [
+        6,
+        5,
+        0,
+        3
+      ],
+      "dynamite": [
+        4,
+        0,
+        6,
+        1
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        4,
+        0,
+        6,
+        1
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400009,
+      "seat": 0,
+      "round": 3,
+      "scores": [
+        0,
+        3,
+        2,
+        2
+      ],
+      "dynamite": [
+        4,
+        1,
+        5,
+        6
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        2,
+        0,
+        4,
+        6
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400009,
+      "seat": 0,
+      "round": 3,
+      "scores": [
+        0,
+        3,
+        2,
+        2
+      ],
+      "dynamite": [
+        4,
+        1,
+        5,
+        6
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        2,
+        0,
+        4,
+        6
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400010,
+      "seat": 2,
+      "round": 0,
+      "scores": [
+        1,
+        1,
+        6,
+        0
+      ],
+      "dynamite": [
+        6,
+        6,
+        2,
+        0
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        6,
+        6,
+        2,
+        0
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400010,
+      "seat": 2,
+      "round": 0,
+      "scores": [
+        1,
+        1,
+        6,
+        0
+      ],
+      "dynamite": [
+        6,
+        6,
+        2,
+        0
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        6,
+        6,
+        2,
+        0
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400011,
+      "seat": 2,
+      "round": 3,
+      "scores": [
+        0,
+        5,
+        1,
+        6
+      ],
+      "dynamite": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        0,
+        0,
+        1,
+        0
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400013,
+      "seat": 3,
+      "round": 3,
+      "scores": [
+        8,
+        9,
+        4,
+        6
+      ],
+      "dynamite": [
+        1,
+        8,
+        0,
+        6
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        0,
+        6,
+        0,
+        6
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400013,
+      "seat": 3,
+      "round": 3,
+      "scores": [
+        8,
+        9,
+        4,
+        6
+      ],
+      "dynamite": [
+        1,
+        8,
+        0,
+        6
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        0,
+        6,
+        0,
+        6
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400014,
+      "seat": 3,
+      "round": 0,
+      "scores": [
+        9,
+        9,
+        12,
+        9
+      ],
+      "dynamite": [
+        2,
+        0,
+        2,
+        4
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        2,
+        0,
+        2,
+        4
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400014,
+      "seat": 3,
+      "round": 0,
+      "scores": [
+        9,
+        9,
+        12,
+        9
+      ],
+      "dynamite": [
+        2,
+        0,
+        2,
+        4
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        2,
+        0,
+        2,
+        4
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400015,
+      "seat": 2,
+      "round": 3,
+      "scores": [
+        0,
+        0,
+        2,
+        3
+      ],
+      "dynamite": [
+        2,
+        6,
+        3,
+        4
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        1,
+        6,
+        0,
+        2
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400015,
+      "seat": 2,
+      "round": 3,
+      "scores": [
+        0,
+        0,
+        2,
+        3
+      ],
+      "dynamite": [
+        2,
+        6,
+        3,
+        4
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        1,
+        6,
+        0,
+        2
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400016,
+      "seat": 0,
+      "round": 0,
+      "scores": [
+        6,
+        3,
+        5,
+        0
+      ],
+      "dynamite": [
+        1,
+        2,
+        0,
+        4
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        1,
+        2,
+        0,
+        4
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400017,
+      "seat": 3,
+      "round": 3,
+      "scores": [
+        0,
+        3,
+        0,
+        0
+      ],
+      "dynamite": [
+        3,
+        6,
+        7,
+        0
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        1,
+        6,
+        6,
+        0
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400019,
+      "seat": 3,
+      "round": 3,
+      "scores": [
+        0,
+        0,
+        0,
+        3
+      ],
+      "dynamite": [
+        2,
+        1,
+        7,
+        2
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        1,
+        0,
+        6,
+        0
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400019,
+      "seat": 3,
+      "round": 3,
+      "scores": [
+        0,
+        0,
+        0,
+        3
+      ],
+      "dynamite": [
+        2,
+        1,
+        7,
+        2
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        1,
+        0,
+        6,
+        0
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400020,
+      "seat": 1,
+      "round": 0,
+      "scores": [
+        3,
+        0,
+        0,
+        0
+      ],
+      "dynamite": [
+        4,
+        6,
+        0,
+        4
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        4,
+        6,
+        0,
+        4
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400020,
+      "seat": 1,
+      "round": 0,
+      "scores": [
+        3,
+        0,
+        0,
+        0
+      ],
+      "dynamite": [
+        4,
+        6,
+        0,
+        4
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        4,
+        6,
+        0,
+        4
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400021,
+      "seat": 0,
+      "round": 3,
+      "scores": [
+        1,
+        6,
+        1,
+        3
+      ],
+      "dynamite": [
+        9,
+        2,
+        7,
+        0
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        6,
+        1,
+        6,
+        0
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400021,
+      "seat": 0,
+      "round": 3,
+      "scores": [
+        1,
+        6,
+        1,
+        3
+      ],
+      "dynamite": [
+        9,
+        2,
+        7,
+        0
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        6,
+        1,
+        6,
+        0
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400022,
+      "seat": 1,
+      "round": 0,
+      "scores": [
+        6,
+        6,
+        9,
+        1
+      ],
+      "dynamite": [
+        4,
+        2,
+        4,
+        2
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        4,
+        2,
+        4,
+        2
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400022,
+      "seat": 1,
+      "round": 0,
+      "scores": [
+        6,
+        6,
+        9,
+        1
+      ],
+      "dynamite": [
+        4,
+        2,
+        4,
+        2
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        4,
+        2,
+        4,
+        2
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400023,
+      "seat": 2,
+      "round": 3,
+      "scores": [
+        0,
+        0,
+        0,
+        3
+      ],
+      "dynamite": [
+        1,
+        3,
+        2,
+        2
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        1,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400023,
+      "seat": 2,
+      "round": 3,
+      "scores": [
+        0,
+        0,
+        0,
+        3
+      ],
+      "dynamite": [
+        1,
+        3,
+        2,
+        2
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        1,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400025,
+      "seat": 2,
+      "round": 3,
+      "scores": [
+        2,
+        3,
+        0,
+        2
+      ],
+      "dynamite": [
+        5,
+        7,
+        4,
+        8
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        4,
+        6,
+        4,
+        6
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400025,
+      "seat": 2,
+      "round": 3,
+      "scores": [
+        2,
+        3,
+        0,
+        2
+      ],
+      "dynamite": [
+        5,
+        7,
+        4,
+        8
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        4,
+        6,
+        4,
+        6
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400026,
+      "seat": 0,
+      "round": 0,
+      "scores": [
+        5,
+        1,
+        6,
+        5
+      ],
+      "dynamite": [
+        6,
+        1,
+        0,
+        2
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        6,
+        1,
+        0,
+        2
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400026,
+      "seat": 0,
+      "round": 0,
+      "scores": [
+        5,
+        1,
+        6,
+        5
+      ],
+      "dynamite": [
+        6,
+        1,
+        0,
+        2
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        6,
+        1,
+        0,
+        2
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400027,
+      "seat": 3,
+      "round": 3,
+      "scores": [
+        0,
+        0,
+        0,
+        3
+      ],
+      "dynamite": [
+        2,
+        2,
+        7,
+        3
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        2,
+        2,
+        6,
+        1
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400027,
+      "seat": 3,
+      "round": 3,
+      "scores": [
+        0,
+        0,
+        0,
+        3
+      ],
+      "dynamite": [
+        2,
+        2,
+        7,
+        3
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        2,
+        2,
+        6,
+        1
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400028,
+      "seat": 3,
+      "round": 0,
+      "scores": [
+        6,
+        5,
+        3,
+        5
+      ],
+      "dynamite": [
+        0,
+        1,
+        6,
+        1
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        0,
+        1,
+        6,
+        1
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400029,
+      "seat": 3,
+      "round": 3,
+      "scores": [
+        11,
+        12,
+        7,
+        7
+      ],
+      "dynamite": [
+        2,
+        4,
+        6,
+        1
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        0,
+        4,
+        6,
+        0
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400030,
+      "seat": 2,
+      "round": 0,
+      "scores": [
+        8,
+        8,
+        9,
+        6
+      ],
+      "dynamite": [
+        1,
+        6,
+        6,
+        0
+      ],
+      "own_pending": false,
+      "starting_dynamite": [
+        1,
+        6,
+        6,
+        0
+      ]
+    },
+    {
+      "split": "held",
+      "seed": 2400030,
+      "seat": 2,
+      "round": 0,
+      "scores": [
+        8,
+        8,
+        9,
+        6
+      ],
+      "dynamite": [
+        1,
+        6,
+        6,
+        0
+      ],
+      "own_pending": true,
+      "starting_dynamite": [
+        1,
+        6,
+        6,
+        0
+      ]
+    }
+  ],
+  "matched_score_blast_probabilities": {
+    "baseline": {
+      "count": 20,
+      "trailing": 0.6835531448558868,
+      "leading": 0.6825668913885693
+    },
+    "last_haul": {
+      "count": 20,
+      "trailing": 0.7362425539409742,
+      "leading": 0.7168378150206991
+    }
+  },
+  "seed7_fixed_contexts_diagnostic": [
+    {
+      "player": 3,
+      "round": 0,
+      "pending": false,
+      "baseline": {
+        "blast_probability": 0.692324161529541,
+        "pass_probability": 0.0
+      },
+      "last_haul": {
+        "blast_probability": 0.7649787068367004,
+        "pass_probability": 0.0
+      }
+    },
+    {
+      "player": 2,
+      "round": 0,
+      "pending": false,
+      "baseline": {
+        "blast_probability": 0.37942514501048663,
+        "pass_probability": 0.0
+      },
+      "last_haul": {
+        "blast_probability": 0.34219201002269983,
+        "pass_probability": 0.0
+      }
+    },
+    {
+      "player": 3,
+      "round": 0,
+      "pending": true,
+      "baseline": {
+        "blast_probability": 0.0,
+        "pass_probability": 0.001174994744360447
+      },
+      "last_haul": {
+        "blast_probability": 0.0,
+        "pass_probability": 0.04580456763505936
+      }
+    },
+    {
+      "player": 2,
+      "round": 0,
+      "pending": true,
+      "baseline": {
+        "blast_probability": 0.0,
+        "pass_probability": 0.0011935009388253093
+      },
+      "last_haul": {
+        "blast_probability": 0.0,
+        "pass_probability": 0.05954601988196373
+      }
+    },
+    {
+      "player": 2,
+      "round": 1,
+      "pending": false,
+      "baseline": {
+        "blast_probability": 0.6827446181684422,
+        "pass_probability": 0.0
+      },
+      "last_haul": {
+        "blast_probability": 0.7530346224084496,
+        "pass_probability": 0.0
+      }
+    },
+    {
+      "player": 3,
+      "round": 1,
+      "pending": false,
+      "baseline": {
+        "blast_probability": 0.3396785966432958,
+        "pass_probability": 0.0
+      },
+      "last_haul": {
+        "blast_probability": 0.3047846327535808,
+        "pass_probability": 0.0
+      }
+    },
+    {
+      "player": 2,
+      "round": 1,
+      "pending": true,
+      "baseline": {
+        "blast_probability": 0.0,
+        "pass_probability": 0.0010698899859562516
+      },
+      "last_haul": {
+        "blast_probability": 0.0,
+        "pass_probability": 0.08472015708684921
+      }
+    },
+    {
+      "player": 2,
+      "round": 2,
+      "pending": false,
+      "baseline": {
+        "blast_probability": 0.7025703006183903,
+        "pass_probability": 0.0
+      },
+      "last_haul": {
+        "blast_probability": 0.7516935989260674,
+        "pass_probability": 0.0
+      }
+    },
+    {
+      "player": 3,
+      "round": 2,
+      "pending": false,
+      "baseline": {
+        "blast_probability": 0.09458404194580794,
+        "pass_probability": 0.0
+      },
+      "last_haul": {
+        "blast_probability": 0.10077752778306603,
+        "pass_probability": 0.0
+      }
+    },
+    {
+      "player": 2,
+      "round": 2,
+      "pending": true,
+      "baseline": {
+        "blast_probability": 0.0,
+        "pass_probability": 0.0012083573965355754
+      },
+      "last_haul": {
+        "blast_probability": 0.0,
+        "pass_probability": 0.06570268422365189
+      }
+    }
+  ],
+  "fresh_full_games": [
+    {
+      "checkpoint": "checkpoints/selfplay4.npz",
+      "games": 200,
+      "seed": 2700000,
+      "outright_win_rate": 0.235,
+      "tied_top_rate": 0.075,
+      "score": 2.185,
+      "margin": 0.09666666666666664,
+      "announced": 445,
+      "cancelled": 381,
+      "hauls_with_own_blast_fired": 59,
+      "unfinished": 0,
+      "decisions_per_game": 104.495,
+      "paired_win_change": 0.0,
+      "paired_give_or_take": 0.0
+    },
+    {
+      "checkpoint": "checkpoints/selfplay4_last_haul.npz",
+      "games": 200,
+      "seed": 2700000,
+      "outright_win_rate": 0.2,
+      "tied_top_rate": 0.115,
+      "score": 2.05,
+      "margin": -0.040000000000000036,
+      "announced": 466,
+      "cancelled": 398,
+      "hauls_with_own_blast_fired": 64,
+      "unfinished": 0,
+      "decisions_per_game": 103.885,
+      "paired_win_change": -0.035,
+      "paired_give_or_take": 0.031204866905547995
+    }
+  ],
+  "training_labels": [
+    {
+      "position": 1,
+      "game_seed": 2300000,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        11,
+        64
+      ],
+      "win_shares": [
+        0.0,
+        0.0
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 2,
+      "game_seed": 2300000,
+      "haul": 3,
+      "round": 0,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.0,
+        0.0
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 3,
+      "game_seed": 2300001,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        13,
+        27,
+        28
+      ],
+      "win_shares": [
+        0.19270833333333334,
+        0.1840277777777778,
+        0.21354166666666666
+      ],
+      "continuations": 144
+    },
+    {
+      "position": 4,
+      "game_seed": 2300002,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        0,
+        5,
+        53,
+        58
+      ],
+      "win_shares": [
+        0.1875,
+        0.5416666666666666,
+        0.9166666666666666,
+        0.0
+      ],
+      "continuations": 192
+    },
+    {
+      "position": 5,
+      "game_seed": 2300002,
+      "haul": 3,
+      "round": 0,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.0625,
+        0.9166666666666666
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 6,
+      "game_seed": 2300003,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        10,
+        28,
+        63,
+        78,
+        81
+      ],
+      "win_shares": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "continuations": 240
+    },
+    {
+      "position": 7,
+      "game_seed": 2300003,
+      "haul": 3,
+      "round": 3,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.0,
+        0.0
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 8,
+      "game_seed": 2300004,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        0,
+        5,
+        10
+      ],
+      "win_shares": [
+        0.625,
+        0.625,
+        0.65625
+      ],
+      "continuations": 144
+    },
+    {
+      "position": 9,
+      "game_seed": 2300005,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        10,
+        25,
+        63,
+        78
+      ],
+      "win_shares": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "continuations": 192
+    },
+    {
+      "position": 10,
+      "game_seed": 2300005,
+      "haul": 3,
+      "round": 3,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.0,
+        0.0
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 11,
+      "game_seed": 2300007,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        20,
+        25,
+        73,
+        78
+      ],
+      "win_shares": [
+        0.5625,
+        0.5208333333333334,
+        0.0,
+        0.6458333333333334
+      ],
+      "continuations": 192
+    },
+    {
+      "position": 12,
+      "game_seed": 2300007,
+      "haul": 3,
+      "round": 3,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.2708333333333333,
+        0.7708333333333334
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 13,
+      "game_seed": 2300008,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        7,
+        12
+      ],
+      "win_shares": [
+        0.125,
+        0.13541666666666666
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 14,
+      "game_seed": 2300009,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        5,
+        28,
+        58,
+        78,
+        81
+      ],
+      "win_shares": [
+        0.0,
+        0.041666666666666664,
+        0.0,
+        0.0,
+        0.3958333333333333
+      ],
+      "continuations": 240
+    },
+    {
+      "position": 15,
+      "game_seed": 2300009,
+      "haul": 3,
+      "round": 3,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.020833333333333332,
+        0.3333333333333333
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 16,
+      "game_seed": 2300010,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        6,
+        59
+      ],
+      "win_shares": [
+        0.0,
+        0.0
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 17,
+      "game_seed": 2300010,
+      "haul": 3,
+      "round": 0,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.0,
+        0.0
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 18,
+      "game_seed": 2300011,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        28,
+        81
+      ],
+      "win_shares": [
+        0.8333333333333334,
+        0.7604166666666666
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 19,
+      "game_seed": 2300011,
+      "haul": 3,
+      "round": 3,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.8541666666666666,
+        0.84375
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 20,
+      "game_seed": 2300012,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        0,
+        10,
+        53,
+        63
+      ],
+      "win_shares": [
+        0.7673611111111112,
+        0.7500000000000001,
+        0.3368055555555558,
+        0.875
+      ],
+      "continuations": 192
+    },
+    {
+      "position": 21,
+      "game_seed": 2300012,
+      "haul": 3,
+      "round": 0,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.892361111111111,
+        0.9722222222222223
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 22,
+      "game_seed": 2300014,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        0,
+        5,
+        53,
+        58
+      ],
+      "win_shares": [
+        0.375,
+        0.5208333333333334,
+        0.0,
+        0.8958333333333334
+      ],
+      "continuations": 192
+    },
+    {
+      "position": 23,
+      "game_seed": 2300014,
+      "haul": 3,
+      "round": 0,
+      "own_pending": true,
+      "actions": [
+        50,
+        51,
+        52
+      ],
+      "win_shares": [
+        0.20833333333333334,
+        0.20833333333333334,
+        0.0
+      ],
+      "continuations": 144
+    },
+    {
+      "position": 24,
+      "game_seed": 2300015,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        11,
+        26,
+        28
+      ],
+      "win_shares": [
+        0.020833333333333332,
+        0.0625,
+        0.020833333333333332
+      ],
+      "continuations": 144
+    },
+    {
+      "position": 25,
+      "game_seed": 2300016,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        2,
+        12,
+        55,
+        65
+      ],
+      "win_shares": [
+        0.6041666666666666,
+        0.8333333333333334,
+        0.8958333333333334,
+        0.0
+      ],
+      "continuations": 192
+    },
+    {
+      "position": 26,
+      "game_seed": 2300016,
+      "haul": 3,
+      "round": 0,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.5625,
+        0.8333333333333334
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 27,
+      "game_seed": 2300017,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        7,
+        12,
+        27,
+        60,
+        65,
+        80
+      ],
+      "win_shares": [
+        0.14583333333333334,
+        0.125,
+        0.16666666666666666,
+        0.0,
+        0.0,
+        0.7916666666666666
+      ],
+      "continuations": 288
+    },
+    {
+      "position": 28,
+      "game_seed": 2300017,
+      "haul": 3,
+      "round": 3,
+      "own_pending": true,
+      "actions": [
+        50,
+        51,
+        52
+      ],
+      "win_shares": [
+        0.0625,
+        0.125,
+        0.0
+      ],
+      "continuations": 144
+    },
+    {
+      "position": 29,
+      "game_seed": 2300018,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        2,
+        12
+      ],
+      "win_shares": [
+        0.6666666666666666,
+        0.6666666666666666
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 30,
+      "game_seed": 2300021,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        25,
+        28,
+        78,
+        80,
+        81
+      ],
+      "win_shares": [
+        0.5416666666666666,
+        0.4583333333333333,
+        0.625,
+        0.3333333333333333,
+        0.4583333333333333
+      ],
+      "continuations": 240
+    },
+    {
+      "position": 31,
+      "game_seed": 2300021,
+      "haul": 3,
+      "round": 3,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.4375,
+        0.3541666666666667
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 32,
+      "game_seed": 2300022,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        6,
+        59
+      ],
+      "win_shares": [
+        0.4375,
+        0.8541666666666666
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 33,
+      "game_seed": 2300022,
+      "haul": 3,
+      "round": 0,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.625,
+        0.9375
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 34,
+      "game_seed": 2300023,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        6,
+        25,
+        26
+      ],
+      "win_shares": [
+        0.5833333333333334,
+        0.6041666666666666,
+        0.5312499999999999
+      ],
+      "continuations": 144
+    },
+    {
+      "position": 35,
+      "game_seed": 2300024,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        2,
+        55
+      ],
+      "win_shares": [
+        0.0,
+        0.0
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 36,
+      "game_seed": 2300024,
+      "haul": 3,
+      "round": 0,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.0,
+        0.0
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 37,
+      "game_seed": 2300025,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        23,
+        25,
+        26
+      ],
+      "win_shares": [
+        0.3958333333333333,
+        0.4375,
+        0.4375
+      ],
+      "continuations": 144
+    },
+    {
+      "position": 38,
+      "game_seed": 2300026,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        13,
+        66
+      ],
+      "win_shares": [
+        0.7291666666666666,
+        0.875
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 39,
+      "game_seed": 2300026,
+      "haul": 3,
+      "round": 0,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.8541666666666666,
+        0.875
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 40,
+      "game_seed": 2300027,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        17,
+        27,
+        70,
+        80
+      ],
+      "win_shares": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "continuations": 192
+    },
+    {
+      "position": 41,
+      "game_seed": 2300027,
+      "haul": 3,
+      "round": 3,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.0,
+        0.0
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 42,
+      "game_seed": 2300028,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        5,
+        10,
+        58,
+        63
+      ],
+      "win_shares": [
+        0.5,
+        0.625,
+        0.8958333333333334,
+        0.0
+      ],
+      "continuations": 192
+    },
+    {
+      "position": 43,
+      "game_seed": 2300028,
+      "haul": 3,
+      "round": 0,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.6041666666666666,
+        0.8958333333333334
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 44,
+      "game_seed": 2300029,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        26,
+        79
+      ],
+      "win_shares": [
+        0.7309027777777777,
+        0.7534722222222222
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 45,
+      "game_seed": 2300029,
+      "haul": 3,
+      "round": 3,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.7916666666666669,
+        0.3680555555555556
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 46,
+      "game_seed": 2300030,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        0,
+        5,
+        10
+      ],
+      "win_shares": [
+        0.03125,
+        0.03125,
+        0.052083333333333336
+      ],
+      "continuations": 144
+    },
+    {
+      "position": 47,
+      "game_seed": 2300031,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        25,
+        26,
+        27
+      ],
+      "win_shares": [
+        0.0625,
+        0.08333333333333333,
+        0.08333333333333333
+      ],
+      "continuations": 144
+    },
+    {
+      "position": 48,
+      "game_seed": 2300033,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        2,
+        28,
+        55,
+        60,
+        81
+      ],
+      "win_shares": [
+        0.03472222222222222,
+        0.15277777777777776,
+        0.0,
+        0.1875,
+        0.1875
+      ],
+      "continuations": 240
+    },
+    {
+      "position": 49,
+      "game_seed": 2300033,
+      "haul": 3,
+      "round": 3,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.09375,
+        0.1875
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 50,
+      "game_seed": 2300034,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        6,
+        11
+      ],
+      "win_shares": [
+        0.4791666666666667,
+        0.375
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 51,
+      "game_seed": 2300035,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        0,
+        53
+      ],
+      "win_shares": [
+        0.673611111111111,
+        0.6875
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 52,
+      "game_seed": 2300035,
+      "haul": 3,
+      "round": 3,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.7916666666666666,
+        0.4583333333333333
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 53,
+      "game_seed": 2300036,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        0,
+        13,
+        53,
+        58,
+        66
+      ],
+      "win_shares": [
+        0.9375,
+        0.9583333333333334,
+        0.9166666666666666,
+        0.010416666666666666,
+        0.8333333333333334
+      ],
+      "continuations": 240
+    },
+    {
+      "position": 54,
+      "game_seed": 2300036,
+      "haul": 3,
+      "round": 0,
+      "own_pending": true,
+      "actions": [
+        0,
+        1,
+        50,
+        52
+      ],
+      "win_shares": [
+        0.9166666666666666,
+        0.9270833333333334,
+        0.9375,
+        0.0
+      ],
+      "continuations": 192
+    },
+    {
+      "position": 55,
+      "game_seed": 2300037,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        0,
+        28,
+        53,
+        78,
+        81
+      ],
+      "win_shares": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "continuations": 240
+    },
+    {
+      "position": 56,
+      "game_seed": 2300037,
+      "haul": 3,
+      "round": 3,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.0,
+        0.0
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 57,
+      "game_seed": 2300038,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        7,
+        12,
+        60,
+        65
+      ],
+      "win_shares": [
+        0.5416666666666666,
+        0.8125,
+        0.9583333333333334,
+        0.0
+      ],
+      "continuations": 192
+    },
+    {
+      "position": 58,
+      "game_seed": 2300038,
+      "haul": 3,
+      "round": 0,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.3958333333333333,
+        0.9375
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 59,
+      "game_seed": 2300039,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        1,
+        26,
+        54,
+        79
+      ],
+      "win_shares": [
+        0.14583333333333334,
+        0.15625,
+        0.0,
+        0.6041666666666666
+      ],
+      "continuations": 192
+    },
+    {
+      "position": 60,
+      "game_seed": 2300039,
+      "haul": 3,
+      "round": 3,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.13541666666666666,
+        0.5520833333333334
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 61,
+      "game_seed": 2300041,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        0,
+        28,
+        53,
+        78,
+        81
+      ],
+      "win_shares": [
+        0.19791666666666666,
+        0.3541666666666667,
+        0.0,
+        0.4375,
+        0.3854166666666667
+      ],
+      "continuations": 240
+    },
+    {
+      "position": 62,
+      "game_seed": 2300041,
+      "haul": 3,
+      "round": 3,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.3645833333333333,
+        0.5104166666666666
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 63,
+      "game_seed": 2300043,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        20,
+        25,
+        73,
+        78
+      ],
+      "win_shares": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "continuations": 192
+    },
+    {
+      "position": 64,
+      "game_seed": 2300043,
+      "haul": 3,
+      "round": 3,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.0,
+        0.0
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 65,
+      "game_seed": 2300045,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        8,
+        13,
+        28,
+        61,
+        66,
+        81
+      ],
+      "win_shares": [
+        0.16319444444444445,
+        0.19444444444444442,
+        0.16319444444444445,
+        0.0,
+        0.0,
+        0.5694444444444445
+      ],
+      "continuations": 288
+    },
+    {
+      "position": 66,
+      "game_seed": 2300045,
+      "haul": 3,
+      "round": 3,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.03125,
+        0.6909722222222222
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 67,
+      "game_seed": 2300046,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        6,
+        11
+      ],
+      "win_shares": [
+        0.020833333333333332,
+        0.020833333333333332
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 68,
+      "game_seed": 2300047,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        6,
+        28,
+        59,
+        79,
+        81
+      ],
+      "win_shares": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "continuations": 240
+    },
+    {
+      "position": 69,
+      "game_seed": 2300047,
+      "haul": 3,
+      "round": 3,
+      "own_pending": true,
+      "actions": [
+        3,
+        50,
+        51,
+        52
+      ],
+      "win_shares": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "continuations": 192
+    },
+    {
+      "position": 70,
+      "game_seed": 2300048,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        2,
+        12
+      ],
+      "win_shares": [
+        0.0,
+        0.0
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 71,
+      "game_seed": 2300049,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        7,
+        28,
+        60,
+        64,
+        69,
+        79,
+        81
+      ],
+      "win_shares": [
+        0.7708333333333334,
+        0.9375,
+        0.6458333333333334,
+        0.010416666666666666,
+        0.8541666666666666,
+        0.010416666666666666,
+        0.6354166666666666
+      ],
+      "continuations": 336
+    },
+    {
+      "position": 72,
+      "game_seed": 2300049,
+      "haul": 3,
+      "round": 3,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.7916666666666666,
+        0.3819444444444444
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 73,
+      "game_seed": 2300050,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        1,
+        54
+      ],
+      "win_shares": [
+        0.08333333333333333,
+        0.8125
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 74,
+      "game_seed": 2300050,
+      "haul": 3,
+      "round": 0,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.19791666666666666,
+        0.875
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 75,
+      "game_seed": 2300051,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        5,
+        28,
+        58,
+        68,
+        81
+      ],
+      "win_shares": [
+        0.10416666666666667,
+        0.08333333333333333,
+        0.0,
+        0.0,
+        0.5
+      ],
+      "continuations": 240
+    },
+    {
+      "position": 76,
+      "game_seed": 2300051,
+      "haul": 3,
+      "round": 3,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.14583333333333334,
+        0.5625
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 77,
+      "game_seed": 2300052,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        13,
+        66
+      ],
+      "win_shares": [
+        0.0,
+        0.0
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 78,
+      "game_seed": 2300052,
+      "haul": 3,
+      "round": 0,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.0,
+        0.0
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 79,
+      "game_seed": 2300053,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        2,
+        27
+      ],
+      "win_shares": [
+        0.5833333333333334,
+        0.5833333333333334
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 80,
+      "game_seed": 2300054,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        8,
+        10,
+        13
+      ],
+      "win_shares": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "continuations": 144
+    },
+    {
+      "position": 81,
+      "game_seed": 2300055,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        2,
+        28,
+        55,
+        70,
+        80,
+        81
+      ],
+      "win_shares": [
+        0.17708333333333334,
+        0.2604166666666667,
+        0.0,
+        0.0,
+        0.6354166666666666,
+        0.375
+      ],
+      "continuations": 288
+    },
+    {
+      "position": 82,
+      "game_seed": 2300055,
+      "haul": 3,
+      "round": 3,
+      "own_pending": true,
+      "actions": [
+        0,
+        50,
+        51,
+        52
+      ],
+      "win_shares": [
+        0.4270833333333333,
+        0.15625,
+        0.3125,
+        0.0
+      ],
+      "continuations": 192
+    },
+    {
+      "position": 83,
+      "game_seed": 2300057,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        1,
+        26,
+        54,
+        79
+      ],
+      "win_shares": [
+        0.4375,
+        0.4791666666666667,
+        0.2569444444444445,
+        0.9895833333333334
+      ],
+      "continuations": 192
+    },
+    {
+      "position": 84,
+      "game_seed": 2300057,
+      "haul": 3,
+      "round": 3,
+      "own_pending": true,
+      "actions": [
+        50,
+        51,
+        52
+      ],
+      "win_shares": [
+        0.6875,
+        0.4375,
+        0.25347222222222227
+      ],
+      "continuations": 144
+    },
+    {
+      "position": 85,
+      "game_seed": 2300058,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        10,
+        63
+      ],
+      "win_shares": [
+        0.8125,
+        0.8541666666666666
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 86,
+      "game_seed": 2300058,
+      "haul": 3,
+      "round": 0,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.9166666666666666,
+        0.9375
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 87,
+      "game_seed": 2300059,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        0,
+        25,
+        53,
+        78
+      ],
+      "win_shares": [
+        0.052083333333333336,
+        0.13541666666666666,
+        0.0,
+        0.4791666666666667
+      ],
+      "continuations": 192
+    },
+    {
+      "position": 88,
+      "game_seed": 2300059,
+      "haul": 3,
+      "round": 3,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.125,
+        0.5208333333333334
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 89,
+      "game_seed": 2300060,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        2,
+        12,
+        55,
+        65
+      ],
+      "win_shares": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "continuations": 192
+    },
+    {
+      "position": 90,
+      "game_seed": 2300060,
+      "haul": 3,
+      "round": 0,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.0,
+        0.0
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 91,
+      "game_seed": 2300061,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        21,
+        26,
+        74,
+        79
+      ],
+      "win_shares": [
+        0.78125,
+        0.7916666666666666,
+        0.4895833333333333,
+        0.8333333333333334
+      ],
+      "continuations": 192
+    },
+    {
+      "position": 92,
+      "game_seed": 2300061,
+      "haul": 3,
+      "round": 3,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.8958333333333334,
+        0.7395833333333334
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 93,
+      "game_seed": 2300062,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        2,
+        7,
+        12
+      ],
+      "win_shares": [
+        0.3333333333333333,
+        0.46875,
+        0.5104166666666666
+      ],
+      "continuations": 144
+    },
+    {
+      "position": 94,
+      "game_seed": 2300063,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        23,
+        28,
+        76,
+        81
+      ],
+      "win_shares": [
+        0.8333333333333334,
+        0.84375,
+        0.0,
+        0.7916666666666666
+      ],
+      "continuations": 192
+    },
+    {
+      "position": 95,
+      "game_seed": 2300063,
+      "haul": 3,
+      "round": 3,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.6875,
+        0.7916666666666666
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 96,
+      "game_seed": 2300064,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        0,
+        10,
+        53,
+        63
+      ],
+      "win_shares": [
+        0.9375,
+        0.9375,
+        0.5,
+        0.96875
+      ],
+      "continuations": 192
+    }
+  ],
+  "held_labels": [
+    {
+      "position": 1,
+      "game_seed": 2400000,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        2,
+        12,
+        55,
+        65
+      ],
+      "win_shares": [
+        0.2291666666666667,
+        0.4444444444444445,
+        0.0,
+        0.9375
+      ],
+      "continuations": 192
+    },
+    {
+      "position": 2,
+      "game_seed": 2400000,
+      "haul": 3,
+      "round": 0,
+      "own_pending": true,
+      "actions": [
+        50,
+        51,
+        52
+      ],
+      "win_shares": [
+        0.05555555555555555,
+        0.10416666666666667,
+        0.0
+      ],
+      "continuations": 144
+    },
+    {
+      "position": 3,
+      "game_seed": 2400001,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        12,
+        22,
+        27
+      ],
+      "win_shares": [
+        0.1527777777777778,
+        0.13194444444444445,
+        0.13194444444444445
+      ],
+      "continuations": 144
+    },
+    {
+      "position": 4,
+      "game_seed": 2400002,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        6,
+        11,
+        12
+      ],
+      "win_shares": [
+        0.13541666666666666,
+        0.125,
+        0.20833333333333334
+      ],
+      "continuations": 144
+    },
+    {
+      "position": 5,
+      "game_seed": 2400003,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        2,
+        17,
+        28,
+        55,
+        70,
+        81
+      ],
+      "win_shares": [
+        0.0625,
+        0.16666666666666666,
+        0.15625,
+        0.3645833333333333,
+        0.0,
+        0.28125
+      ],
+      "continuations": 288
+    },
+    {
+      "position": 6,
+      "game_seed": 2400003,
+      "haul": 3,
+      "round": 3,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.4479166666666667,
+        0.4791666666666667
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 7,
+      "game_seed": 2400004,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        1,
+        11,
+        54,
+        64
+      ],
+      "win_shares": [
+        0.375,
+        0.8958333333333334,
+        0.0,
+        0.875
+      ],
+      "continuations": 192
+    },
+    {
+      "position": 8,
+      "game_seed": 2400004,
+      "haul": 3,
+      "round": 0,
+      "own_pending": true,
+      "actions": [
+        50,
+        51,
+        52
+      ],
+      "win_shares": [
+        0.22916666666666666,
+        0.22916666666666666,
+        0.0
+      ],
+      "continuations": 144
+    },
+    {
+      "position": 9,
+      "game_seed": 2400005,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        25,
+        26,
+        28
+      ],
+      "win_shares": [
+        0.2569444444444444,
+        0.24131944444444442,
+        0.26215277777777773
+      ],
+      "continuations": 144
+    },
+    {
+      "position": 10,
+      "game_seed": 2400006,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        2,
+        12,
+        55,
+        65
+      ],
+      "win_shares": [
+        0.8020833333333334,
+        0.90625,
+        0.5,
+        0.9479166666666666
+      ],
+      "continuations": 192
+    },
+    {
+      "position": 11,
+      "game_seed": 2400006,
+      "haul": 3,
+      "round": 0,
+      "own_pending": true,
+      "actions": [
+        50,
+        51,
+        52
+      ],
+      "win_shares": [
+        0.8541666666666666,
+        0.8854166666666666,
+        0.5
+      ],
+      "continuations": 144
+    },
+    {
+      "position": 12,
+      "game_seed": 2400007,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        2,
+        27,
+        28,
+        55,
+        75,
+        80,
+        81
+      ],
+      "win_shares": [
+        0.1875,
+        0.20833333333333334,
+        0.22916666666666666,
+        0.0,
+        0.0,
+        0.5833333333333334,
+        0.3125
+      ],
+      "continuations": 336
+    },
+    {
+      "position": 13,
+      "game_seed": 2400007,
+      "haul": 3,
+      "round": 3,
+      "own_pending": true,
+      "actions": [
+        3,
+        50,
+        51,
+        52
+      ],
+      "win_shares": [
+        0.16666666666666666,
+        0.1875,
+        0.1875,
+        0.0
+      ],
+      "continuations": 192
+    },
+    {
+      "position": 14,
+      "game_seed": 2400008,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        5,
+        58
+      ],
+      "win_shares": [
+        0.9166666666666666,
+        0.8333333333333334
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 15,
+      "game_seed": 2400008,
+      "haul": 3,
+      "round": 0,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.875,
+        0.7916666666666666
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 16,
+      "game_seed": 2400009,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        5,
+        25,
+        28,
+        58,
+        78,
+        81
+      ],
+      "win_shares": [
+        0.0625,
+        0.020833333333333332,
+        0.041666666666666664,
+        0.0,
+        0.20833333333333334,
+        0.2916666666666667
+      ],
+      "continuations": 288
+    },
+    {
+      "position": 17,
+      "game_seed": 2400009,
+      "haul": 3,
+      "round": 3,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.041666666666666664,
+        0.4166666666666667
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 18,
+      "game_seed": 2400010,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        2,
+        13,
+        55,
+        60,
+        66
+      ],
+      "win_shares": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        0.9791666666666666
+      ],
+      "continuations": 240
+    },
+    {
+      "position": 19,
+      "game_seed": 2400010,
+      "haul": 3,
+      "round": 0,
+      "own_pending": true,
+      "actions": [
+        1,
+        2,
+        50,
+        52
+      ],
+      "win_shares": [
+        0.9375,
+        0.9583333333333334,
+        1.0,
+        1.0
+      ],
+      "continuations": 192
+    },
+    {
+      "position": 20,
+      "game_seed": 2400011,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        7,
+        25,
+        27
+      ],
+      "win_shares": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "continuations": 144
+    },
+    {
+      "position": 21,
+      "game_seed": 2400013,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        3,
+        28,
+        56,
+        66,
+        81
+      ],
+      "win_shares": [
+        0.4375,
+        0.4166666666666667,
+        0.0,
+        0.0,
+        0.8125
+      ],
+      "continuations": 240
+    },
+    {
+      "position": 22,
+      "game_seed": 2400013,
+      "haul": 3,
+      "round": 3,
+      "own_pending": true,
+      "actions": [
+        50,
+        51,
+        52
+      ],
+      "win_shares": [
+        0.5416666666666666,
+        0.625,
+        0.0
+      ],
+      "continuations": 144
+    },
+    {
+      "position": 23,
+      "game_seed": 2400014,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        13,
+        66
+      ],
+      "win_shares": [
+        0.6666666666666666,
+        0.8333333333333334
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 24,
+      "game_seed": 2400014,
+      "haul": 3,
+      "round": 0,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.7152777777777777,
+        0.9166666666666666
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 25,
+      "game_seed": 2400015,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        2,
+        27,
+        28,
+        55,
+        80,
+        81
+      ],
+      "win_shares": [
+        0.0625,
+        0.0625,
+        0.0625,
+        0.0,
+        0.0625,
+        0.25
+      ],
+      "continuations": 288
+    },
+    {
+      "position": 26,
+      "game_seed": 2400015,
+      "haul": 3,
+      "round": 3,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.0,
+        0.10416666666666667
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 27,
+      "game_seed": 2400016,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        5,
+        10
+      ],
+      "win_shares": [
+        0.7083333333333334,
+        0.75
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 28,
+      "game_seed": 2400017,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        3,
+        13
+      ],
+      "win_shares": [
+        0.5,
+        0.5
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 29,
+      "game_seed": 2400019,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        28,
+        81
+      ],
+      "win_shares": [
+        0.4288194444444445,
+        0.6440972222222222
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 30,
+      "game_seed": 2400019,
+      "haul": 3,
+      "round": 3,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.5607638888888888,
+        0.6770833333333334
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 31,
+      "game_seed": 2400020,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        6,
+        59
+      ],
+      "win_shares": [
+        0.40625,
+        0.7083333333333334
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 32,
+      "game_seed": 2400020,
+      "haul": 3,
+      "round": 0,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.3125,
+        0.8958333333333334
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 33,
+      "game_seed": 2400021,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        18,
+        25,
+        28,
+        71,
+        73,
+        78,
+        81
+      ],
+      "win_shares": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "continuations": 336
+    },
+    {
+      "position": 34,
+      "game_seed": 2400021,
+      "haul": 3,
+      "round": 3,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.0,
+        0.0
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 35,
+      "game_seed": 2400022,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        11,
+        64
+      ],
+      "win_shares": [
+        0.625,
+        0.8958333333333334
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 36,
+      "game_seed": 2400022,
+      "haul": 3,
+      "round": 0,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.16666666666666666,
+        0.8333333333333334
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 37,
+      "game_seed": 2400023,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        2,
+        22,
+        28,
+        55,
+        75,
+        80,
+        81
+      ],
+      "win_shares": [
+        0.041666666666666664,
+        0.10416666666666667,
+        0.16666666666666666,
+        0.0,
+        0.0,
+        0.0,
+        0.4791666666666667
+      ],
+      "continuations": 336
+    },
+    {
+      "position": 38,
+      "game_seed": 2400023,
+      "haul": 3,
+      "round": 3,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.020833333333333332,
+        0.10416666666666667
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 39,
+      "game_seed": 2400025,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        2,
+        27,
+        55,
+        80
+      ],
+      "win_shares": [
+        0.7083333333333334,
+        0.6875,
+        0.625,
+        0.0
+      ],
+      "continuations": 192
+    },
+    {
+      "position": 40,
+      "game_seed": 2400025,
+      "haul": 3,
+      "round": 3,
+      "own_pending": true,
+      "actions": [
+        2,
+        3,
+        50,
+        52
+      ],
+      "win_shares": [
+        0.8125,
+        0.3541666666666667,
+        0.75,
+        0.0
+      ],
+      "continuations": 192
+    },
+    {
+      "position": 41,
+      "game_seed": 2400026,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        10,
+        63
+      ],
+      "win_shares": [
+        0.7604166666666666,
+        0.8055555555555557
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 42,
+      "game_seed": 2400026,
+      "haul": 3,
+      "round": 0,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.84375,
+        0.8541666666666666
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 43,
+      "game_seed": 2400027,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        8,
+        28,
+        61,
+        76,
+        81
+      ],
+      "win_shares": [
+        0.20833333333333334,
+        0.45833333333333326,
+        0.5416666666666666,
+        0.12152777777777778,
+        0.12152777777777778
+      ],
+      "continuations": 240
+    },
+    {
+      "position": 44,
+      "game_seed": 2400027,
+      "haul": 3,
+      "round": 3,
+      "own_pending": true,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.3194444444444445,
+        0.5399305555555556
+      ],
+      "continuations": 96
+    },
+    {
+      "position": 45,
+      "game_seed": 2400028,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        10,
+        11,
+        13
+      ],
+      "win_shares": [
+        0.2743055555555555,
+        0.21527777777777776,
+        0.2743055555555555
+      ],
+      "continuations": 144
+    },
+    {
+      "position": 46,
+      "game_seed": 2400029,
+      "haul": 3,
+      "round": 3,
+      "own_pending": false,
+      "actions": [
+        3,
+        13,
+        28
+      ],
+      "win_shares": [
+        0.03125,
+        0.03125,
+        0.020833333333333332
+      ],
+      "continuations": 144
+    },
+    {
+      "position": 47,
+      "game_seed": 2400030,
+      "haul": 3,
+      "round": 0,
+      "own_pending": false,
+      "actions": [
+        2,
+        12,
+        55,
+        65
+      ],
+      "win_shares": [
+        0.8923611111111112,
+        0.8541666666666666,
+        0.0,
+        0.7708333333333334
+      ],
+      "continuations": 192
+    },
+    {
+      "position": 48,
+      "game_seed": 2400030,
+      "haul": 3,
+      "round": 0,
+      "own_pending": true,
+      "actions": [
+        50,
+        51,
+        52
+      ],
+      "win_shares": [
+        0.8958333333333334,
+        0.875,
+        0.0
+      ],
+      "continuations": 144
+    }
+  ],
+  "seed7_haul3_boundary_replay": [
+    {
+      "policy": "selfplay4",
+      "starting_scores": [
+        3,
+        0,
+        0,
+        3
+      ],
+      "finished": true,
+      "final_scores": [
+        3,
+        0,
+        4,
+        3
+      ],
+      "fired": [
+        [
+          2,
+          3
+        ]
+      ],
+      "p2_p3_trace": [
+        {
+          "player": 3,
+          "round": 0,
+          "action": 12,
+          "announce": true,
+          "was_pending": false
+        },
+        {
+          "player": 2,
+          "round": 0,
+          "action": 6,
+          "announce": true,
+          "was_pending": false
+        },
+        {
+          "player": 3,
+          "round": 0,
+          "action": 50,
+          "announce": false,
+          "was_pending": true
+        },
+        {
+          "player": 2,
+          "round": 0,
+          "action": 50,
+          "announce": false,
+          "was_pending": true
+        },
+        {
+          "player": 3,
+          "round": 0,
+          "action": 7,
+          "announce": false,
+          "was_pending": false
+        },
+        {
+          "player": 2,
+          "round": 0,
+          "action": 1,
+          "announce": false,
+          "was_pending": false
+        },
+        {
+          "player": 3,
+          "round": 0,
+          "action": 52,
+          "announce": false,
+          "was_pending": false
+        },
+        {
+          "player": 2,
+          "round": 1,
+          "action": 6,
+          "announce": true,
+          "was_pending": false
+        },
+        {
+          "player": 3,
+          "round": 1,
+          "action": 12,
+          "announce": false,
+          "was_pending": false
+        },
+        {
+          "player": 2,
+          "round": 1,
+          "action": 50,
+          "announce": false,
+          "was_pending": true
+        },
+        {
+          "player": 3,
+          "round": 1,
+          "action": 52,
+          "announce": false,
+          "was_pending": false
+        },
+        {
+          "player": 2,
+          "round": 1,
+          "action": 51,
+          "announce": false,
+          "was_pending": false
+        },
+        {
+          "player": 3,
+          "round": 1,
+          "action": 52,
+          "announce": false,
+          "was_pending": false
+        },
+        {
+          "player": 2,
+          "round": 2,
+          "action": 21,
+          "announce": true,
+          "was_pending": false
+        },
+        {
+          "player": 3,
+          "round": 2,
+          "action": 50,
+          "announce": false,
+          "was_pending": false
+        },
+        {
+          "player": 2,
+          "round": 2,
+          "action": 50,
+          "announce": false,
+          "was_pending": true
+        },
+        {
+          "player": 3,
+          "round": 2,
+          "action": 17,
+          "announce": true,
+          "was_pending": false
+        },
+        {
+          "player": 2,
+          "round": 2,
+          "action": 52,
+          "announce": false,
+          "was_pending": false
+        }
+      ]
+    },
+    {
+      "policy": "selfplay4_last_haul",
+      "starting_scores": [
+        3,
+        0,
+        0,
+        3
+      ],
+      "finished": true,
+      "final_scores": [
+        7,
+        0,
+        -1,
+        3
+      ],
+      "fired": [
+        [
+          1,
+          3
+        ]
+      ],
+      "p2_p3_trace": [
+        {
+          "player": 3,
+          "round": 0,
+          "action": 12,
+          "announce": true,
+          "was_pending": false
+        },
+        {
+          "player": 2,
+          "round": 0,
+          "action": 6,
+          "announce": true,
+          "was_pending": false
+        },
+        {
+          "player": 3,
+          "round": 0,
+          "action": 50,
+          "announce": false,
+          "was_pending": true
+        },
+        {
+          "player": 2,
+          "round": 0,
+          "action": 50,
+          "announce": false,
+          "was_pending": true
+        },
+        {
+          "player": 3,
+          "round": 0,
+          "action": 7,
+          "announce": false,
+          "was_pending": false
+        },
+        {
+          "player": 2,
+          "round": 0,
+          "action": 1,
+          "announce": false,
+          "was_pending": false
+        },
+        {
+          "player": 3,
+          "round": 0,
+          "action": 52,
+          "announce": false,
+          "was_pending": false
+        },
+        {
+          "player": 2,
+          "round": 1,
+          "action": 6,
+          "announce": true,
+          "was_pending": false
+        },
+        {
+          "player": 3,
+          "round": 1,
+          "action": 50,
+          "announce": false,
+          "was_pending": false
+        },
+        {
+          "player": 2,
+          "round": 1,
+          "action": 50,
+          "announce": false,
+          "was_pending": true
+        },
+        {
+          "player": 3,
+          "round": 1,
+          "action": 12,
+          "announce": true,
+          "was_pending": false
+        },
+        {
+          "player": 2,
+          "round": 1,
+          "action": 52,
+          "announce": false,
+          "was_pending": false
+        }
+      ]
+    }
+  ],
+  "evaluation_seed": 2800000
+}

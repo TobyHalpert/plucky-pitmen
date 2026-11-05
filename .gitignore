@@ -232,3 +232,7 @@ reports/
 # Experimental branch-trained candidate and its small reproducibility report.
 !checkpoints/selfplay4_tactical.npz
 !checkpoints/selfplay4_tactical.history.json
+
+# Last-haul tactical curriculum candidate and reproducibility record.
+!checkpoints/selfplay4_last_haul.npz
+!checkpoints/selfplay4_last_haul.history.json
