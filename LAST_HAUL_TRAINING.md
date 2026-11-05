@@ -169,6 +169,59 @@ Reproduce this audit with:
 python probe_last_haul_displacements.py
 ```
 
+### Two trailers under one policy
+
+The audits above change one evaluated seat at a time. Two further checks put
+the last-haul net in **both** of the two lowest-scoring seats at the start of the
+final haul.
+
+The isolated-boundary check uses `probe_two_trailing_boundary.py`. For each game,
+the baseline plays through hauls 1 and 2; the branch is then cloned at the exact
+haul-3 boundary, preserving cards, hands, scores and agent RNG states. Only the
+two trailers' networks are swapped in the candidate arm. It ran 1,000 fresh game
+seeds from 3100000; 974 had at least two players behind the top.
+
+| both trailers, isolated boundary fork | baseline | last-haul |
+| :-- | --: | --: |
+| round-0 announcements by the pair | 1,189 | **1,255** |
+| cancellations after the fork | 2,288 | **2,168** |
+| successful blast resolutions | 222 | **278** |
+| explicit pending decisions kept | 0.09% | **5.93%** |
+| trailing displacements onto a leader | 0 | **56** |
+| leader-push opportunities | 4,436 | 4,008 |
+| leader pushes taken | 0% | **1.40%** |
+| trailers displacing each other | 1 | **27** |
+| mean final score per trailer | 1.006 | **1.049** |
+| games with at least one trailer at the top | 247 (25.36%) | **278 (28.54%)** |
+| outright win rate per trailer | 10.11% | 10.83% |
+
+The paired score change is +0.043 per trailer, give or take 0.025. The paired
+rate that at least one trailer reaches the top is +3.18 percentage points, give
+or take 1.34; the per-trailer win change is +0.72 points, give or take 0.61.
+Thus the pair visibly completes more blasts and finally takes some leader
+pushes. The change is not large enough to call a general strength gain, and
+these paired standard errors treat each game as one cluster.
+
+A separate 500-game self-play check ran all four seats on one policy, without a
+boundary fork. For the two final-haul trailers, the last-haul net had fewer
+total announcements (1,034 -> 860), fewer cancellations (916 -> 806), more
+explicit pending keeps (1.66% -> 8.21%), more fired-blast games (171 -> 188),
+and 18 leader pushes from 1,835 opportunities versus none. Its mean score per
+trailer was lower (0.942 -> 0.866), with essentially unchanged probability that
+at least one trailer reached the top (27.05% -> 27.13%). Ordinary whole-game
+behaviour is therefore changed, but the outcome result is mixed.
+
+For seed 7 specifically, the isolated two-trailer branch is instructive: both P2
+and P3 announce in round 0. The baseline branch ends [3, 0, 4, 3] with one
+successful trailer blast. The candidate branch ends [7, 0, -1, 3], has no
+successful trailer blast, and neither trailer displaces a leader. This exact
+trajectory remains a failure case.
+
+```sh
+python probe_two_trailing_boundary.py --games 1000 --seed 3100000
+python probe_two_trailing_players.py --games 500 --seed 2900000
+```
+
 ### Seed 7 specifically
 
 In fixed original haul-3 contexts, P2's pass/keep probability rose:
