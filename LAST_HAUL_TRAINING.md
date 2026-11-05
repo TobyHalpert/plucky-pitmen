@@ -222,6 +222,37 @@ python probe_two_trailing_boundary.py --games 1000 --seed 3100000
 python probe_two_trailing_players.py --games 500 --seed 2900000
 ```
 
+### Three relentless pushers
+
+`probe_always_pusher_match.py` puts the candidate in one rotating seat and puts
+three scripted seats in the other positions. Every time one of those scripted
+seats has a legal occupied card it can contest, it takes the displacement,
+preferring the current highest total score. Their fallback behaviour is the
+deterministic counter policy; they do not receive special knowledge.
+
+1,000 fresh games per arm, four players, three hauls, seed 3300000 onwards:
+
+| one net versus three always-pushers | baseline | last-haul |
+| :-- | --: | --: |
+| net push opportunities taken | 16 of 5,384 (0.30%) | **126 of 5,390 (2.34%)** |
+| pushes taken by the pushers | 20,810 | 20,363 |
+| successful pushes against the net | 8,251 | **7,933** |
+| outright wins | **61.5%** | 59.9% |
+| tied top | 8.7% | 8.9% |
+| mean net score | **3.453** | 3.264 |
+| mean net margin over rivals | **3.484** | 3.254 |
+| mean net gems | 1.521 | **1.544** |
+
+Candidate-vs-baseline win change is −1.6 percentage points, give or take 1.17;
+margin change is −0.230 points, give or take 0.081. The last-haul net fights
+back more often and suffers slightly fewer incoming pushes, but still takes only
+2.34% of its own opportunities and scores below baseline here. It does not yet
+have a robust answer to an all-push table.
+
+```sh
+python probe_always_pusher_match.py --games 1000 --seed 3300000
+```
+
 ### Seed 7 specifically
 
 In fixed original haul-3 contexts, P2's pass/keep probability rose:

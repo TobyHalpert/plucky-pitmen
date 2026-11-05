@@ -284,6 +284,7 @@ uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
 | `probe_push_clock.py` | deprecated historical clock diagnostic; its conclusions are withdrawn (see BALANCE.md) |
 | `probe_seed7_p2.py` | exact-position forks of seed-7 P2 push, blast and cancellation; limitations and results in SEED7_P2.md |
 | `probe_pusher_match.py` | deterministic pusher versus three retrained nets, rotated seats, no-push control and actual displacement counts |
+| `probe_always_pusher_match.py` | one net versus three seats that take every displacement opportunity, with incoming and outgoing pushes and paired scores |
 | `probe_nextcard_training.py` | old versus retrained nets under the current rule: actual pushes, own-column card moves, scores and completed games |
 | `probe_backside_reading.py` | does the learner read a backside? risk of the card it takes, against the risk it was offered |
 | `probe_lorry.py` | how often a seat parks on its lorry, and how often a haul is lost to a stand-off because every seat did |
