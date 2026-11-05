@@ -6820,5 +6820,68 @@
       ]
     }
   ],
-  "evaluation_seed": 2800000
+  "evaluation_seed": 2800000,
+  "displacement_audit": {
+    "summary": [
+      {
+        "policy": "baseline",
+        "continuations": 384,
+        "tracked_trailing_to_leader_pushes": 0,
+        "tracked_displacements_any_target": 0,
+        "tracked_displacements_while_trailing": 0,
+        "tracked_leader_push_opportunities": 236,
+        "tracked_leader_pushes_taken": 0,
+        "all_seats_trailing_to_leader_pushes": 0,
+        "all_seats_leader_push_opportunities": 1232,
+        "all_seats_leader_pushes_taken": 0,
+        "continuations_with_tracked_leader_push": 0,
+        "tracked_leader_push_positions": []
+      },
+      {
+        "policy": "last_haul",
+        "continuations": 384,
+        "tracked_trailing_to_leader_pushes": 7,
+        "tracked_displacements_any_target": 20,
+        "tracked_displacements_while_trailing": 18,
+        "tracked_leader_push_opportunities": 228,
+        "tracked_leader_pushes_taken": 7,
+        "all_seats_trailing_to_leader_pushes": 7,
+        "all_seats_leader_push_opportunities": 1171,
+        "all_seats_leader_pushes_taken": 7,
+        "continuations_with_tracked_leader_push": 6,
+        "tracked_leader_push_positions": [
+          11,
+          12,
+          16,
+          21,
+          24,
+          45
+        ]
+      }
+    ],
+    "paired_branches": [
+      {
+        "branch_bucket": "all",
+        "branches": 384,
+        "baseline_win_rate": 0.359375,
+        "last_haul_win_rate": 0.3854166666666667
+      },
+      {
+        "branch_bucket": "tracked_leader_push_branches",
+        "branches": 6,
+        "baseline_win_rate": 0.16666666666666666,
+        "last_haul_win_rate": 0.16666666666666666
+      }
+    ],
+    "config": {
+      "baseline": "checkpoints/selfplay4.npz",
+      "candidate": "checkpoints/selfplay4_last_haul.npz",
+      "positions": 48,
+      "position_seed": 2400000,
+      "repeats": 8,
+      "evaluation_seed": 2800000,
+      "out": "/tmp/last_haul_displacements.json"
+    },
+    "note": "Independent unforced held evaluation, seed 2800000 onwards; leader displacements not rewarded, only measured."
+  }
 }

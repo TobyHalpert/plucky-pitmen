@@ -141,6 +141,34 @@ seed 2700000, seats rotated, against three unchanged nets. Outright wins were
 7.5% -> 11.5%, mean scores 2.185 -> 2.050, and fired-blast hauls 59 -> 64.
 Every game finished. This does not justify replacing the default checkpoint.
 
+### Displacement
+
+Displacement was not directly rewarded. In the same 384 unforced continuations
+per policy, the evaluated seat was **behind with a unique leader available to
+displace** at many decisions, and it usually ignored the option:
+
+| measured at trailing decisions | unchanged | last-haul candidate |
+| :-- | --: | --: |
+| leader-displacement choices available | 236 | 228 |
+| leader displacements actually taken | 0 | **7** |
+| taken rate | 0% | **3.1%** |
+
+The candidate made 20 tracked displacement moves in total; 18 occurred while it
+was behind and 7 displaced the unique leader. Those seven moves appeared in six
+continuation branches and came from its round-3 source positions. Baseline did
+not make the tracked seat displace anyone, although baseline's other seats made
+one non-leader displacement. Across the six candidate leader-displacement
+branches, the paired baseline and candidate continuation win rates were both
+16.7%; these branches were selected by the candidate's action, so this does not
+measure the causal value of pushing. The behaviour is therefore visibly changed,
+but taking a leader displacement remains very uncommon.
+
+Reproduce this audit with:
+
+```sh
+python probe_last_haul_displacements.py
+```
+
 ### Seed 7 specifically
 
 In fixed original haul-3 contexts, P2's pass/keep probability rose:
