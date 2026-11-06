@@ -1,0 +1,362 @@
+{
+  "config": {
+    "resume": "checkpoints/selfplay4_last_haul.npz",
+    "out": "checkpoints/selfplay4_row0_blast_sequence.npz",
+    "positions": 64,
+    "held_out": 32,
+    "samples": 32,
+    "epochs": 10,
+    "lr": 0.0002,
+    "prior_weight": 0.35,
+    "teacher_temperature": 0.12,
+    "kinds": [
+      "initial",
+      "follow_up"
+    ],
+    "teacher_mode": "policy",
+    "target_mode": "sequence",
+    "bad_reduction": 0.7,
+    "evidence_scale": 0.06,
+    "transfer_margin": 0.06,
+    "patience": 3,
+    "min_improvement": 0.005,
+    "save_every": 1,
+    "held_tolerance": 0.015,
+    "require_alternative": true,
+    "seed": 3600000,
+    "audit_games": 50,
+    "audit_only": false,
+    "dry_collect": false
+  },
+  "loss": [
+    1.57981092389673,
+    1.3956592758186162,
+    1.2982411002740264,
+    1.24538349872455,
+    1.215980681590736,
+    1.1963814767077565,
+    1.1838275976479053,
+    1.173791733570397,
+    1.16594906616956,
+    1.1593339703977108
+  ],
+  "best_epoch": 10,
+  "train_before": {
+    "conditional_estimated_win_share": 0.24230995549662532,
+    "mean_candidate_probability_mass": 0.9994118018075824,
+    "teacher_best": 0.3372395833333333
+  },
+  "train_after": {
+    "conditional_estimated_win_share": 0.2653726004656638,
+    "mean_candidate_probability_mass": 0.9971642401069403,
+    "teacher_best": 0.3372395833333333
+  },
+  "held_before": {
+    "conditional_estimated_win_share": 0.22029636665313668,
+    "mean_candidate_probability_mass": 0.9999999906867743,
+    "teacher_best": 0.317138671875
+  },
+  "held_after": {
+    "conditional_estimated_win_share": 0.22928378347356335,
+    "mean_candidate_probability_mass": 1.0000000037252903,
+    "teacher_best": 0.317138671875
+  },
+  "held_targeted_before": {
+    "conditional_estimated_win_share": 0.22029636665313668,
+    "mean_bad_probability": 0.8101175203919411,
+    "mean_candidate_probability_mass": 0.9999999906867743
+  },
+  "held_targeted_after": {
+    "conditional_estimated_win_share": 0.22928378347356335,
+    "mean_bad_probability": 0.5144011899828911,
+    "mean_candidate_probability_mass": 1.0000000037252903
+  },
+  "held_history": [
+    {
+      "epoch": 1,
+      "eligible": true,
+      "improves_bad_probability": true,
+      "held": {
+        "conditional_estimated_win_share": 0.22112211759163303,
+        "mean_candidate_probability_mass": 1.0000000055879354,
+        "teacher_best": 0.317138671875
+      },
+      "targeted": {
+        "conditional_estimated_win_share": 0.22112211759163303,
+        "mean_bad_probability": 0.7549441934097558,
+        "mean_candidate_probability_mass": 1.0000000055879354
+      },
+      "checkpoint": "checkpoints/selfplay4_row0_seq_v2.epoch1.npz"
+    },
+    {
+      "epoch": 2,
+      "eligible": true,
+      "improves_bad_probability": true,
+      "held": {
+        "conditional_estimated_win_share": 0.2225101919706983,
+        "mean_candidate_probability_mass": 0.9999999906867743,
+        "teacher_best": 0.317138671875
+      },
+      "targeted": {
+        "conditional_estimated_win_share": 0.2225101919706983,
+        "mean_bad_probability": 0.6957053048536181,
+        "mean_candidate_probability_mass": 0.9999999906867743
+      },
+      "checkpoint": "checkpoints/selfplay4_row0_seq_v2.epoch2.npz"
+    },
+    {
+      "epoch": 3,
+      "eligible": true,
+      "improves_bad_probability": true,
+      "held": {
+        "conditional_estimated_win_share": 0.2238606580044595,
+        "mean_candidate_probability_mass": 0.9999999906867743,
+        "teacher_best": 0.317138671875
+      },
+      "targeted": {
+        "conditional_estimated_win_share": 0.2238606580044595,
+        "mean_bad_probability": 0.6482226704247296,
+        "mean_candidate_probability_mass": 0.9999999906867743
+      },
+      "checkpoint": "checkpoints/selfplay4_row0_seq_v2.epoch3.npz"
+    },
+    {
+      "epoch": 4,
+      "eligible": true,
+      "improves_bad_probability": true,
+      "held": {
+        "conditional_estimated_win_share": 0.2249895098903788,
+        "mean_candidate_probability_mass": 0.9999999962747097,
+        "teacher_best": 0.317138671875
+      },
+      "targeted": {
+        "conditional_estimated_win_share": 0.2249895098903788,
+        "mean_bad_probability": 0.6143810492940247,
+        "mean_candidate_probability_mass": 0.9999999962747097
+      },
+      "checkpoint": "checkpoints/selfplay4_row0_seq_v2.epoch4.npz"
+    },
+    {
+      "epoch": 5,
+      "eligible": true,
+      "improves_bad_probability": true,
+      "held": {
+        "conditional_estimated_win_share": 0.22602741937143989,
+        "mean_candidate_probability_mass": 0.9999999962747097,
+        "teacher_best": 0.317138671875
+      },
+      "targeted": {
+        "conditional_estimated_win_share": 0.22602741937143989,
+        "mean_bad_probability": 0.5852115703746676,
+        "mean_candidate_probability_mass": 0.9999999962747097
+      },
+      "checkpoint": "checkpoints/selfplay4_row0_seq_v2.epoch5.npz"
+    },
+    {
+      "epoch": 6,
+      "eligible": true,
+      "improves_bad_probability": true,
+      "held": {
+        "conditional_estimated_win_share": 0.22685829173160424,
+        "mean_candidate_probability_mass": 0.9999999888241291,
+        "teacher_best": 0.317138671875
+      },
+      "targeted": {
+        "conditional_estimated_win_share": 0.22685829173160424,
+        "mean_bad_probability": 0.5658944062888622,
+        "mean_candidate_probability_mass": 0.9999999888241291
+      },
+      "checkpoint": "checkpoints/selfplay4_row0_seq_v2.epoch6.npz"
+    },
+    {
+      "epoch": 7,
+      "eligible": true,
+      "improves_bad_probability": true,
+      "held": {
+        "conditional_estimated_win_share": 0.22759149325436479,
+        "mean_candidate_probability_mass": 0.9999999925494194,
+        "teacher_best": 0.317138671875
+      },
+      "targeted": {
+        "conditional_estimated_win_share": 0.22759149325436479,
+        "mean_bad_probability": 0.5475527858361602,
+        "mean_candidate_probability_mass": 0.9999999925494194
+      },
+      "checkpoint": "checkpoints/selfplay4_row0_seq_v2.epoch7.npz"
+    },
+    {
+      "epoch": 8,
+      "eligible": true,
+      "improves_bad_probability": true,
+      "held": {
+        "conditional_estimated_win_share": 0.2281844281137092,
+        "mean_candidate_probability_mass": 0.9999999832361937,
+        "teacher_best": 0.317138671875
+      },
+      "targeted": {
+        "conditional_estimated_win_share": 0.2281844281137092,
+        "mean_bad_probability": 0.5364948068745434,
+        "mean_candidate_probability_mass": 0.9999999832361937
+      },
+      "checkpoint": "checkpoints/selfplay4_row0_seq_v2.epoch8.npz"
+    },
+    {
+      "epoch": 9,
+      "eligible": true,
+      "improves_bad_probability": true,
+      "held": {
+        "conditional_estimated_win_share": 0.22873944465699467,
+        "mean_candidate_probability_mass": 0.9999999944120646,
+        "teacher_best": 0.317138671875
+      },
+      "targeted": {
+        "conditional_estimated_win_share": 0.22873944465699467,
+        "mean_bad_probability": 0.5242824535816908,
+        "mean_candidate_probability_mass": 0.9999999944120646
+      },
+      "checkpoint": "checkpoints/selfplay4_row0_seq_v2.epoch9.npz"
+    },
+    {
+      "epoch": 10,
+      "eligible": true,
+      "improves_bad_probability": true,
+      "held": {
+        "conditional_estimated_win_share": 0.22928378347356335,
+        "mean_candidate_probability_mass": 1.0000000037252903,
+        "teacher_best": 0.317138671875
+      },
+      "targeted": {
+        "conditional_estimated_win_share": 0.22928378347356335,
+        "mean_bad_probability": 0.5144011899828911,
+        "mean_candidate_probability_mass": 1.0000000037252903
+      },
+      "checkpoint": "checkpoints/selfplay4_row0_seq_v2.epoch10.npz"
+    }
+  ],
+  "fresh_row0_audit": {
+    "before": {
+      "row0_blast_moves": 92,
+      "exit_after_row0_blast": 67,
+      "eventual_exit_after_row0_blast": 74,
+      "exit_while_blast_pending": 103,
+      "row0_announce": 92,
+      "row0_immediate_cancel": 67,
+      "row2_announce": 86,
+      "row2_move_announce": 86,
+      "row2_immediate_cancel": 80,
+      "row2_move_announce_immediate_cancel": 80,
+      "row4_announce": 21,
+      "row4_move_announce": 21,
+      "row4_immediate_cancel": 19,
+      "row4_move_announce_immediate_cancel": 19,
+      "row1_announce": 109,
+      "row1_move_announce": 105,
+      "row1_immediate_cancel": 86,
+      "row1_move_announce_immediate_cancel": 82,
+      "row0_move_announce": 63,
+      "seat_outright_wins": 39,
+      "games": 50,
+      "finished": 50,
+      "row0_move_announce_immediate_cancel": 40,
+      "row3_announce": 31,
+      "row3_move_announce": 31,
+      "row3_immediate_cancel": 26,
+      "row3_move_announce_immediate_cancel": 26,
+      "row6_announce": 2,
+      "row6_move_announce": 2,
+      "row6_immediate_cancel": 2,
+      "row6_move_announce_immediate_cancel": 2,
+      "row5_announce": 6,
+      "row5_move_announce": 6,
+      "row5_immediate_cancel": 6,
+      "row5_move_announce_immediate_cancel": 6,
+      "row0_blast_moves_per_game": 1.84,
+      "exit_after_row0_blast_per_game": 1.34,
+      "row0_move_announces_per_game": 1.26,
+      "row0_immediate_cancel_rate": 0.6349206349206349,
+      "row1_move_announces_per_game": 2.1,
+      "row1_immediate_cancel_rate": 0.780952380952381,
+      "row2_move_announces_per_game": 1.72,
+      "row2_immediate_cancel_rate": 0.9302325581395349,
+      "row3_move_announces_per_game": 0.62,
+      "row3_immediate_cancel_rate": 0.8387096774193549,
+      "row4_move_announces_per_game": 0.42,
+      "row4_immediate_cancel_rate": 0.9047619047619048,
+      "row5_move_announces_per_game": 0.12,
+      "row5_immediate_cancel_rate": 1.0,
+      "row6_move_announces_per_game": 0.04,
+      "row6_immediate_cancel_rate": 1.0,
+      "row7_move_announces_per_game": 0.0,
+      "row7_immediate_cancel_rate": 0.0,
+      "row8_move_announces_per_game": 0.0,
+      "row8_immediate_cancel_rate": 0.0,
+      "row9_move_announces_per_game": 0.0,
+      "row9_immediate_cancel_rate": 0.0
+    },
+    "after": {
+      "row4_announce": 12,
+      "row4_move_announce": 12,
+      "row4_immediate_cancel": 6,
+      "row4_move_announce_immediate_cancel": 6,
+      "row3_announce": 16,
+      "row3_move_announce": 16,
+      "row0_blast_moves": 28,
+      "exit_after_row0_blast": 12,
+      "eventual_exit_after_row0_blast": 17,
+      "exit_while_blast_pending": 16,
+      "row0_announce": 28,
+      "row0_move_announce": 19,
+      "row0_immediate_cancel": 12,
+      "row0_move_announce_immediate_cancel": 7,
+      "seat_outright_wins": 42,
+      "games": 50,
+      "finished": 50,
+      "row5_announce": 8,
+      "row5_move_announce": 8,
+      "row5_immediate_cancel": 5,
+      "row5_move_announce_immediate_cancel": 5,
+      "row3_immediate_cancel": 9,
+      "row3_move_announce_immediate_cancel": 9,
+      "row2_announce": 25,
+      "row2_move_announce": 25,
+      "row2_immediate_cancel": 13,
+      "row2_move_announce_immediate_cancel": 13,
+      "row6_announce": 2,
+      "row6_move_announce": 2,
+      "row1_announce": 22,
+      "row1_move_announce": 17,
+      "row1_immediate_cancel": 11,
+      "row1_move_announce_immediate_cancel": 9,
+      "row0_blast_moves_per_game": 0.56,
+      "exit_after_row0_blast_per_game": 0.24,
+      "row0_move_announces_per_game": 0.38,
+      "row0_immediate_cancel_rate": 0.3684210526315789,
+      "row1_move_announces_per_game": 0.34,
+      "row1_immediate_cancel_rate": 0.5294117647058824,
+      "row2_move_announces_per_game": 0.5,
+      "row2_immediate_cancel_rate": 0.52,
+      "row3_move_announces_per_game": 0.32,
+      "row3_immediate_cancel_rate": 0.5625,
+      "row4_move_announces_per_game": 0.24,
+      "row4_immediate_cancel_rate": 0.5,
+      "row5_move_announces_per_game": 0.16,
+      "row5_immediate_cancel_rate": 0.625,
+      "row6_move_announces_per_game": 0.04,
+      "row6_immediate_cancel_rate": 0.0,
+      "row7_move_announces_per_game": 0.0,
+      "row7_immediate_cancel_rate": 0.0,
+      "row8_move_announces_per_game": 0.0,
+      "row8_immediate_cancel_rate": 0.0,
+      "row9_move_announces_per_game": 0.0,
+      "row9_immediate_cancel_rate": 0.0
+    }
+  },
+  "training_continuations": 8864,
+  "held_continuations": 4032,
+  "held_kinds": {
+    "follow_up": 20,
+    "initial": 12
+  },
+  "checkpoint_name": "selfplay4_row0_blast_sequence",
+  "promoted_from": "checkpoints/selfplay4_row0_seq_v2.epoch10.npz"
+}

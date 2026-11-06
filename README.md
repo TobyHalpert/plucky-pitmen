@@ -273,6 +273,9 @@ uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
 | `learning.py` | masked-softmax MLP policy + value baseline, REINFORCE, Adam, save/load |
 | `selfplay.py` | full-game driver: every seat controlled, blasts, tie-breaks, per-player returns |
 | `train_tactical.py` | branch-based tactical distillation from sampled hidden worlds and full-game win-share comparisons |
+| `train_row0_blast.py` | targeted Row-0 blast/cancellation training from real announced-blast states |
+| `evaluate_row0_candidates.py` | paired Row-0 candidate matches and actual announcement/cancel audits |
+| `audit_row0_choice.py` | counterfactual Row-0/Row-2/pass probabilities in unchanged collected states |
 | `evaluate_tactical.py` | fresh-game candidate comparison against three unchanged nets, with actual blast behaviour |
 | `train_selfplay.py` | league self-play trainer with checkpoints and a learning curve |
 | `evaluate_balance.py` | benchmarks, pairwise dominance, luck analysis, markdown report |
@@ -686,3 +689,59 @@ python train_last_haul.py --diagnose-seed7
 
 The second command switches weights only at the watched game's haul-3 boundary,
 so earlier hauls cannot explain the difference.
+
+### Row-0 blast-sequence curriculum
+
+`neural:selfplay4_row0_blast_sequence` targets one reported sequence: announce
+a blast while moving to a Row-0 card, then leave by pit cage or lorry on the next
+decision. Positions are harvested from ordinary games. The policy keeps every
+action legal; nearby announcements and pass/leave choices are scored by complete
+sampled continuations with hidden cards resampled honestly. At a Row-0
+announcement, probability may move to Row 2 or, if Row 2 is unavailable, Row 1.
+At the following cancellation decision, it may move to `pass`. A change is only
+encouraged when the replacement's measured value is close enough to justify it.
+
+On 1200 fresh paired games, where one seat used the candidate and the other three
+remained `selfplay4_last_haul`, the candidate's outright win rate was 19.75%
+against the baseline's 20.42%: a paired change of −0.67 pp, give or take 1.54 pp.
+The candidate did not gain overall wins, but its announced blasts survived much
+longer: 449 hauls contained a fired candidate blast instead of 301, while
+cancellations fell from 1895 to 973.
+
+The 150-game all-candidate audit measured the complaint directly: a Row-0 move
+made while announcing fell from 1.313 to 0.267 per game, and the immediate
+row-0 exit rate after such a move fell from 71.1% to 35.0%. The counterfactual
+audit `audit_row0_choice.py` is the check for the replacement option: at the
+52 unchanged baseline Row-0 announcement states, probability on a Row-2 blast
+rose from 3.41% to 8.45%; at the 76 unchanged follow-up states, probability on
+pass rose from 5.17% to 43.25%. The candidate still plays fewer Row-2 moves in
+fresh games than the baseline, so this should not be sold as “the net now prefers
+Row 2” everywhere. It is best described as no longer rewarding the announce-there-
+then-leave sequence, while keeping a nearby blast as a stronger, legal alternative.
+The default checkpoint remains `selfplay4_last_haul`.
+
+```sh
+python mine_gui.py --opponents 3 --policy neural:selfplay4_row0_blast_sequence --all-seats
+
+python train_row0_blast.py --positions 64 --held-out 32 \
+  --samples 32 --epochs 10 --lr 0.0002 --teacher-mode policy --target-mode sequence \
+  --bad-reduction 0.7 --evidence-scale 0.06 --transfer-margin 0.06 \
+  --teacher-temperature 0.12 --save-every 1 \
+  --out checkpoints/selfplay4_row0_blast_sequence.npz
+
+python evaluate_row0_candidates.py --games 600 --audit-games 150 --seed 3600000 \
+  --baseline checkpoints/selfplay4_last_haul.npz \
+  --candidates checkpoints/selfplay4_row0_blast_sequence.npz
+python evaluate_tactical.py --baseline checkpoints/selfplay4_last_haul.npz \
+  --candidate checkpoints/selfplay4_row0_blast_sequence.npz --games 1200 \
+  --seed 3600000 --out /tmp/row0_blast_sequence_1200.json
+python audit_row0_choice.py --positions 128 --seed 3600000 \
+  --candidates checkpoints/selfplay4_last_haul.npz checkpoints/selfplay4_row0_blast_sequence.npz
+```
+
+Earlier experiments are useful warnings. Broad distillation over Row-0, Row-2
+and non-row candidates suppressed announcements widely and made held-out value
+worse. Training only Row-0 placement, or only the cancellation decision, did not
+combine the desired effects as well as training both decisions together. A
+separate Row-0 exit mask was rejected: the exit remains legal when it genuinely
+banks something.
