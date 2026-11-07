@@ -216,3 +216,25 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Plucky Pitmen generated artifacts
+# Every run writes its own checkpoints; the one the viewer and the README name
+# is kept in the repository (40 KB) so a fresh clone has a network to play, and
+# its predecessor is kept next to it because SEED7.md analyses that game.
+checkpoints/*
+!checkpoints/selfplay4.npz
+!checkpoints/selfplay4_prehazard.npz
+reports/
+
+!checkpoints/selfplay4_pitcage.npz
+!checkpoints/selfplay4_nextcard.history.json
+
+# Experimental branch-trained candidate and its small reproducibility report.
+!checkpoints/selfplay4_tactical.npz
+!checkpoints/selfplay4_tactical.history.json
+
+# Last-haul tactical curriculum candidate and reproducibility record.
+!checkpoints/selfplay4_last_haul.npz
+!checkpoints/selfplay4_last_haul.history.json
+!checkpoints/selfplay4_row0_blast_sequence.npz
+!checkpoints/selfplay4_row0_blast_sequence.history.json
