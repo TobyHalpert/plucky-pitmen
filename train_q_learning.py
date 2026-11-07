@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import pickle
 from collections import defaultdict
+from pathlib import Path
 
 import numpy as np
 
@@ -12,6 +14,22 @@ from rule_policy import _should_announce_blast
 
 QTable = defaultdict[tuple[tuple[int, ...], int, bool], float]
 MAX_EPISODE_STEPS = 500
+
+# Path convention shared with mine_gui.py so the trained table can be reused.
+TRAINING_CACHE_VERSION = 4
+TRAINING_CACHE_DIR = Path(__file__).with_name(".training_cache")
+
+
+def cache_path(opponents: int, seed: int, episodes: int) -> Path:
+    """Return the Q-table cache path the GUI loads (same convention as mine_gui).
+
+    The episode count is intentionally left out of the filename: a table trained
+    with any episode count can be loaded by the GUI for the same opponents/seed.
+    """
+    TRAINING_CACHE_DIR.mkdir(exist_ok=True)
+    return TRAINING_CACHE_DIR / (
+        f"q_table_opponents_{opponents}_seed_{seed}_v{TRAINING_CACHE_VERSION}.pkl"
+    )
 
 
 def _can_blast(env: MineEnv) -> bool:
@@ -63,18 +81,15 @@ def select_action(
 
     state = tuple(int(value) for value in env._observation())
 
-    # Best non-blast action according to the Q-table. Ties are broken in
-    # favour of PASS for stability, but otherwise randomized so the learner
-    # does not develop a hard bias toward its own column (action 0) whenever
-    # many states share near-zero Q-values.
+    # Best non-blast action according to the Q-table. Ties are broken at
+    # random (no PASS preference) so that, in unseen states where every Q-
+    # value is still ~0, the learner does not systematically camp instead of
+    # taking cards.
     values = {int(action): q_table.get((state, int(action), False), 0.0)
               for action in legal}
     best_value = max(values.values())
     tied = [action for action in legal if values[int(action)] == best_value]
-    if int(PASS) in tied:
-        best_action = int(PASS)
-    else:
-        best_action = int(rng.choice(tied))
+    best_action = int(rng.choice(tied))
 
     # A conservative catch-up blast takes precedence when advisable.
     if _blast_advises(env):
@@ -255,10 +270,18 @@ def main() -> None:
     parser.add_argument("--opponents", type=int, default=2)
     parser.add_argument("--policy", choices=["random", "cautious", "greedy"], default="random")
     parser.add_argument("--seed", type=int, default=7)
+    parser.add_argument("--no-save", action="store_true",
+                        help="do not write the trained Q-table to the cache")
     args = parser.parse_args()
     q_table = train(args.episodes, args.opponents, args.policy, args.seed)
     result = evaluate(q_table, args.eval_episodes, args.opponents, args.policy, args.seed + 1)
     print({"states": len(q_table), **result})
+
+    if not args.no_save:
+        path = cache_path(args.opponents, args.seed, args.episodes)
+        with path.open("wb") as f:
+            pickle.dump(q_table, f)
+        print(f"Saved Q-table to {path}")
 
 
 if __name__ == "__main__":

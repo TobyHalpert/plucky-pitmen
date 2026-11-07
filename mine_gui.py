@@ -35,7 +35,7 @@ BACKSIDE_SYMBOLS = {BACKSIDE_A: "o", BACKSIDE_B: "v", BACKSIDE_C: "~"}
 FRONT_LABELS = {GEM: "GEM", DRAGON: "DRAGON", DYNAMITE: "DYNAMITE"}
 STRATEGIES = ("simple", "training", "random", "cautious", "greedy")
 TRAINING_EPISODES = 1000
-TRAINING_CACHE_VERSION = 3
+TRAINING_CACHE_VERSION = 4
 TRAINING_CACHE_DIR = Path(__file__).with_name(".training_cache")
 BLAST_ACTION_PREFIX = "Blast: "
 AUTOPLAY_DELAY_MS = 750
@@ -151,9 +151,12 @@ class GameController:
             pickle.dump(self.training_q_table, cache_file)
 
     def training_cache_path(self) -> Path:
+        # Same convention as train_q_learning.cache_path: no episode count in
+        # the name, so any trained table (any episode count) can be loaded for
+        # the same opponents/seed.
         return TRAINING_CACHE_DIR / (
             f"q_table_opponents_{self.opponents}_seed_{self.seed}_"
-            f"episodes_{TRAINING_EPISODES}_v{TRAINING_CACHE_VERSION}.pkl"
+            f"v{TRAINING_CACHE_VERSION}.pkl"
         )
 
     def _environment_policy(self) -> str:
