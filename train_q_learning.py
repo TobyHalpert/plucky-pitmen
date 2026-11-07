@@ -7,26 +7,122 @@ from collections import defaultdict
 
 import numpy as np
 
-from game_env import MineEnv, PASS
+from game_env import MineEnv, DYNAMITE, PASS, PIT_CAGE
+from rule_policy import _should_announce_blast
 
-
-QTable = defaultdict[tuple[tuple[int, ...], int], float]
+QTable = defaultdict[tuple[tuple[int, ...], int, bool], float]
 MAX_EPISODE_STEPS = 500
 
 
-def select_action(env: MineEnv, q_table: QTable, epsilon: float, rng: np.random.Generator) -> int:
+def _can_blast(env: MineEnv) -> bool:
+    """Return True if the learner may announce a blast this turn."""
+    player = env.players[0]
+    if player.blast_pending or player.dynamite < 2:
+        return False
     legal = np.flatnonzero(env.action_mask())
-    if len(legal) == 0 or rng.random() < epsilon:
-        return int(rng.choice(legal))
+    return bool(np.any(legal < PIT_CAGE))
+
+
+def _blast_advises(env: MineEnv) -> bool:
+    """Heuristic: should the learner announce a blast right now?
+
+    Tabular Q-learning cannot converge on blast because every blast state is
+    essentially unique (random board), so the announce action is visited at
+    most a handful of times and its Q-value never accumulates. This heuristic
+    mirrors the rule-based opponent policy: blast is a conservative catch-up
+    move, used only when trailing or thin on gems and never into known danger.
+    """
+    if not _can_blast(env):
+        return False
+    ctx = env.player_action_context(0)
+    return _should_announce_blast(ctx)
+
+
+def select_action(
+    env: MineEnv, q_table: QTable, epsilon: float, rng: np.random.Generator
+) -> tuple[int, bool]:
+    """Choose a planning action and whether to announce a blast.
+
+    Returns ``(action, announce_blast)``. The Q-table is keyed by
+    ``(state, action, announce_blast)`` so the learner can discover when
+    spending two dynamite to blast is worthwhile. Because blast states rarely
+    repeat, the Q-table alone cannot converge on blast; when the heuristic
+    considers blast advisable, it takes precedence so the trained net actually
+    uses dynamite instead of treating it as dead turns.
+    """
+    legal = np.flatnonzero(env.action_mask())
+    if len(legal) == 0:
+        return int(PASS), False
+
+    if rng.random() < epsilon:
+        action = int(rng.choice(legal))
+        announce_blast = bool(
+            action < PIT_CAGE and _can_blast(env) and rng.random() < 0.5
+        )
+        return action, announce_blast
+
     state = tuple(int(value) for value in env._observation())
-    values = np.asarray([q_table.get((state, int(action)), 0.0) for action in legal])
-    best_actions = legal[np.flatnonzero(values == values.max())]
-    if PASS in best_actions:
-        return PASS
-    return int(best_actions[0])
+
+    # Best non-blast action according to the Q-table. Ties are broken in
+    # favour of PASS for stability, but otherwise randomized so the learner
+    # does not develop a hard bias toward its own column (action 0) whenever
+    # many states share near-zero Q-values.
+    values = {int(action): q_table.get((state, int(action), False), 0.0)
+              for action in legal}
+    best_value = max(values.values())
+    tied = [action for action in legal if values[int(action)] == best_value]
+    if int(PASS) in tied:
+        best_action = int(PASS)
+    else:
+        best_action = int(rng.choice(tied))
+
+    # A conservative catch-up blast takes precedence when advisable.
+    if _blast_advises(env):
+        card_actions = [a for a in legal if a < PIT_CAGE]
+        if card_actions:
+            card_values = {
+                a: q_table.get((state, int(a), False), 0.0) for a in card_actions
+            }
+            best_card_value = max(card_values.values())
+            best_cards = [
+                a for a in card_actions if card_values[a] == best_card_value
+            ]
+            best_card = int(rng.choice(best_cards))
+            return int(best_card), True
+
+    return best_action, False
 
 
-def _advance_p1_turn(env: MineEnv, action: int) -> tuple[float, bool, bool, dict]:
+def _resolve_learner_blast(env: MineEnv) -> float:
+    """Automatically pick blast cards for the learner during training.
+
+    The Q-table learns the planning decision (whether and where to blast); the
+    blast card draw is resolved with the shared heuristic so training does not
+    stall waiting for a human resolver.
+
+    Returns a training-only shaping reward crediting the cards kept from the
+    blast (same per-card values as ordinary collection), so the blast action's
+    Q-value is directly reinforced instead of only indirectly via a much later
+    escape bonus.
+    """
+    from rule_policy import deterministic_blast_choice
+
+    player = env.players[0]
+    shaping = 0.0
+    while player.blast_pending and player.blast_cards:
+        before_gems = player.gems
+        before_dynamite = player.dynamite
+        env.resolve_blast(
+            0, deterministic_blast_choice(tuple(player.blast_cards))
+        )
+        shaping += 0.25 * (player.gems - before_gems)
+        shaping += 0.1 * (player.dynamite - before_dynamite)
+    return shaping
+
+
+def _advance_p1_turn(
+    env: MineEnv, action: int, announce_blast: bool
+) -> tuple[float, bool, bool, dict]:
     if env.players[0].escaped or env.players[0].dead:
         return 0.0, True, False, {"outcome": "ended"}
     while env.planning_player != 0:
@@ -35,11 +131,58 @@ def _advance_p1_turn(env: MineEnv, action: int) -> tuple[float, bool, bool, dict
             return 0.0, terminated, truncated, info
         if env.players[0].escaped or env.players[0].dead:
             return 0.0, True, False, {"outcome": "ended"}
-    _, reward, terminated, truncated, info = env.step_one_player(action)
+    _, reward, terminated, truncated, info = env.step_one_player(
+        action, announce_blast=announce_blast
+    )
     total_reward = reward
+
+    if announce_blast and not terminated and not truncated:
+        # A blast is a commitment: once announced, the learner must PASS when
+        # their turn comes around again to keep it alive (any other move
+        # aborts it). Drive the round until execution prepares the blast cards,
+        # resolve them, and attribute the whole announce->execute->resolve
+        # sequence to the announce action so Q-learning can credit it.
+        macro_steps = 0
+        while (
+            not terminated
+            and not truncated
+            and env.players[0].blast_pending
+            and not env.players[0].blast_cards
+            and macro_steps < 200
+        ):
+            macro_steps += 1
+            if env.planning_player == 0:
+                # Learner's turn again: pass keeps the blast alive.
+                _, r, terminated, truncated, info = env.step_one_player(PASS)
+                total_reward += r
+                if terminated or truncated:
+                    break
+                if env.players[0].escaped or env.players[0].dead:
+                    return total_reward, True, False, {"outcome": "ended"}
+            else:
+                _, r, terminated, truncated, info = env.step_one_player()
+                total_reward += r
+                if terminated or truncated:
+                    break
+                if env.players[0].escaped or env.players[0].dead:
+                    return total_reward, True, False, {"outcome": "ended"}
+
+        # Safety net: if the blast never reached execution, abort it so training
+        # cannot stall forever (opponents may refuse to pass).
+        if env.players[0].blast_pending and not env.players[0].blast_cards:
+            env._cancel_blast(0)
+
+    # Resolve the learner's blast once execution has prepared the blast cards.
+    if env.players[0].blast_pending and env.players[0].blast_cards:
+        total_reward += _resolve_learner_blast(env)
+
+    # Let any remaining opponents play until the learner's next turn.
     while not terminated and not truncated and env.planning_player != 0:
         _, reward, terminated, truncated, info = env.step_one_player()
         total_reward += reward
+        if env.players[0].escaped or env.players[0].dead:
+            return total_reward, True, False, {"outcome": "ended"}
+
     return total_reward, terminated, truncated, info
 
 
@@ -58,14 +201,23 @@ def train(episodes: int, opponents: int, policy: str, seed: int) -> QTable:
                 done = True
                 break
             state = tuple(int(value) for value in env._observation())
-            action = select_action(env, q_table, epsilon, rng)
-            reward, terminated, truncated, _info = _advance_p1_turn(env, action)
+            action, announce_blast = select_action(env, q_table, epsilon, rng)
+            reward, terminated, truncated, _info = _advance_p1_turn(
+                env, action, announce_blast
+            )
             done = terminated or truncated
             steps += 1
             next_state = tuple(int(value) for value in env._observation())
-            next_values = [q_table[(next_state, int(a))] for a in np.flatnonzero(env.action_mask())]
+            next_values = [
+                q_table.get((next_state, int(a), ab), 0.0)
+                for a in np.flatnonzero(env.action_mask())
+                for ab in (False, True)
+                if not ab or (int(a) < PIT_CAGE and _can_blast(env))
+            ]
             target = reward + (gamma * max(next_values) if next_values and not done else 0.0)
-            q_table[(state, action)] += alpha * (target - q_table[(state, action)])
+            q_table[(state, int(action), bool(announce_blast))] += alpha * (
+                target - q_table[(state, int(action), bool(announce_blast))]
+            )
     return q_table
 
 
@@ -83,8 +235,10 @@ def evaluate(q_table: QTable, episodes: int, opponents: int, policy: str, seed: 
             if not env.action_mask().any():
                 done = True
                 break
-            action = select_action(env, q_table, 0.0, rng)
-            reward, terminated, truncated, info = _advance_p1_turn(env, action)
+            action, announce_blast = select_action(env, q_table, 0.0, rng)
+            reward, terminated, truncated, info = _advance_p1_turn(
+                env, action, announce_blast
+            )
             total += reward
             done = terminated or truncated
             steps += 1

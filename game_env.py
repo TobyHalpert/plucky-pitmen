@@ -245,11 +245,13 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.last_reward = reward
 
         # --- DELAY FINISHING THE ROUND IF A BLAST IS PENDING ---
+        round_finished, terminated = self._resolve_ai_blasts()
         if any(p.blast_pending for p in self.players):
             info["blast_active"] = True
             return self._observation(), reward, False, False, info
 
-        reward, terminated = self._finish_round(reward, info)
+        if not round_finished:
+            reward, terminated = self._finish_round(reward, info)
         return self._observation(), reward, terminated, False, info
 
     def step_one_player(self, action: int | None = None, *, announce_blast: bool = False):
@@ -268,6 +270,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
 
         player_index = self.planning_player
         player = self.players[player_index]
+        was_blasting = player.blast_pending
         if player_index == 0:
             if action is None:
                 action = PASS
@@ -285,7 +288,10 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.planned_players[player_index] = True
         planning_reward = self._planning_reward(action, player_index)
         if player.blast_pending and action != PASS and not announce_blast:
-            self._cancel_blast(player_index)
+            if was_blasting:
+                # A previously announced blast is aborted by a new non-pass move.
+                self._cancel_blast(player_index)
+            # else: the policy just announced this blast on this turn; keep it alive.
         if action == PASS:
             self.consecutive_passes += 1
         else:
@@ -315,13 +321,15 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.last_reward = reward
 
         # --- DELAY FINISHING THE ROUND IF A BLAST IS PENDING ---
+        round_finished, terminated = self._resolve_ai_blasts()
         if any(p.blast_pending for p in self.players):
             info["blast_active"] = True
             info["player"] = player_index
             return self._observation(), reward, False, False, info
 
         # Finish round normally if there is no blast
-        reward, terminated = self._finish_round(reward, info)
+        if not round_finished:
+            reward, terminated = self._finish_round(reward, info)
 
         if not terminated and not self._haul_just_ended(info):
             active_next_round = [
@@ -652,9 +660,25 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
 
         if self.opponent_policy == "simple":
             # Policies receive ONLY the cheat-safe context, never the env directly.
-            from rule_policy import deterministic_policy
+            from rule_policy import deterministic_policy, _should_announce_blast
             ctx = self.player_action_context(player_index)
-            return deterministic_policy(ctx)
+            action = deterministic_policy(ctx)
+            # Announce a blast together with the card move when the policy calls for it.
+            if (
+                action < PIT_CAGE
+                and not player.blast_pending
+                and player.dynamite >= 2
+                and _should_announce_blast(ctx)
+            ):
+                try:
+                    self.begin_blast(player_index)
+                except ValueError:
+                    pass
+            return action
+
+        # Maintain an announced blast: passing keeps it alive.
+        if player.blast_pending:
+            return int(PASS)
 
         if player.position in (PIT_CAGE, LORRY):
             if not self.planned_players[player_index]:
@@ -684,6 +708,15 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             ]
             if nearest_cards:
                 return int(self.rng.choice(nearest_cards))
+        # Announce a blast when desperate for loot and able to reach a card.
+        if (
+            player.dynamite >= 2
+            and available_cards
+            and not player.blast_pending
+            and player.gems < 2
+        ):
+            self.begin_blast(player_index)
+            return int(self.rng.choice(available_cards))
         if available_cards:
             return int(self.rng.choice(available_cards))
         return PIT_CAGE if player.position > 0 else LORRY
@@ -740,6 +773,11 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                 elif self.players[0].dead:
                     # The learner was still in the mine and died as well.
                     reward -= 1.0
+
+                # Abort pending blasts: the haul ends before they resolve.
+                for p in self.players:
+                    p.blast_pending = False
+                    p.blast_cards = []
                 break
             if card == GEM:
                 if player_index == 0:
@@ -863,6 +901,41 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                 player.collected_cards.extend(player.blast_cards)
                 player.blast_cards = []
                 player.blast_pending = False
+
+    def _resolve_ai_blasts(self) -> tuple[bool, bool]:
+        """Automatically resolve pending blasts announced by AI opponents.
+
+        Uses the heuristic blast-card choice so the game does not stall waiting
+        for a human resolver. Returns ``(round_finished, terminated)`` telling
+        the caller whether the round was already finalized by blast resolution,
+        in which case the caller must not run ``_finish_round`` again.
+        """
+        from rule_policy import deterministic_blast_choice
+
+        round_before = self.round
+        for player_index in range(1, self.n_players):
+            if self.game_finished or self.round != round_before:
+                break
+            player = self.players[player_index]
+            if not player.blast_pending or not player.blast_cards:
+                continue
+            while (
+                player.blast_pending
+                and player.blast_cards
+                and not self.game_finished
+                and self.round == round_before
+            ):
+                choice = deterministic_blast_choice(tuple(player.blast_cards))
+                self.resolve_blast(player_index, choice)
+
+        round_finished = self.game_finished or self.round != round_before
+        if round_finished:
+            # The round ended once the first blast resolved. Abort any blasts
+            # still pending so they do not bleed into the next round.
+            for p in self.players:
+                p.blast_pending = False
+                p.blast_cards = []
+        return round_finished, self.game_finished
 
     # ------------------------------------------------------------------
     # Tie-breaker
