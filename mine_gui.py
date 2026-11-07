@@ -35,7 +35,7 @@ BACKSIDE_SYMBOLS = {BACKSIDE_A: "o", BACKSIDE_B: "v", BACKSIDE_C: "~"}
 FRONT_LABELS = {GEM: "GEM", DRAGON: "DRAGON", DYNAMITE: "DYNAMITE"}
 STRATEGIES = ("simple", "training", "random", "cautious", "greedy")
 TRAINING_EPISODES = 1000
-TRAINING_CACHE_VERSION = 2
+TRAINING_CACHE_VERSION = 4
 TRAINING_CACHE_DIR = Path(__file__).with_name(".training_cache")
 BLAST_ACTION_PREFIX = "Blast: "
 AUTOPLAY_DELAY_MS = 750
@@ -151,9 +151,12 @@ class GameController:
             pickle.dump(self.training_q_table, cache_file)
 
     def training_cache_path(self) -> Path:
+        # Same convention as train_q_learning.cache_path: no episode count in
+        # the name, so any trained table (any episode count) can be loaded for
+        # the same opponents/seed.
         return TRAINING_CACHE_DIR / (
             f"q_table_opponents_{self.opponents}_seed_{self.seed}_"
-            f"episodes_{TRAINING_EPISODES}_v{TRAINING_CACHE_VERSION}.pkl"
+            f"v{TRAINING_CACHE_VERSION}.pkl"
         )
 
     def _environment_policy(self) -> str:
@@ -299,7 +302,11 @@ class GameController:
         if not legal:
             return None
         if self.policy == "training" and self.training_q_table is not None:
-            return int(select_action(self.env, self.training_q_table, 0.0, self.training_rng))
+            action, announce_blast = select_action(
+                self.env, self.training_q_table, 0.0, self.training_rng
+            )
+            self._training_announce_blast = bool(announce_blast)
+            return int(action)
         if self.policy == "simple":
             return int(deterministic_policy(self.env.player_action_context(0)))
         if self.policy == "random":
@@ -314,12 +321,16 @@ class GameController:
         """Advance one player (either P1 via the current policy, or an opponent)."""
         if self.env.planning_player == 0:
             action = self.autoplay_choose_action()
+            announce_blast = getattr(self, "_training_announce_blast", False)
+            self._training_announce_blast = False
             if action is None and not (self.player.escaped or self.player.dead):
                 return StepResult("")
             if action is None:
                 _obs, reward, terminated, _trunc, info = self.env.step_one_player()
             else:
-                _obs, reward, terminated, _trunc, info = self.env.step_one_player(action)
+                _obs, reward, terminated, _trunc, info = self.env.step_one_player(
+                    action, announce_blast=announce_blast
+                )
         else:
             _obs, reward, terminated, _trunc, info = self.env.step_one_player()
         return StepResult(self._format_outcome(info, reward), game_over=terminated)

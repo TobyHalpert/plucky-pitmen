@@ -598,7 +598,9 @@ def test_action_selection_prefers_pass_when_q_values_are_tied():
     env.planning_turns = 1
     env.planned_players[0] = True
 
-    assert select_action(env, {}, 0.0, np.random.default_rng(4)) == PASS
+    action, announce = select_action(env, {}, 0.0, np.random.default_rng(4))
+    assert action == PASS
+    assert not announce
 
 
 def test_training_handles_p1_without_legal_actions():
