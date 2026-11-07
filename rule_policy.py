@@ -266,6 +266,42 @@ def _find_displacement_raid(
 
 
 # ----------------------------------------------------------------------
+# Blast decisions
+# ----------------------------------------------------------------------
+
+
+def _should_announce_blast(ctx: PlayerActionContext) -> bool:
+    """Decide whether the player should announce a blast this turn.
+
+    A blast spends two dynamite to collect the card under the figure plus two
+    of three blind draw-pile cards. It is a high-risk, high-variance move, so
+    it is only used when the player is behind or thin on gems, never when
+    protecting a lead or stepping into known danger.
+    """
+    if ctx.own_blast_pending:
+        return False
+
+    own_dynamite = sum(1 for card, _ in ctx.private_cards if card == DYNAMITE)
+    if own_dynamite < 2:
+        return False
+
+    if not any(action < PIT_CAGE for action in ctx.legal_actions):
+        return False
+
+    own_gems = sum(1 for card, _ in ctx.private_cards if card == GEM)
+    own_card_count = len(ctx.private_cards)
+    if own_gems >= 3 or own_card_count >= 5:
+        # Protect a lead instead of gambling it away.
+        return False
+
+    if _dragon_under_opponent(ctx) or _is_signaled_danger(ctx):
+        return False
+
+    max_opponent_score = max((opp.score for opp in ctx.opponents), default=ctx.own_score)
+    return ctx.own_score < max_opponent_score or own_gems < 2
+
+
+# ----------------------------------------------------------------------
 # Main policy
 # ----------------------------------------------------------------------
 
@@ -282,6 +318,10 @@ def deterministic_policy(ctx: PlayerActionContext) -> int:
 
     # A pass is only legal after the player has already made a plan this round.
     has_planned = PASS in original_legal_actions
+
+    # Maintain an announced blast: passing keeps it alive, any other move aborts it.
+    if ctx.own_blast_pending and PASS in original_legal_actions:
+        return int(PASS)
 
     # --- 1. DANGER & ESCAPE ASSESSMENT ---
     opponent_blasting = any(opp.blast_pending for opp in ctx.opponents)
@@ -376,7 +416,6 @@ def deterministic_policy(ctx: PlayerActionContext) -> int:
 
                 score = safety * 100.0
                 if col == my_column:
-                    score += 10.0
                     if not _is_safe_from_displacement(ctx, row):
                         score -= 150.0
                 else:
@@ -420,6 +459,7 @@ def deterministic_policy(ctx: PlayerActionContext) -> int:
 
     # --- 6. EVALUATE MINE GRID MOVES ---
     mine_actions = [a for a in legal_actions if a < PIT_CAGE]
+    announcing_blast = bool(mine_actions) and _should_announce_blast(ctx)
     if mine_actions:
         scored_moves: list[tuple[float, int]] = []
 
@@ -462,6 +502,10 @@ def deterministic_policy(ctx: PlayerActionContext) -> int:
         if scored_moves:
             scored_moves.sort(key=lambda x: x[0], reverse=True)
             best_score, best_action = scored_moves[0]
+
+            if announcing_blast:
+                # Commit to the blast move; the environment announces the blast.
+                return int(best_action)
 
             if best_score < 60.0:
                 if has_moderate_loot and PIT_CAGE in original_legal_actions:
