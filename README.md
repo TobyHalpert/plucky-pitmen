@@ -278,6 +278,7 @@ uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
 | `selfplay.py` | full-game driver: every seat controlled, blasts, tie-breaks, per-player returns |
 | `train_tactical.py` | branch-based tactical distillation from sampled hidden worlds and full-game win-share comparisons |
 | `train_row0_blast.py` | targeted Row-0 blast/cancellation training from real announced-blast states |
+| `train_blast_trigger.py` | distils the blast trigger itself: real blast-legal positions, plain and announcing branches from the same hidden world, both continued by a seat that *keeps* the blast so the label prices a committed one |
 | `evaluate_row0_candidates.py` | paired Row-0 candidate matches and actual announcement/cancel audits |
 | `audit_row0_choice.py` | counterfactual Row-0/Row-2/pass probabilities in unchanged collected states |
 | `evaluate_tactical.py` | fresh-game candidate comparison against three unchanged nets, with actual blast behaviour |

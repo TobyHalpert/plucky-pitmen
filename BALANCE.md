@@ -2748,6 +2748,59 @@ rule a net trains under does not create a trigger; only a signal attached to the
 decision itself can, which is what `train_tactical.py` and `train_row0_blast.py`
 do for other decisions and what this one still needs.
 
+#### What a committed blast is worth: zero, and the trainer that proves it
+
+The gap the last section names is attribution, not search. Self-play cannot learn
+the trigger because 86% of announcements are cancelled by the seat's own next
+move, so the return attached to "should I have blasted here?" mostly arrives for
+a decision that was never followed through. `train_blast_trigger.py` labels that
+decision directly:
+
+1. **harvest** real positions where a blast is legal (two dynamite, none pending,
+   a card to step onto), keyed off `player_action_context` so the live environment
+   is captured next to the context;
+2. **fork two branches from the same hidden world** — the seat's preferred card
+   move, and the identical move with the blast announced;
+3. **continue both with `BlastPlanTeacher`**, which passes while a blast is
+   pending. That is the whole point: without it the announcing branch is a bluff,
+   and the label would teach the announcement the net already over-uses;
+4. **label** each branch with final-score win share over resampled hidden worlds
+   and distil the pairwise preference with `fit_tactical`, mixed with the frozen
+   policy.
+
+96 training positions and 48 held-out ones, 24 resampled worlds each
+(`--blind`, seed 5100000/5200000; 4608 and 2304 paired continuations). The paired
+difference in win share, announced minus plain:
+
+| sample | n | plain | announced | Δ | better / worse |
+| :-- | --: | --: | --: | --: | --: |
+| training | 96 | 0.276 | 0.264 | **−0.012 (se 0.015)** | 51% / 47% |
+| held-out | 48 | 0.294 | 0.339 | **+0.046 (se 0.019)** | 56% / 31% |
+| all | 144 | — | — | **+0.007 (se 0.012)** | — |
+
+The two halves disagree, and the pooled answer is zero. The spread is real but
+symmetric: **26%** of positions prefer the blast by more than 0.10 (mean +0.184),
+**24%** prefer the plain move by more than 0.10 (mean −0.191), and the middle 50%
+sits at +0.007. That is heterogeneity with zero mean — a schedule to be learned,
+not a bias to be corrected — and 144 positions with a frozen feature extractor are
+not enough to learn a schedule of that shape.
+
+The candidate shows it. Trained on the pairwise targets and left at the printed
+rule, `selfplay4_blast_trigger.npz` fires **0.163** blasts per seat-game against
+`selfplay4`'s 0.259 (500 four-seat games, seed 4240000) while announcing the same
+2.17, i.e. it did not find a better trigger, it learned to commit less often.
+Probability mass on the two labelled actions went 0.60 → 0.91, and the price is
+the rest of the policy: paired head-to-head under the printed rule, one candidate
+seat against three `selfplay4` seats, the candidate tops **23.4%** against 28.6%,
+a paired change of **−5.20 pp [−9.80, −0.60]** over 500 games.
+
+So the trigger is not a training deficit. Under the printed rule a committed blast
+is worth nothing on average, which is why the hand-written keeper's "cancel almost
+always" is not a mistake to be trained away — and the trainer is kept as the
+negative control that says so rather than as a checkpoint to ship. If the fork had
+shown a bias, the same script would have found it; the labels are the ceiling, and
+the ceiling is zero.
+
 ### Testing "blast while a dragon is waiting for me"
 
 The most natural reading of a blast — *two dynamite are dead cards, a known
