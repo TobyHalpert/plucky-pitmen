@@ -168,3 +168,70 @@ which the mask dominates.
 * `--league-threat-prob 0.6` is a guess, not a tuned value. A share closer to the
   natural frequency of blasts (one per haul at most) might be less distorting,
   but the point of the arm was to make the threat common enough to learn from.
+
+## 5. Is the pattern rational? The announce-and-cancel cycle, priced
+
+The viewer shows a net collect dynamite, announce a blast, cancel it — and every
+other seat answer the announcement by walking to a pit cage, giving up the card
+it had planned. It reads as two mistakes. `probe_bluff.py` prices both halves,
+one seat against three unchanged `selfplay4` nets, 400 games, seats rotated,
+seed 811000. Every arm faces the same field; the arms differ only in what the
+tracked seat does with a dynamite pair.
+
+| tracked seat | own score | mean rival score | announcements/game | share that fired | rivals' threatened decisions/game | answered with a cage |
+| :-- | --: | --: | --: | --: | --: | --: |
+| `net` (unchanged) | **+2.15** | +2.12 | 2.11 | 14% | 5.39 | 69% |
+| `net`, announcements muted | +1.81 | +2.18 | 0 | — | 0 | — |
+| `quiet` (rule movement, no announcements) | +1.34 | +1.75 | 0 | — | 0 | — |
+| `bluff, free` (announce only when already moving to a card) | +1.24 | +1.83 | 2.45 | 5% | 6.65 | 77% |
+| `bluff, forced` (announce on every opportunity) | +0.91 | +1.88 | 2.98 | 1% | 7.62 | 81% |
+
+Paired, same seeds (`bootstrap` on per-game differences):
+
+| comparison | paired change |
+| :-- | :-- |
+| `net` without its announcements − `net` | **−0.41 [−0.67, −0.16]** |
+| `bluff, free` − `quiet` | −0.18 [−0.46, +0.11] |
+| `bluff, forced` − `quiet` | **−0.56 [−0.84, −0.27]** |
+
+Three things fall out.
+
+**The announce-and-cancel turns are not lost.** Muting the unchanged net's
+announcements costs it **0.41 points**, the same order as the ~0.4 points §6 says
+a pending blast is worth to the blaster's rivals. The announcement is the
+weapon; the explosion is optional. Cancelling costs the announcer nothing but a
+move it was going to make anyway, and the dynamite is only consumed by blasts
+that actually stand at the end of the planning phase.
+
+**Firing is the part that does not pay.** Under the printed (blind) blast rule a
+fired blast is worth +0.70 against +0.61 for an ordinary haul (§1) — a wash for
+a 38–58% chance of waking the dragon. So a seat that collects dynamite, threatens
+and declines to fire is running the mechanic at its best terms, not wasting it.
+
+**The flinch is cheap for the fleer, which is why it cannot be farmed.** Across
+the five arms the *rivals'* mean score barely moves (1.75 → 2.18), even though
+they answer up to 81% of 7.6 threatened decisions a game with a cage. That is not
+a contradiction: a pit cage is the only exit that **banks the loot**, so a seat
+that flees converts a provisional position into points. It gives up the card, not
+the score. And an agent that pays for announcements — forcing a card move it did
+not want — loses 0.56 points doing it. The flinch is real, and it is not worth
+buying.
+
+**What is actually irrational, then,** is narrower than it looks, and it is not a
+choice any seat makes:
+
+* the reaction is a **mask rule** (`round_dragon_hazard` = 1.0 for *any* pending
+  blast), so it cannot tell a seat that fires 14% of its announcements from one
+  that fires every time. Every seat applies the same prior, which is why all four
+  flinch together;
+* because no seat can ever call a bluff, bluffing can never be profitable, so the
+  equilibrium cannot move in either direction. The table pays a small deadweight
+  cost (cages taken for nothing) and no one can exploit it;
+* the residue §6 pointed at survives: on threatened decisions where the cage is
+  *already* legal, the policy reads nothing (TV 0.0006) and still passes 25% of
+  the time.
+
+Limits: the two bluff arms run *rule* movement, so they are compared with their
+own `quiet` control, not with the net; 400 games per arm on one checkpoint and
+one seed; and "share that fired" counts blasts that stood when the planning phase
+closed, which is the only way a bluff becomes a real blast.

@@ -256,6 +256,76 @@ class RuleAgent(Agent):
         return preferred_blast_choice(cards, ctx)
 
 
+class BlufferAgent(Agent):
+    """The rule policy, but it announces a blast it has no intention of firing.
+
+    A blast is a *public* commitment: it resolves at the end of the planning
+    phase only if the figure is still standing there.  Taking any non-pass move
+    cancels it, at the cost of that move.  So a seat holding two dynamite can
+    buy the table's flinch — every rival that answers with a pit cage leaves the
+    mine with what it has — and then abort, for the price of one shallower card.
+
+    This agent exists to price that trade.  ``bluff=False`` is the identical
+    movement policy without the announcements, so a paired comparison isolates
+    what the bluff itself is worth and not what rule movement is worth.
+    """
+
+    name = "bluffer"
+
+    def __init__(self, bluff: bool | str = True) -> None:
+        # ``"forced"`` announces on every opportunity, taking a card move it did
+        # not want; ``"free"`` only announces when the movement policy was
+        # already stepping onto a card, which is the shape a neural seat's
+        # announce-and-cancel cycle actually takes.
+        self.bluff = "forced" if bluff is True else bluff
+
+    @staticmethod
+    def _card_actions(ctx: PlayerActionContext) -> list[int]:
+        return [int(a) for a in ctx.legal_actions if int(a) < PIT_CAGE]
+
+    def act(self, ctx: PlayerActionContext) -> int:
+        from rule_policy import deterministic_policy
+
+        action = int(deterministic_policy(ctx))
+        if not self.bluff:
+            return action
+
+        if ctx.own_blast_pending:
+            # The point of the bluff: abort before the cards are turned.  Any
+            # non-pass move cancels, and it has to be a card move, so take the
+            # shallowest one offered (the cheapest thing it can still reach).
+            cards = self._card_actions(ctx)
+            if cards:
+                return int(min(cards, key=lambda a: divmod(a, MAX_COLUMNS)[0]))
+            return action
+
+        if owns_dynamite_pair(ctx) and action >= PIT_CAGE:
+            if self.bluff != "forced":
+                # No announcement: the movement policy wanted a cage, a pass or
+                # the lorry, and paying a forced card move is part of the price.
+                return action
+            cards = self._card_actions(ctx)
+            if cards:
+                return int(max(cards, key=lambda a: divmod(a, MAX_COLUMNS)[0]))
+        return action
+
+    def wants_blast(self, ctx: PlayerActionContext) -> bool:
+        if not self.bluff or ctx.own_blast_pending:
+            return False
+        if not owns_dynamite_pair(ctx):
+            return False
+        if self.bluff == "forced":
+            return bool(self._card_actions(ctx))
+        from rule_policy import deterministic_policy
+
+        return int(deterministic_policy(ctx)) < PIT_CAGE
+
+    def blast_choice(
+        self, cards: Sequence[tuple[int, int]], ctx: PlayerActionContext
+    ) -> int:
+        return preferred_blast_choice(cards, ctx)
+
+
 class ReaderAgent(Agent):
     """The rule baseline, but it raids on the backside instead of on confidence.
 
@@ -947,6 +1017,7 @@ SCRIPTED = (
     "cautious",
     "rule",
     "reader",
+    "bluffer",
     "rusher",
     "leaver",
     "threat",
@@ -970,6 +1041,8 @@ def make_scripted_agent(
         return RuleAgent(blast=blast)
     if policy == "reader":
         return ReaderAgent(blast=blast)
+    if policy == "bluffer":
+        return BlufferAgent()
     if policy == "rusher":
         return RusherAgent()
     if policy == "leaver":

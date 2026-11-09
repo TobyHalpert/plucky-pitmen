@@ -273,7 +273,7 @@ uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
 | module | purpose |
 | :-- | :-- |
 | `features.py` | fixed-size, seat-invariant state + action features; no hidden information |
-| `agents.py` | `Agent` interface, scripted baselines (incl. `rusher`, `leaver`, `threat`, `reader` — `rule` without the "a quiet rival means a safe card" inference — and `counter`, the deterministic seat that farms the trained net), `NeuralAgent` |
+| `agents.py` | `Agent` interface, scripted baselines (incl. `rusher`, `leaver`, `threat`, `reader` — `rule` without the "a quiet rival means a safe card" inference — `bluffer`, which announces a blast it always cancels, and `counter`, the deterministic seat that farms the trained net), `NeuralAgent` |
 | `learning.py` | masked-softmax MLP policy + value baseline, REINFORCE, Adam, save/load |
 | `selfplay.py` | full-game driver: every seat controlled, blasts, tie-breaks, per-player returns |
 | `train_tactical.py` | branch-based tactical distillation from sampled hidden worlds and full-game win-share comparisons |
@@ -286,6 +286,7 @@ uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
 | `analyze_blasts.py` | is a blast worth it, does the learner threaten, does it react, and is the threat real |
 | `probe_threat_reaction.py` | does a neural seat flinch in play? cage/lorry/pass on decisions taken while a rival's blast is pending, against a no-threat control |
 | `probe_threat_mask.py` | where the flinch lives: the paired threat test split by whether the blast changes the legal set or only the state |
+| `probe_bluff.py` | what an announced blast nobody fires is worth: a bluffing seat against three unchanged nets, with the same movement policy and no announcements as the control |
 | `probe_blast_value.py` | what a single blast is worth from a real position (forked rollouts), and whether backside knowledge improves the blind choice |
 | `probe_blast_strategy.py` | is "blast while a dragon is waiting for me" a good rule? paired arms over the blast trigger and the keeper choice |
 | `probe_bait_value.py` | what a move onto a dragon the player can see is worth, forked per opponent (rule bots vs readers vs its own peers) |
