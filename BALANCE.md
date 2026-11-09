@@ -2476,6 +2476,56 @@ decisions** over seeds 0–11, and the network takes a dragon it can see in **13
 of them (most are still the bait case, where a rival deep enough is invited to
 push the figure into a cage and eat the dragon itself).
 
+#### What the waiting square is worth, and why the blast cannot pay for it
+
+The rule above makes the deliberate step legal, so the natural next question is
+whether seats take it — and whether a cheap blast changes the price. The engine
+answers the second half mechanically, and `test_dragon_step.py` pins it:
+
+- the card under a figure is turned in phase 2, and `_prepare_blasts` runs only
+  when phase 2 woke nothing, so **a pending blast is never drawn against the card
+  its owner is standing on** (`test_a_pending_blast_is_never_drawn_against_the_card_you_stand_on`:
+  the seat dies, `used_blast_backsides` stays empty, the deck is untouched);
+- **any move other than PASS cancels the announcement**, so a seat cannot both
+  keep a blast alive and leave the card.
+
+The shield and the bluff are therefore mutually exclusive. There is no
+"announce, step on, cancel before the draw" line that is worth more than the plain
+step: the cancel is what any step already does, and the blast it killed was never
+going to draw against that card.
+
+The step itself is not hypothetical. `probe_dragon_step.py` replays real
+four-seat games and snapshots every dig of a face-up dragon *inside*
+`_execute_round`, i.e. before the reveal, because positions are reset the moment a
+round resolves. Over 200 games and all four seats (`--blind`, seed 0):
+
+| | |
+| :-- | --: |
+| digs of a face-up dragon | **5.64 per game** (1,128) |
+| followed by another decision in the same round | **100.0%** |
+| off the card when it was turned | **99.9%** (874 to a cage or lorry, 253 to a shallower card) |
+| still standing on it | 1 (0.09%) |
+| eaten by their own dragon | **0** |
+| had an announcement somewhere in that round | 24.4% |
+
+So the net already does what the proposal asks — it steps onto its own revealed
+dragons, it acts again, and it is gone before the card is turned — and it never
+needs a blast to survive it. What it is *worth* is the other half of the question,
+and `probe_bait_value.py` has that too: 120 self-play games, 79 forks of an
+announced bait dig against the same policy with known-dragon digs removed, in
+every case with a rival deep enough to push: **−0.53 (se 0.27)**, better in 23% of
+games and worse in 33%. The square is safe, and still not free: it spends a
+decision and invites a push that ends the haul for the pusher, so against peers
+that do not take the bait the step is a small loss.
+
+The answer to "should seats start stepping on dragons because blasting is cheap
+and cancellable" is therefore: they already step, on exactly the condition the
+mask computes (`can_wait_on_a_dragon`), the blast neither enables nor improves it,
+and the step is worth about half a point *against* them when the rivals are
+sensible. The interesting constraint was never the price of a cancel — it is
+whether a later decision is guaranteed, which is why that condition lives in the
+action mask rather than in a rule.
+
 #### The escape the hazard rightly authorises
 
 Seed 7, haul 1, planning phase 2, P4 (its first decision of the round): it has a
@@ -3163,6 +3213,17 @@ python probe_escape.py --field rule --strength-games 1600
 
 # what a bluff onto a dragon you can see is worth, per field (forked rollouts)
 python probe_bait_value.py --games 300 --fields rule,reader,selfplay4
+
+# does a seat step onto a dragon it can see and get off before the reveal?
+python probe_dragon_step.py --games 200 --blind --json reports/dragon_step_blind.json
+
+# the trigger, labelled straight from committed-blast continuations (negative control)
+python train_blast_trigger.py --positions 96 --held-out 48 --samples 24 --epochs 25 \
+    --blind --seed 5100000 --held-seed 5200000 --out checkpoints/selfplay4_blast_trigger.npz
+python probe_blast_trigger.py --checkpoints checkpoints/selfplay4.npz,checkpoints/selfplay4_blast_trigger.npz \
+    --games 300 --seed 4240000 --blind
+python probe_blast_trigger.py --candidate checkpoints/selfplay4_blast_trigger.npz \
+    --baseline checkpoints/selfplay4.npz --games 500 --seed 4240000 --blind
 
 # does the learner read a backside when it picks among unknown cards?
 python probe_backside_reading.py checkpoints/selfplay4.npz --games 600
