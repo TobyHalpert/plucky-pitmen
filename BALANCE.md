@@ -2511,12 +2511,18 @@ round resolves. Over 200 games and all four seats (`--blind`, seed 0):
 So the net already does what the proposal asks — it steps onto its own revealed
 dragons, it acts again, and it is gone before the card is turned — and it never
 needs a blast to survive it. What it is *worth* is the other half of the question,
-and `probe_bait_value.py` has that too: 120 self-play games, 79 forks of an
-announced bait dig against the same policy with known-dragon digs removed, in
-every case with a rival deep enough to push: **−0.53 (se 0.27)**, better in 23% of
-games and worse in 33%. The square is safe, and still not free: it spends a
-decision and invites a push that ends the haul for the pusher, so against peers
-that do not take the bait the step is a small loss.
+and `probe_bait_value.py` has that too — the same fork (an announced bait dig
+against the same policy with known-dragon digs removed), 120 games per field:
+
+| opponents | forks | worth | better / worse |
+| :-- | --: | --: | --: |
+| three `rule` bots | 88 | **+0.51 (se 0.29)** | 22% / 9% |
+| three `selfplay4` peers | 79 | **−0.53 (se 0.27)** | 23% / 33% |
+
+The rule bots take the bait and pay for it, which is the lever §4 describes. A
+peer does not: it keeps the square safe by not pushing, and then the step has
+spent a decision for nothing. So the square is not free — it is a bet on the
+table, worth about half a point either way depending on who is sitting across it.
 
 The answer to "should seats start stepping on dragons because blasting is cheap
 and cancellable" is therefore: they already step, on exactly the condition the
