@@ -2670,6 +2670,34 @@ are still not part of the *decision* state at fire time; and the trigger is
 trained through returns on announcements that mostly never resolve, so the signal
 for a profitable committed blast is rare.
 
+#### The trigger is insensitive to the rule, which is why more self-play cannot fix it
+
+If the net were pricing blasts, changing the blast rule would change how often it
+fires them. It does not. `probe_blast_trigger.py`, 300 four-seat games per row
+(seed 4240000), announcements and cancellations per game *per seat*:
+
+| checkpoint | blast rule | announced | cancelled | **fired** | fired that woke a dragon |
+| :-- | :-- | --: | --: | --: | --: |
+| `selfplay4` | engine default (peek) | 2.21 | 1.92 | **0.269** | 32/323 (10%) |
+| `selfplay4` | printed (face down) | 2.16 | 1.88 | **0.262** | 105/314 (33%) |
+| `selfplay4_blindblast` | peek | 2.31 | 2.05 | 0.243 | 24/292 (8%) |
+| `selfplay4_blindblast` | printed | 2.27 | 2.02 | 0.239 | 101/287 (35%) |
+
+The disaster rate of a fired blast **triples** (10% → 33%) when the keeper stops
+peeking, and the fire rate moves by 0.007. The seat is not choosing a blast so
+much as drifting into one: the announcement is cheap, 86% of them are cancelled,
+and the survivor fires whether or not it is a good idea.
+
+That also disposes of the cheapest possible fix. `selfplay4_blindblast.npz` is
+`selfplay4` retrained for 60 generations *inside* the printed rule (same league,
+same seed, 64 four-seat games a generation). It fires slightly *less* (0.239 vs
+0.262 under the printed rule) and plays no better: paired head-to-head under that
+rule, one candidate seat against three `selfplay4` seats, candidate tops 28.8%
+against 28.6%, a paired change of **+0.20 pp [−3.60, +3.80]** over 500 games. The
+rule a net trains under does not create a trigger; only a signal attached to the
+decision itself can, which is what `train_tactical.py` and `train_row0_blast.py`
+do for other decisions and what this one still needs.
+
 ### Testing "blast while a dragon is waiting for me"
 
 The most natural reading of a blast — *two dynamite are dead cards, a known

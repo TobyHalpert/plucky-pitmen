@@ -245,3 +245,7 @@ reports/
 !checkpoints/selfplay4_blastleague.history.json
 !checkpoints/selfplay4_threatleague.npz
 !checkpoints/selfplay4_threatleague.history.json
+
+# Printed-rule retrain: the "does the rule create a trigger?" control.
+!checkpoints/selfplay4_blindblast.npz
+!checkpoints/selfplay4_blindblast.history.json
