@@ -2565,6 +2565,64 @@ order of magnitude, and the right keeper rule is the opposite of "avoid that
 backside". What is *not* in doubt: the ~40–50% risk of ending the haul is what
 the blast costs.
 
+#### Who does that reasoning? The keeper is not the network
+
+Everything above prices the *keeper* — which of the three drawn cards to keep.
+It is worth being exact about who runs that rule, because the answer changes
+what "the net learns" can mean:
+
+**`NeuralAgent` does not implement `blast_choice`.** It inherits
+`Agent.blast_choice`, which calls `preferred_blast_choice` — the hand-written
+"keep the lowest `backside_stats` risk" rule. So the trained agent never chooses
+the keeper at all; the only blast decision it makes is whether to *announce*.
+`test_blast_colour.py` pins that, so a future learned keeper has to be a
+deliberate change and not an accident of the base class.
+
+Two consequences, both measurable (`probe_blast_colour.py`, 300 four-seat neural
+games, seed 1310000):
+
+| engine | keeper took the safest card | zero-risk colour offered → taken | mean risk of the card kept |
+| :-- | --: | --: | --: |
+| printed rule (face down) | **100.0%** of 572 calls | 10 → 10 | 0.280 |
+| peek (the default) | 67.6% of 658 calls | 9 → 8 | 0.315 |
+
+Under the engine default the fronts are visible, so a known **gem** outranks the
+colour risk and the backside rule barely binds. It is the printed rule that makes
+the colour the only thing there is to reason with. The shipped checkpoints were
+trained with the peek engine, so the colour edge is being exercised for the first
+time only when `--blind-blast-choice` is passed.
+
+**The announcement does move with the colour, in the right direction and
+weakly.** Same position, one change: the single dragon the seat can see in its
+own column becomes a gem of the *same backside*, so that colour goes back from
+1-in-9 to 2-in-10 in the deck and nothing else on the board changes. Over 3,455
+such pairs:
+
+| world | mean P(announce) |
+| :-- | --: |
+| a dragon of that colour is known (safer) | **0.4118** |
+| the same card is a gem (riskier) | 0.4710 |
+
+Mean shift **−0.059**, falling in **69%** of the paired positions. So a blast is
+more attractive to the policy when a colour is diluted — the reasoning is present,
+not missing — but it is worth about six points of announcement probability for a
+change that moves the keeper's failure chance by roughly ten (`27.3%` vs `39.1%`
+above). And `preferred_blast_choice` already takes "maybe two" of that colour when
+the second pick is safest too, which is what the greedy rule does once the first
+kept card dilutes it further.
+
+**What is actually missing is the trigger, not the colour.** The colour edge is
+worth ~10 points of failure probability, and a forked blast is worth +0.06 (se
+0.28) under the printed rule and +0.49 (se 0.27) under the engine's default peek
+— so a perfect colour rule does not turn a blind blast into a winner, while a
+committed blast under peek is already good. The net fires **0.01** of them per
+game (§5, §6), and 86% of the blasts it announces are cancelled
+([THREAT_LEAGUE.md](THREAT_LEAGUE.md) §5). Three concrete gaps follow: the keeper
+cannot be improved because the net does not own it; the blast draw's backsides
+are still not part of the *decision* state at fire time; and the trigger is
+trained through returns on announcements that mostly never resolve, so the signal
+for a profitable committed blast is rare.
+
 ### Testing "blast while a dragon is waiting for me"
 
 The most natural reading of a blast — *two dynamite are dead cards, a known
