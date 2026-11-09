@@ -519,8 +519,17 @@ def test_dropdown_labels_a_legal_push_as_a_push(tmp_path):
     assert action in controller.legal_actions()
     assert controller.card_action_label(action).startswith("Displace Player 2")
 
-    # An occupant not standing in its own column cannot be displaced.
-    controller.env.players[1].column = 0
+    # An occupant not standing in its own column cannot be displaced, and the
+    # card stays occupied, so it is not a legal destination at all.  Note the
+    # occupant must be a *different* seat: column 1 belongs to P2, so a
+    # non-displaceable figure there has to be P3 raiding it.  Moving P2 itself
+    # to column 0 would simply vacate the card and make it a free-card move.
+    controller.env.players[1].position = 5
+    controller.env.players[1].column = None
+    controller.env.players[2].position = 0
+    controller.env.players[2].column = 1
+
+    assert controller.env._card_occupant(0, 1) == 2
     assert action not in controller.legal_actions()
     assert not controller.card_action_label(action).startswith("Displace")
 
