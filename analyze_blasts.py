@@ -678,10 +678,26 @@ def render(report: dict[str, Any]) -> str:
         "seeds, so the gain above comes from the reaction and not from a different "
         "movement policy.\n"
     )
+    # Do not assert the verdict in the template: the same probe runs on
+    # checkpoints trained with different leagues, and a large shift has to be
+    # allowed to read as a reaction.  (The sentence used to say "i.e.
+    # effectively nothing" whatever the number was, which made a 0.73 shift look
+    # like a 0.0065 one -- see BALANCE.md §6 and probe_threat_mask.py.)
+    tv = report["reaction"]["mean_tv"]
+    if tv >= 0.10:
+        verdict = (
+            "which is a real reaction: the pending blast changes what the seat "
+            "does, though `probe_threat_mask.py` splits how much of that is the "
+            "policy and how much is the action mask"
+        )
+    elif tv >= 0.01:
+        verdict = "which is a small but non-zero reaction"
+    else:
+        verdict = "i.e. effectively nothing"
     lines.append(
         f"\nThe trained agent answers a pending blast with a total-variation shift of "
-        f"**{report['reaction']['mean_tv']:.4f}** in its action distribution "
-        f"(~{report['reaction']['pairs']} paired decisions), i.e. effectively nothing. "
+        f"**{tv:.4f}** in its action distribution "
+        f"(~{report['reaction']['pairs']} paired decisions), {verdict}. "
         f"Against a blasting field it gives up **{abs(field['delta_margin']):.2f} points** "
         f"of margin, of which a one-line reaction recovers "
         f"**{recover['mean']:+.2f}**.\n"

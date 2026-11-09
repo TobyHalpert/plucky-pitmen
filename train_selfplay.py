@@ -34,6 +34,34 @@ from selfplay import play_game, play_series
 SCRIPTED_POOL = ("rule", "rule", "reader", "reader", "greedy", "random", "cautious")
 
 
+def scripted_league_agent(
+    rng: np.random.Generator,
+    args: argparse.Namespace,
+    *,
+    game_seed: int,
+    seat: int,
+) -> Any:
+    """Draw one scripted league seat.
+
+    ``--league-threat-prob`` replaces that share of scripted seats with
+    ``threat``, the rule policy that walks to a pit cage whenever an opponent's
+    blast is pending (BALANCE.md §6).  Against a blasting league it makes
+    staying inside a threatened mine visibly worse: the rivals leave, so a
+    non-reacting seat eats the dragon alone.  The draw is skipped entirely when
+    the flag is absent, so existing runs keep their exact random stream.
+    """
+    policy = SCRIPTED_POOL[int(rng.integers(len(SCRIPTED_POOL)))]
+    if args.league_threat_prob > 0 and rng.random() < args.league_threat_prob:
+        policy = "threat"
+    blast = (
+        args.league_blast_mode
+        if args.league_blast_mode != "never"
+        and rng.random() < args.league_blast_prob
+        else "never"
+    )
+    return make_scripted_agent(policy, seed=game_seed + seat, blast=blast)
+
+
 def _scripted_factory(policy: str, blast: str = "never"):
     return lambda seed: make_scripted_agent(policy, seed=seed, blast=blast)
 
@@ -166,16 +194,9 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
                         )
                     )
                 else:
-                    policy = SCRIPTED_POOL[int(rng.integers(len(SCRIPTED_POOL)))]
-                    blast = (
-                        args.league_blast_mode
-                        if args.league_blast_mode != "never"
-                        and rng.random() < args.league_blast_prob
-                        else "never"
-                    )
                     agents.append(
-                        make_scripted_agent(
-                            policy, seed=game_seed + seat, blast=blast
+                        scripted_league_agent(
+                            rng, args, game_seed=game_seed, seat=seat
                         )
                     )
 
@@ -267,7 +288,7 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
             while len(league) > args.league_size:
                 league.pop(0)
 
-        if generation % args.save_every == 0:
+        if args.save_every > 0 and generation % args.save_every == 0:
             net.save(out)
 
     net.save(out)
@@ -330,6 +351,16 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=0.15,
         help="share of scripted league opponents that blast at all",
+    )
+    parser.add_argument(
+        "--league-threat-prob",
+        type=float,
+        default=0.0,
+        help=(
+            "share of scripted league seats replaced by the 'threat' reaction "
+            "policy (walks to a pit cage when an opponent's blast is pending); "
+            "0 keeps the historical league exactly"
+        ),
     )
     parser.add_argument(
         "--escape-shaping",

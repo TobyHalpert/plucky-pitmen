@@ -2723,6 +2723,52 @@ the game that self-play at this budget simply does not discover, because it is
 rare (0.8 blasts/game), announced early, and punishes the blaster's own haul 58%
 of the time — so it never earns enough games to show up in the gradient.
 
+### Correction: the 0.65% is stale, and the flinch is in the mask
+
+The reaction table above was generated at `bd7d0ad`. The next commit, `91810d0`
+("Give the escape its hazard"), added `round_dragon_hazard`, which returns
+**1.0 for any pending blast** — and `cage_banks_nothing` reads it. Since then a
+pending blast makes an *empty-handed* pit-cage move legal, so the counterfactual
+no longer only changes the state: it changes the **legal set**, and a
+masked-softmax policy can only move probability inside it.
+
+Re-running the identical probe (`analyze_blasts.py --players 4 --games 200
+--seed 424242`) on the shipped checkpoint:
+
+| checkpoint | paired decisions | mean TV [95% CI] | shift onto the cage |
+| :-- | --: | :-- | --: |
+| `selfplay4.npz` | 268 | **0.7766 [0.7310, 0.8189]** | +0.7467 |
+
+`probe_threat_mask.py` splits the pairs by whether the toggle moved the mask:
+
+| pair type | pairs | share | mean TV | mass on newly legal actions |
+| :-- | --: | --: | --: | --: |
+| mask moved (the toggle opens the cage) | 994 | 78% | 0.9406 | 94% |
+| mask identical (a pure state change) | 283 | 22% | **0.0006** | n/a |
+
+And in played games, against three `rule` seats that blast on sight
+(`probe_threat_reaction.py`, 300 games), the same checkpoint answers **69%** of
+its threatened decisions with a pit cage, against **17%** on decisions where a
+cage was legal and no blast was pending.
+
+So the accurate statement is narrower than the one above, and it matters for
+what to do next:
+
+* the **mask** already encodes "a pending blast is a reason to leave", and the
+  seat takes the escape it is offered;
+* the **policy** still reads a pending blast as nothing when the legal set does
+  not change (0.0006), which is the real residue — a threatened seat that already
+  has the cage legal still passes 25% of the time;
+* the **ledger** still says the shipped net gives up margin to a blasting field
+  (-0.68 [−1.22, −0.15] in `analyze_blasts.py`), which is the part of §6 that
+  survives unchanged.
+
+Section 10.6 therefore has a result rather than a recommendation:
+[THREAT_LEAGUE.md](THREAT_LEAGUE.md) executes it — `--league-threat-prob`
+replaces a share of the scripted league with `threat` — and finds no gain
+(−0.38 ± 1.19 pp paired against the same league without the threat seats). A
+league cannot teach a policy the mask never asks to choose.
+
 ## 7. Three engine bugs — and one bug I had to withdraw
 
 Asking the AI to blast surfaced a real engine bug. It produced a silent failure:
@@ -2918,9 +2964,15 @@ honest way to read a table like this.
    blaster's rivals ~0.4 points when it is pending. If anything is worth
    touching it is *visibility*: the engine already exposes a pending blast in
    the feature vector and the network ignores it (§6), which is a training
-   problem, not a rules problem. A cheap fix is to seed the league with
+   problem, not a rules problem. ~~A cheap fix is to seed the league with
    `threat` agents — the reaction policy measured above — so that the value of
-   respecting a pending blast shows up in the games the learner plays.
+   respecting a pending blast shows up in the games the learner plays.~~
+   **Tried: it does not pay.** `--league-threat-prob` seeds that league and the
+   paired result is −0.38 ± 1.19 pp, because the flinch is already in the action
+   mask rather than in the policy (§6 correction, [THREAT_LEAGUE.md](THREAT_LEAGUE.md)).
+   What is left is the mask-identical residue: a seat that already has the cage
+   would have to be taught to prefer it, which is a distillation job on
+   `train_tactical.py`'s machinery, not a league change.
 7. **Do not chase displacement.** It reads like the sharpest move in the game —
    eject a rival off its own card and take it — and it is worth nothing: eight
    times the pushes (1.62 vs 0.20 a game) move the win rate by +0.2pp, and

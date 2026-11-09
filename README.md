@@ -238,10 +238,14 @@ tie-break, and while a blast is waiting on a card.
 What to look for, given the measurements in [BALANCE.md](BALANCE.md): it should
 rarely blast (0.02-0.05 per game *fired*, for two reasons — it seldom holds two
 dynamite, and most blasts it announces are cancelled by its own next move, §5),
-it should walk to a pit cage as soon as it holds loot, and it should *not*
-visibly change its mind when an opponent announces a blast (§6) — that missing
-reaction is the finding, not a bug in the viewer. Watch `blaster` once to see
-what blasting looks like, including the dragon it wakes roughly half the time.
+it should walk to a pit cage as soon as it holds loot, and it *does* leave when
+an opponent announces a blast — but not because it learned to: the action mask
+treats a pending blast as certain danger, which is what makes the empty-handed
+cage legal, and the seat then takes the escape it is offered (69% of threatened
+decisions against a 17% control, `probe_threat_reaction.py`). The correction to
+§6, and the leftovers, are in
+[THREAT_LEAGUE.md](THREAT_LEAGUE.md). Watch `blaster` once to see what blasting
+looks like, including the dragon it wakes roughly half the time.
 
 Try each opponent model:
 
@@ -280,6 +284,8 @@ uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
 | `train_selfplay.py` | league self-play trainer with checkpoints and a learning curve |
 | `evaluate_balance.py` | benchmarks, pairwise dominance, luck analysis, markdown report |
 | `analyze_blasts.py` | is a blast worth it, does the learner threaten, does it react, and is the threat real |
+| `probe_threat_reaction.py` | does a neural seat flinch in play? cage/lorry/pass on decisions taken while a rival's blast is pending, against a no-threat control |
+| `probe_threat_mask.py` | where the flinch lives: the paired threat test split by whether the blast changes the legal set or only the state |
 | `probe_blast_value.py` | what a single blast is worth from a real position (forked rollouts), and whether backside knowledge improves the blind choice |
 | `probe_blast_strategy.py` | is "blast while a dragon is waiting for me" a good rule? paired arms over the blast trigger and the keeper choice |
 | `probe_bait_value.py` | what a move onto a dragon the player can see is worth, forked per opponent (rule bots vs readers vs its own peers) |
@@ -336,6 +342,7 @@ Useful flags:
 | `--pass-rule {n-1,n}` | play the "n passes" variant instead of the printed "n-1" |
 | `--league-blast-mode {never,rich,always}` | how the scripted league blasts (default `rich`) |
 | `--league-blast-prob` | fraction of that league that uses the blast mode in the chosen proportion (default 0.15; set `1.0 --league-blast-mode always` for a league that blasts on sight) |
+| `--league-threat-prob` | share of scripted league seats replaced by `threat`, the policy that leaves when a rival's blast is pending (default 0, which keeps the historical league bit-identical); measured: no gain, see [THREAT_LEAGUE.md](THREAT_LEAGUE.md) |
 
 Each game gives the learner one rotating seat while the other seats are filled
 from a league of the hand-tuned rule policy, simple bots and older snapshots of
@@ -745,3 +752,37 @@ worse. Training only Row-0 placement, or only the cancellation decision, did not
 combine the desired effects as well as training both decisions together. A
 separate Row-0 exit mask was rejected: the exit remains legal when it genuinely
 banks something.
+
+### A threat-seeded league, and where the flinch actually lives
+
+`--league-threat-prob` puts the `threat` reaction policy into the scripted
+league, which is what BALANCE.md §10.6 asked for: a league that answers blasts
+so the value of respecting one shows up in the learner's games. Measured against
+a league that is otherwise identical (same blasting opponents, same resume
+point, same seed), it does nothing: **−0.38 ± 1.19 pp** paired over 800 fresh
+games. The reason is a measurement problem that turned into a finding.
+
+The §6 "the network ignores a pending blast (TV 0.0065)" was generated one
+commit before `round_dragon_hazard` started treating a pending blast as certain
+danger — which is what makes an *empty-handed* cage move legal. From then on the
+counterfactual changes the legal set, not just the state, and the same probe
+reads **0.7766** on the shipped checkpoint. `probe_threat_mask.py` splits it:
+78% of the pairs are ones where the toggle opens the cage, and 94% of the
+probability moves onto actions that were illegal a moment ago; on the 22% where
+the legal set is unchanged the shift is 0.0006 — the policy itself still reads a
+pending blast as nothing. In play the seat answers 69% of its threatened
+decisions with a cage, against 17% when no blast is pending.
+
+So the reaction is delegated to the mask, and a league cannot teach a policy the
+mask never asks to choose. The residue worth attacking is the masked-identical
+case (a threatened seat that already has the cage legal and still passes 25% of
+the time), which is a distillation job on `train_tactical.py`'s machinery.
+[THREAT_LEAGUE.md](THREAT_LEAGUE.md) has the arms, the tables and the limits.
+
+```sh
+python mine_gui.py --opponents 3 --policy neural:selfplay4_threatleague --all-seats
+python probe_threat_reaction.py --games 300 \
+  --checkpoints checkpoints/selfplay4.npz,checkpoints/selfplay4_threatleague.npz
+python probe_threat_mask.py --checkpoint checkpoints/selfplay4.npz --games 200
+python analyze_blasts.py --checkpoint checkpoints/selfplay4.npz --players 4 --games 200
+```

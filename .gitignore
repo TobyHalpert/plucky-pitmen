@@ -238,3 +238,10 @@ reports/
 !checkpoints/selfplay4_last_haul.history.json
 !checkpoints/selfplay4_row0_blast_sequence.npz
 !checkpoints/selfplay4_row0_blast_sequence.history.json
+
+# Threat-league experiment: the control arm and the threat-seeded arm, with the
+# learning curves THREAT_LEAGUE.md quotes.
+!checkpoints/selfplay4_blastleague.npz
+!checkpoints/selfplay4_blastleague.history.json
+!checkpoints/selfplay4_threatleague.npz
+!checkpoints/selfplay4_threatleague.history.json
