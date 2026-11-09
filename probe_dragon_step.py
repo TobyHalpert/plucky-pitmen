@@ -101,6 +101,23 @@ def run(games: int, checkpoint: str, *, blind: bool) -> dict:
             steps += 1
             if env.tie_breaker_contenders:
                 break
+
+            # A blast that has drawn cards blocks the round until its keeper
+            # names what to keep; without this the driver stalls and never
+            # reaches the reveal it is trying to observe.
+            pending = [
+                index
+                for index, player in enumerate(env.players)
+                if player.blast_pending and player.blast_cards
+            ]
+            if pending:
+                blaster = pending[0]
+                blast_ctx = env.player_action_context(blaster)
+                cards = tuple(blast_ctx.own_blast_cards)
+                pick = int(agents[blaster].blast_choice(cards, blast_ctx))
+                env.resolve_blast(blaster, min(max(pick, 0), len(cards) - 1))
+                continue
+
             seat = env.planning_player
             ctx = env.player_action_context(seat)
             if not ctx.legal_actions:

@@ -2501,12 +2501,12 @@ round resolves. Over 200 games and all four seats (`--blind`, seed 0):
 
 | | |
 | :-- | --: |
-| digs of a face-up dragon | **5.64 per game** (1,128) |
+| digs of a face-up dragon | **6.21 per game** (1,243) |
 | followed by another decision in the same round | **100.0%** |
-| off the card when it was turned | **99.9%** (874 to a cage or lorry, 253 to a shallower card) |
-| still standing on it | 1 (0.09%) |
+| off the card when it was turned | **99.9%** (965 to a cage or lorry, 277 to a shallower card) |
+| still standing on it | 1 (0.08%) |
 | eaten by their own dragon | **0** |
-| had an announcement somewhere in that round | 24.4% |
+| had an announcement somewhere in that round | 26.8% |
 
 So the net already does what the proposal asks — it steps onto its own revealed
 dragons, it acts again, and it is gone before the card is turned — and it never
