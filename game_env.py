@@ -145,6 +145,14 @@ class PlayerActionContext:
     passes_to_close: int = 0
     own_planned: bool = False
 
+    #: Backside colours of cards a seat *walked off* in its own column.  The move
+    #: is public and so is the backside, and the seat can see the front it is
+    #: leaving, so a voluntary departure is evidence (not proof) that the card was
+    #: a dragon -- and a dragon in a column is a dragon that is not in the draw
+    #: pile.  ``features.suspected_dragon_counts`` prices it.  Defaulted so that
+    #: contexts built before this field existed still construct.
+    vacated_backsides: tuple[int, ...] = ()
+
 
 @dataclass
 class Player:
@@ -268,6 +276,10 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.tie_breaker_shortage = False
         self.used_blast_backsides = []
         self.displacement_events = []
+        # Every voluntary departure from a card in the actor's own column.
+        # ``(player, row, column, backside, front)``: the front is ground truth
+        # for probes only and is never placed in a PlayerActionContext.
+        self.vacated_events: list[tuple[int, int, int, int, int]] = []
         self.planning_player = self.starting_player
         self.planned_players = [False] * self.n_players
         self.lorry_touched = [False] * self.n_players
@@ -547,6 +559,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         player = self.players[player_index]
         if action < PIT_CAGE:
             row, column = divmod(action, MAX_COLUMNS)
+            self._record_vacated(player_index, row, column)
             self._displace(row, column, player_index)
             player.position = row
             player.column = column
@@ -570,6 +583,34 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                 player.cage_index = max(0, player.cage_index - 1)
         else:
             player.cage_index = None
+
+    def _record_vacated(
+        self, player_index: int, row: int, column: int
+    ) -> None:
+        """Note a seat walking off a card in its own column.
+
+        Only *voluntary* moves land here: a displacement moves the victim inside
+        ``_displace`` and never calls this, and a departure for the cage or the
+        lorry is not recorded either, because banking loot is an ordinary reason
+        to leave and says little about the card.  What is recorded is a card-to-
+        card step inside the seat's own column, where the seat can see the front
+        it is abandoning -- which is why it is evidence, not proof.
+        """
+        player = self.players[player_index]
+        if player.column != player_index or player.position < 0:
+            return
+        if (row, column) == (player.position, player.column):
+            return
+        if player.position >= len(self.rows):
+            return
+        if player.column >= len(self.rows[player.position]):
+            return
+        card = self.rows[player.position][player.column]
+        if card is None:
+            return
+        self.vacated_events.append(
+            (player_index, player.position, player.column, card[1], card[0])
+        )
 
     def _advance_starting_player(self) -> None:
         self.starting_player = (self.starting_player + 1) % self.n_players
@@ -701,6 +742,10 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.tie_breaker_shortage = False
         self.used_blast_backsides = []
         self.displacement_events = []
+        # Every voluntary departure from a card in the actor's own column.
+        # ``(player, row, column, backside, front)``: the front is ground truth
+        # for probes only and is never placed in a PlayerActionContext.
+        self.vacated_events: list[tuple[int, int, int, int, int]] = []
 
     # ------------------------------------------------------------------
     # Deck & mine
@@ -1453,6 +1498,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             n_players=self.n_players,
             cards_remaining_in_deck=len(self.cards_remaining),
             displacement_events=tuple(self.displacement_events),
+            vacated_backsides=tuple(event[3] for event in self.vacated_events),
             tie_breaker_contenders=tuple(self.tie_breaker_contenders),
             consecutive_passes=self.consecutive_passes,
             passes_to_close=max(0, self._pass_threshold() - self.consecutive_passes),

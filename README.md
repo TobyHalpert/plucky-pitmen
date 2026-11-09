@@ -286,6 +286,7 @@ uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
 | `analyze_blasts.py` | is a blast worth it, does the learner threaten, does it react, and is the threat real |
 | `probe_threat_reaction.py` | does a neural seat flinch in play? cage/lorry/pass on decisions taken while a rival's blast is pending, against a no-threat control |
 | `probe_threat_mask.py` | where the flinch lives: the paired threat test split by whether the blast changes the legal set or only the state |
+| `probe_vacated_dragons.py` | is a rival walking off a card in its own column a dragon tell? precision against ground truth, the risk it moves, and whether the table plays differently |
 | `probe_blast_colour.py` | does the net use the colour of a dragon it has seen? the keeper rule under the printed vs peeking blast draw, and a paired counterfactual on the announcement |
 | `probe_bluff.py` | what an announced blast nobody fires is worth: a bluffing seat against three unchanged nets, with the same movement policy and no announcements as the control |
 | `probe_blast_value.py` | what a single blast is worth from a real position (forked rollouts), and whether backside knowledge improves the blind choice |

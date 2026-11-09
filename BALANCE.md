@@ -1734,6 +1734,53 @@ Two ways to give the table the channel, both rules changes and neither made here
    talk: a new mechanic, and the only one that would let the informed seat spend
    what it knows without spending its turn.
 
+### A rival walking off its own card is a dragon tell
+
+The same missing channel has a one-way mirror: a seat *cannot* say "there is a
+dragon here", but it can *show* it. A seat standing on a card in its own column
+can see the front. When it walks off that card onto another one, the step is
+public and the backside is public, so the table learns "that seat was looking at
+something it preferred to leave" — and the obvious candidate is a dragon it saw.
+That inference is worth money if it is true, because a dragon in a column is a
+dragon that is **not** in the draw pile: each backside colour is ten cards with
+two dragons, so one such dragon takes that colour from 2-in-10 to 1-in-9, and two
+take it to zero. `features.suspected_dragon_counts` counts the departures per
+colour and `features.backside_stats(trust_suspected=...)` prices them; the default
+trust is 0, so every measurement recorded before this existed is unchanged, and
+`game_env` records only *voluntary card-to-card* steps inside the seat's own
+column (a displaced figure, or a departure for the cage or the lorry, is not a
+tell).
+
+`probe_vacated_dragons.py`, 150 four-seat neural games (seed 2120000):
+
+| | value |
+| :-- | --: |
+| departures recorded | 28 (**0.19 per game**) |
+| ...that really were dragons | **28** |
+| precision | **100%** |
+| base rate for a card left in the mine | 28.7% |
+
+The tell is **right every single time** in this population, and it is *rare*: a
+neural seat almost never leaves a card it can see unless the card is a dragon,
+which is exactly what the mask's "hold the card you planned" rule implies. Trust
+prices it as a halving of the per-colour risk at the positions where the evidence
+exists (0.198 → 0.099).
+
+**And the policy still does nothing with it.** Paired counterfactual on the blast
+announcement over 2,898 positions where the evidence was in hand: P(announce)
+0.0780 without it and 0.0785 with it, a shift of **+0.0005 [0.0003, 0.0007]**
+that rises in only 10% of positions. Whole table, 150 paired games each:
+
+| inference | score / seat | hauls ending on a dragon | blasts fired | paired margin |
+| :-- | --: | --: | --: | :-- |
+| off (default) | +2.11 | 16.2% | 161 | — |
+| on (trust = 1) | +2.09 | 16.2% | 159 | +0.00 [−0.07, +0.07] |
+
+So the third piece of otherwise-unspendable information runs into the same
+bottleneck as the first two (the backsides, the hazard, the pending blast): it is
+*available, accurate, and unused*. The nets are not short of reasons to blast;
+they are short of a trigger that fires.
+
 ### Backsides have to be read
 
 The trap above pays only against a table that watches the *player* instead of

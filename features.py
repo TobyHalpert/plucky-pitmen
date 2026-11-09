@@ -74,15 +74,48 @@ def join_action(primitive_action: int, announces_blast: bool) -> int:
 # ----------------------------------------------------------------------
 # Backside bookkeeping (public knowledge + the player's own cards)
 # ----------------------------------------------------------------------
+#: How much weight to give a *suspected* dragon -- a card a seat walked off in
+#: its own column.  0.0 (the default) ignores the inference and reproduces every
+#: earlier measurement bit for bit; 1.0 treats the departure as proof.
+TRUST_SUSPECTED_DRAGONS = 0.0
+
+
+def suspected_dragon_counts(ctx: PlayerActionContext) -> np.ndarray:
+    """Dragons a seat has *inferred* from public departures, per backside.
+
+    Each backside colour is a ten-card set with two dragons, so a dragon sitting
+    in anybody's column is a dragon that is not in the draw pile.  The owner of a
+    column can see its fronts; everybody else has to guess.  One public tell is
+    available: a seat that *walks off* a card in its own column had that card
+    turned towards it, so the step is evidence the card was a dragon -- the seat
+    would otherwise keep a gem it can see.  It is evidence, not proof (it may be
+    leaving for a card it prefers), which is why ``backside_stats`` applies a
+    weight rather than adding it to ``known_dragons``.
+
+    ``game_env`` records only voluntary card-to-card steps inside the seat's own
+    column: a displaced figure, or a departure for the cage or the lorry, is not
+    recorded.
+    """
+    counts = np.zeros(3, dtype=np.float32)
+    for back in getattr(ctx, "vacated_backsides", ()):  # tolerate old contexts
+        if 0 <= int(back) < 3:
+            counts[int(back)] += 1.0
+    return np.minimum(counts, DRAGONS_PER_BACKSIDE)
+
+
 def backside_stats(
     ctx: PlayerActionContext,
+    trust_suspected: float | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Return ``(known_dragons, known_safe, unknown, dragon_risk)`` per backside.
 
     A player knows a card is *not* a dragon when it is in their own collection,
     in an opponent's collection (dragon draws end the haul, so collected cards
     are never dragons), was used for a blast, or lies face up in their own
-    home column.  Dragons are only ever known from the own home column.
+    home column.  Dragons are only ever *known* from the own home column;
+    ``trust_suspected`` turns public departures into suspected ones, which also
+    come out of the per-colour unknown count because such a card is lying in the
+    mine rather than in the pile.
     """
     known_dragons = np.zeros(3, dtype=np.float32)
     known_safe = np.zeros(3, dtype=np.float32)
@@ -113,11 +146,22 @@ def backside_stats(
     for back in ctx.used_blast_backsides:
         known_safe[back] += 1
 
+    if trust_suspected is None:
+        # Read at call time so a probe can switch the inference on for a run
+        # instead of re-importing the module.
+        trust_suspected = TRUST_SUSPECTED_DRAGONS
+    suspected = (
+        suspected_dragon_counts(ctx) * float(trust_suspected)
+        if trust_suspected
+        else np.zeros(3, dtype=np.float32)
+    )
     unknown = np.maximum(
         0.0,
-        TOTAL_PER_BACKSIDE - known_dragons - known_safe,
+        TOTAL_PER_BACKSIDE - known_dragons - known_safe - suspected,
     )
-    remaining_dragons = np.maximum(0.0, DRAGONS_PER_BACKSIDE - known_dragons)
+    remaining_dragons = np.maximum(
+        0.0, DRAGONS_PER_BACKSIDE - known_dragons - suspected
+    )
     with np.errstate(divide="ignore", invalid="ignore"):
         risk = np.where(unknown > 0, remaining_dragons / np.maximum(unknown, 1), 0.0)
     return known_dragons, known_safe, unknown, risk.astype(np.float32)
