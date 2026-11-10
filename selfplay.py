@@ -178,7 +178,7 @@ def play_game(
     escape_shaping: float = ESCAPE_SHAPING,
     passes: str = "n-1",
     solo_escape_bonus: bool = True,
-    blast_choice_sees_fronts: bool = True,
+    blast_choice_sees_fronts: bool = False,
     env: MineEnv | None = None,
 ) -> GameResult:
     """Play one complete 3-haul game with one agent per seat.
@@ -418,7 +418,7 @@ def play_series(
     decisions: list[Any] | None = None,
     passes: str = "n-1",
     solo_escape_bonus: bool = True,
-    blast_choice_sees_fronts: bool = True,
+    blast_choice_sees_fronts: bool = False,
 ) -> list[SeriesGame]:
     """Play ``games`` games between policy factories, rotating seats.
 

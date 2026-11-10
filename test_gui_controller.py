@@ -736,3 +736,46 @@ def test_gui_viewer_offers_all_regular_options_except_pass_when_p1_displaced():
     assert viewer.action_header_var.get() == "YOUR ACTION (displaced - no Pass)"
     assert "DISPLACED" in viewer.players_text.content
 
+
+def test_auto_blast_hides_drawn_fronts_and_chooses_by_backside_risk():
+    """Agents resolving blasts in GameController never see drawn card fronts."""
+    from agents import RuleAgent
+    from game_env import BACKSIDE_A, BACKSIDE_B, BACKSIDE_C, DRAGON, DYNAMITE, FRONT_UNKNOWN, GEM
+
+    seen_cards = []
+
+    class SpyAgent(RuleAgent):
+        def blast_choice(self, cards, ctx):
+            seen_cards.append(tuple(cards))
+            return super().blast_choice(cards, ctx)
+
+    controller = GameController(2, "simple", seed=1, all_seats=True)
+    controller.reset(2, "simple", seed=1, advance=False)
+    env = controller.env
+    assert env.blast_choice_sees_fronts is False
+
+    # Seat 1 sees both dragons of BACKSIDE_A in its own column -> BACKSIDE_A is 0% dragon risk.
+    env.rows[0][1] = (DRAGON, BACKSIDE_A)
+    env.rows[1][1] = (DRAGON, BACKSIDE_A)
+    # Give seat 1 a pending blast where index 0 is a GEM on risky BACKSIDE_B,
+    # index 1 is DYNAMITE on zero-risk BACKSIDE_A, and index 2 is DRAGON on BACKSIDE_C.
+    # A peeking agent would pick index 0 (GEM); a rules-correct blind agent must
+    # see FRONT_UNKNOWN on all three and pick index 1 (zero-risk BACKSIDE_A).
+    env.players[1].blast_pending = True
+    env.players[1].blast_cards = [
+        (GEM, BACKSIDE_B),
+        (DYNAMITE, BACKSIDE_A),
+        (DRAGON, BACKSIDE_C),
+    ]
+    controller.agents[1] = SpyAgent()
+
+    result = controller.step_one_player_auto()
+    assert len(seen_cards) == 1
+    assert seen_cards[0] == (
+        (FRONT_UNKNOWN, BACKSIDE_B),
+        (FRONT_UNKNOWN, BACKSIDE_A),
+        (FRONT_UNKNOWN, BACKSIDE_C),
+    )
+    assert "DYNAMITE" in result.message, "picked zero-risk BACKSIDE_A without peeking at GEM"
+
+

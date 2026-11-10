@@ -612,8 +612,8 @@ class GameController:
 
     def _auto_blast(self, seat: int) -> StepResult:
         agent = self.agents[seat]
-        cards = self.env.players[seat].blast_cards
         ctx = self.env.player_action_context(seat)
+        cards = ctx.own_blast_cards
         index = int(agent.blast_choice(cards, ctx))
         index = min(max(index, 0), len(cards) - 1)
         return self.resolve_player_blast(index, seat)

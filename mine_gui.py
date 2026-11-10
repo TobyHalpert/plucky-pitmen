@@ -824,9 +824,10 @@ class MineViewer:
         if self.controller.blast_pending:
             if header is not None:
                 header.set("YOUR ACTION")
+            blast_view = self.controller.env.player_action_context(0).own_blast_cards
             choices = [
                 (f"Blast choice {index + 1} ({BACKSIDE_SYMBOLS[card[1]]})", index, False)
-                for index, card in enumerate(player.blast_cards)
+                for index, card in enumerate(blast_view)
             ]
             self._apply_action_choices(choices)
             return

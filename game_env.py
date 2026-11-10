@@ -203,7 +203,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         opponent_policy: str = "random",
         passes: str = "n-1",
         solo_escape_bonus: bool = True,
-        blast_choice_sees_fronts: bool = True,
+        blast_choice_sees_fronts: bool = False,
     ) -> None:
         if opponents not in (2, 3, 4):
             raise ValueError("opponents must be 2, 3, or 4")
@@ -219,9 +219,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         # dominant, so the variant can turn it off for comparison.
         self.solo_escape_bonus = bool(solo_escape_bonus)
         # The printed rules draw three cards face down, choose two, and only
-        # then look at them. The historical environment let the chooser see all
-        # three fronts first, which makes blasting far safer. Keep that default
-        # for backwards compatibility; set False for the rules-correct gamble.
+        # then look at them. Set True only to reproduce historical peeking runs.
         self.blast_choice_sees_fronts = bool(blast_choice_sees_fronts)
         self.action_space = spaces.Discrete(PASS + 1)
         max_rows = MAX_ROWS

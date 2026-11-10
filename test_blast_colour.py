@@ -51,11 +51,7 @@ def test_the_keeper_is_hand_written_not_learned():
 
 
 def test_peeking_overrides_the_colour_rule():
-    """The engine default shows the fronts, and then a known gem wins.
-
-    That is why the colour reasoning is invisible in a default replay: with the
-    fronts visible there is no risk to price.  It only binds face down.
-    """
+    """When historical peeking is enabled, a known gem wins over colour risk."""
     ctx = _context_with_dragons(2)
     cards = ((DYNAMITE, 0), (GEM, 2), (FRONT_UNKNOWN, 1))
     choice = preferred_blast_choice(cards, ctx)

@@ -537,30 +537,42 @@ def deterministic_policy(
 # ----------------------------------------------------------------------
 
 
-def deterministic_blast_choice(blast_cards: tuple[tuple[int, int], ...]) -> int:
+def deterministic_blast_choice(
+    blast_cards: tuple[tuple[int, int], ...],
+    ctx: PlayerActionContext | None = None,
+) -> int:
     """Choose which card index to keep during `env.resolve_blast()`.
 
-    Takes the player's own blast draws (which are the ONLY thing they are
-    allowed to inspect) rather than the environment. Preference order:
-    GEM > DYNAMITE > any non-DRAGON > 0.
+    Under the printed rules, drawn blast cards have ``FRONT_UNKNOWN`` fronts and
+    only their backside colour is visible; when ``ctx`` is provided, choose the
+    lowest-risk backside via ``_estimate_dragon_risk``. If historical peeking is
+    enabled and fronts are visible, prefer GEM > DYNAMITE > non-DRAGON.
     """
     if not blast_cards:
         return 0
 
-    safe_indices = [
+    known_indices = [
         idx for idx, (card_type, _) in enumerate(blast_cards)
-        if card_type != DRAGON
+        if card_type != -1
     ]
+    if known_indices:
+        safe_indices = [
+            idx for idx in known_indices
+            if blast_cards[idx][0] != DRAGON
+        ]
+        if not safe_indices:
+            return 0
+        for idx in safe_indices:
+            if blast_cards[idx][0] == GEM:
+                return idx
+        for idx in safe_indices:
+            if blast_cards[idx][0] == DYNAMITE:
+                return idx
+        return safe_indices[0]
 
-    if not safe_indices:
+    if ctx is None:
         return 0
-
-    for idx in safe_indices:
-        if blast_cards[idx][0] == GEM:
-            return idx
-
-    for idx in safe_indices:
-        if blast_cards[idx][0] == DYNAMITE:
-            return idx
-
-    return safe_indices[0]
+    return min(
+        range(len(blast_cards)),
+        key=lambda idx: _estimate_dragon_risk(ctx, blast_cards[idx][1]),
+    )

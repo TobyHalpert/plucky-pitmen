@@ -88,7 +88,7 @@ def evaluate(
     deterministic: bool = False,
     passes: str = "n-1",
     solo_escape_bonus: bool = True,
-    blast_choice_sees_fronts: bool = True,
+    blast_choice_sees_fronts: bool = False,
 ) -> dict[str, float]:
     """Benchmark the learner against a fixed scripted opponent."""
     if games <= 0:
@@ -336,8 +336,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--log-every", type=int, default=1)
     parser.add_argument(
         "--blind-blast-choice",
-        action="store_true",
-        help="choose blast cards face down, as the printed rules say",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="choose blast cards face down, as the printed rules say (default; --no-blind-blast-choice for historical peeking)",
     )
     parser.add_argument("--pass-rule", choices=("n-1", "n"), default="n-1")
     parser.add_argument(

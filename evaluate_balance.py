@@ -239,7 +239,7 @@ def benchmark(
     seed: int,
     passes: str = "n-1",
     solo_escape_bonus: bool = True,
-    blast_choice_sees_fronts: bool = True,
+    blast_choice_sees_fronts: bool = False,
 ) -> tuple[PolicyStats, list[SeriesGame]]:
     name, factory = target
     _, opponent_factory = opponent
@@ -265,7 +265,7 @@ def pairwise(
     seed: int,
     passes: str = "n-1",
     solo_escape_bonus: bool = True,
-    blast_choice_sees_fronts: bool = True,
+    blast_choice_sees_fronts: bool = False,
 ) -> tuple[PolicyStats, PolicyStats]:
     left_name, left_factory = left
     right_name, right_factory = right
@@ -340,7 +340,7 @@ def mirror_games(
     seed: int,
     passes: str = "n-1",
     solo_escape_bonus: bool = True,
-    blast_choice_sees_fronts: bool = True,
+    blast_choice_sees_fronts: bool = False,
 ) -> dict[str, Any]:
     """Play identical agents against each other to measure pure luck."""
     _, factory = agent
@@ -542,8 +542,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--blind-blast-choice",
-        action="store_true",
-        help="choose blast cards face down, as the printed rules say",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="choose blast cards face down, as the printed rules say (default; --no-blind-blast-choice for historical peeking)",
     )
     parser.add_argument("--seed", type=int, default=12_345)
     parser.add_argument("--out", default="reports/balance.md")
