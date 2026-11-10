@@ -380,7 +380,15 @@ def test_solo_escape_bonus_rule_variant():
 
 
 def test_blind_blast_choice_hides_the_drawn_fronts():
-    open_book = MineEnv(opponents=2)
+    blind = MineEnv(opponents=2)
+    blind.reset(seed=3)
+    blind.players[0].blast_cards = [(GEM, 0), (DYNAMITE, 1), (GEM, 2)]
+    blind.players[0].blast_pending = True
+    context = blind.player_action_context(0)
+    assert all(front == FRONT_UNKNOWN for front, _back in context.own_blast_cards)
+    assert [back for _front, back in context.own_blast_cards] == [0, 1, 2]
+
+    open_book = MineEnv(opponents=2, blast_choice_sees_fronts=True)
     open_book.reset(seed=3)
     open_book.players[0].blast_cards = [(GEM, 0), (DYNAMITE, 1), (GEM, 2)]
     open_book.players[0].blast_pending = True
@@ -388,14 +396,6 @@ def test_blind_blast_choice_hides_the_drawn_fronts():
         front != FRONT_UNKNOWN
         for front, _back in open_book.player_action_context(0).own_blast_cards
     )
-
-    blind = MineEnv(opponents=2, blast_choice_sees_fronts=False)
-    blind.reset(seed=3)
-    blind.players[0].blast_cards = [(GEM, 0), (DYNAMITE, 1), (GEM, 2)]
-    blind.players[0].blast_pending = True
-    context = blind.player_action_context(0)
-    assert all(front == FRONT_UNKNOWN for front, _back in context.own_blast_cards)
-    assert [back for _front, back in context.own_blast_cards] == [0, 1, 2]
 
 
 def test_rusher_no_longer_beats_the_rule_policy():
@@ -1934,23 +1934,25 @@ def test_a_second_move_in_the_same_phase_is_a_climb_towards_the_lorry():
 
 
 def test_the_table_holds_its_card_and_collects_more_for_it():
-    """The rule, measured end to end: +0.39 points a seat, twice the gems.
+    """The rule, measured end to end: +0.39 points a seat on the pre-retrain net.
 
-    Same weights, the rule switched off by pretending it finds nothing to mask.
+    Same weights (``selfplay4_pitcage``), the rule switched off by pretending it
+    finds nothing to mask; and verify the retrained ``selfplay4`` net finishes
+    every game above 2.0 points per seat under the current rules.
     """
     import features
     from gui_controller import GameController, resolve_checkpoint
     from learning import PolicyNet
 
-    net = PolicyNet.load(resolve_checkpoint("neural:selfplay4"))
+    net = PolicyNet.load(resolve_checkpoint("neural:selfplay4_pitcage"))
     rule = features.climbs_off_the_card_it_chose
     real = features.action_mask
 
-    def play(seed):
-        ctl = GameController(3, "neural:selfplay4", seed)
-        ctl.reset(3, "neural:selfplay4", seed, all_seats=True, advance=False)
+    def play(seed, policy_name="neural:selfplay4_pitcage", policy_net=net):
+        ctl = GameController(3, policy_name, seed)
+        ctl.reset(3, policy_name, seed, all_seats=True, advance=False)
         ctl.agents = [
-            NeuralAgent(net, seed=seed * 31 + i, temperature=0.7) for i in range(4)
+            NeuralAgent(policy_net, seed=seed * 31 + i, temperature=0.7) for i in range(4)
         ]
         env, steps = ctl.env, 0
         while not env.game_finished and steps < 1500:
@@ -1977,6 +1979,14 @@ def test_the_table_holds_its_card_and_collects_more_for_it():
         off.append(float(np.mean([p.score for p in env.players])))
     features.action_mask = real
     assert float(np.mean(on)) > float(np.mean(off))
+
+    shipped = PolicyNet.load(resolve_checkpoint("neural:selfplay4"))
+    retrained_scores = []
+    for seed in range(12):
+        env = play(seed, policy_name="neural:selfplay4", policy_net=shipped)
+        assert env.game_finished
+        retrained_scores.append(float(np.mean([p.score for p in env.players])))
+    assert float(np.mean(retrained_scores)) >= 2.0
 
 
 def test_an_escape_that_banks_nothing_is_refused_from_the_lorry_too():

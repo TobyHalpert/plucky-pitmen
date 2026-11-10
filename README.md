@@ -124,13 +124,13 @@ network — including whether to announce a blast and which of the three blast
 cards to keep.
 
 `checkpoints/selfplay4.npz` ships with the repository, so `neural:selfplay4`
-works in a fresh clone. It now uses **next-card displacement** and was retrained
-for 120 generations of 64 games (four seats, seed 7001), resuming the previous
-net. That predecessor is preserved as `neural:selfplay4_pitcage`; both play the
-current rule when selected. The training history and the comparison are recorded
-in BALANCE.md. In 200 four-net games the retrained net finished every game, but
-pushed less (0.035 vs 0.105 per game) and chose its own column more (96.1% vs
-92.8%): this run has not yet produced more competition for spots.
+works in a fresh clone. It now uses **same-card displacement** and **face-down
+blast card selection**, retrained for 120 generations of 64 games (four seats,
+seed 7002, 81.7% win rate vs three `rule` bots), with the downstream tactical
+and curriculum nets (`selfplay4_tactical`, `selfplay4_last_haul`, and
+`selfplay4_row0_blast_sequence`) retrained on top of it as well. The historical
+pit-cage predecessor is preserved as `neural:selfplay4_pitcage`; all checkpoints
+play the current rule when selected.
 
 To watch the retrained net:
 
@@ -344,7 +344,7 @@ Useful flags:
 | `--league-prob`, `--league-size` | how often opponents are older snapshots |
 | `--eval-opponent rule` | benchmark used during training |
 | `--no-solo-escape-bonus` | play the rules variant without the free bonus for a sole escapee with zero gems |
-| `--blind-blast-choice` | choose blast cards face down, as the printed rules say |
+| `--blind-blast-choice` / `--no-blind-blast-choice` | choose blast cards face down, as the printed rules say (default on) |
 | `--pass-rule {n-1,n}` | play the "n passes" variant instead of the printed "n-1" |
 | `--league-blast-mode {never,rich,always}` | how the scripted league blasts (default `rich`) |
 | `--league-blast-prob` | fraction of that league that uses the blast mode in the chosen proportion (default 0.15; set `1.0 --league-blast-mode always` for a league that blasts on sight) |
@@ -633,7 +633,7 @@ switchable so you can measure them instead of guessing:
 | gap | behaviour | switch |
 | :-- | :-- | :-- |
 | free solo-escape bonus | +3/+4 for leaving alone with zero gems | `--no-solo-escape-bonus` |
-| blast peek | the blaster sees all three draws before choosing | `--blind-blast-choice` (the printed rule) |
+| blast peek | historical variant where the blaster sees all three draws before choosing | fixed to face-down by default (`--no-blind-blast-choice` reproduces historical peeking) |
 | pass count | `step_one_player()` ignored `--pass-rule` and always used `n` | fixed; both variants now work |
 
 The lorry deadlock used to be patched with a `stall_rounds` valve, which paid the
