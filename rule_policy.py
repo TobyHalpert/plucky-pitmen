@@ -107,7 +107,7 @@ def _dragon_under_opponent(ctx: PlayerActionContext) -> bool:
     """
     my_column = ctx.player_index
     for opp in ctx.opponents:
-        if opp.escaped or opp.dead:
+        if opp.escaped or opp.dead or getattr(opp, "displaced", False):
             continue
         if opp.position is None or opp.position >= PIT_CAGE:
             continue
@@ -170,12 +170,13 @@ def _card_occupant(ctx: PlayerActionContext, row: int, column: int) -> int | Non
     Considers both the requesting player and the visible opponents.
     """
     if (
-        ctx.own_position == row
+        not getattr(ctx, "own_displaced", False)
+        and ctx.own_position == row
         and ctx.own_column == column
     ):
         return ctx.player_index
     for opp in ctx.opponents:
-        if opp.escaped or opp.dead:
+        if opp.escaped or opp.dead or getattr(opp, "displaced", False):
             continue
         if opp.position == row and opp.column == column:
             return opp.player_index
@@ -518,10 +519,15 @@ def deterministic_policy(
 
     if PASS in legal_actions:
         return int(PASS)
-    if PIT_CAGE in original_legal_actions:
+    if (
+        (must_escape or dragon_under_opponent or signaled_threat or has_moderate_loot)
+        and PIT_CAGE in original_legal_actions
+    ):
         return int(PIT_CAGE)
     if LORRY in legal_actions:
         return int(LORRY)
+    if PIT_CAGE in original_legal_actions:
+        return int(PIT_CAGE)
 
     return int(legal_actions[0])
 

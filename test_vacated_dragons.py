@@ -56,8 +56,17 @@ def test_a_displacement_does_not_count_as_walking_off():
     env.players[1].column = 1
     env.players[0].position = 2
     env.players[0].column = None
-    env._apply_action(0, 1 * MAX_COLUMNS + 1)  # pushes P2 off its own card
-    assert env.players[1].position != 1
+    env._apply_action(0, 1 * MAX_COLUMNS + 1)  # pushes P2 on its own card
+    assert env.players[1].position == 1
+    assert env.players[1].column == 1
+    assert env.players[1].displaced is True
+    assert env.vacated_events == []
+
+    # When P2 then takes its mandatory move off (1, 1), that forced move is
+    # still involuntary and must not be recorded as walking off a dragon.
+    env._apply_action(1, 0 * MAX_COLUMNS + 1)
+    assert env.players[1].position == 0
+    assert env.players[1].displaced is False
     assert env.vacated_events == []
 
 

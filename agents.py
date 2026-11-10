@@ -408,12 +408,10 @@ class LeaverAgent(Agent):
         gems = sum(1 for front, _ in ctx.private_cards if front == GEM)
         if gems >= self.target_gems and PIT_CAGE in ctx.legal_actions:
             return PIT_CAGE
-        if self._moved:
+        if self._moved and PASS in ctx.legal_actions:
             # Standing on the chosen card: hold position, or the planning phase
             # walks straight past it and collects nothing.
-            if PASS in ctx.legal_actions:
-                return PASS
-            return PIT_CAGE if PIT_CAGE in ctx.legal_actions else int(ctx.legal_actions[0])
+            return PASS
 
         cards = _card_actions(ctx)
         own = [action for action in cards if action % MAX_COLUMNS == ctx.player_index]
@@ -585,7 +583,12 @@ class CounterAgent(Agent):
         return {
             (opponent.position, opponent.column)
             for opponent in ctx.opponents
-            if not (opponent.escaped or opponent.dead) and opponent.column is not None
+            if not (
+                opponent.escaped
+                or opponent.dead
+                or getattr(opponent, "displaced", False)
+            )
+            and opponent.column is not None
         }
 
     @staticmethod
@@ -781,7 +784,12 @@ class PusherAgent(CounterAgent):
         """Cells a rival was already standing on at this seat's previous turn."""
         held: set[tuple[int, int]] = set()
         for opponent in ctx.opponents:
-            if opponent.escaped or opponent.dead or opponent.column is None:
+            if (
+                opponent.escaped
+                or opponent.dead
+                or getattr(opponent, "displaced", False)
+                or opponent.column is None
+            ):
                 continue
             if not 0 <= int(opponent.position) < int(PIT_CAGE):
                 continue
@@ -798,7 +806,7 @@ class PusherAgent(CounterAgent):
         return held
 
     def _own_card_is_a_gem(self, ctx: PlayerActionContext) -> bool:
-        if ctx.own_column != ctx.player_index:
+        if getattr(ctx, "own_displaced", False) or ctx.own_column != ctx.player_index:
             return False
         row = int(ctx.own_position)
         if not 0 <= row < len(ctx.public_rows):
@@ -823,7 +831,11 @@ class PusherAgent(CounterAgent):
                 (
                     opponent
                     for opponent in ctx.opponents
-                    if not (opponent.escaped or opponent.dead)
+                    if not (
+                        opponent.escaped
+                        or opponent.dead
+                        or getattr(opponent, "displaced", False)
+                    )
                     and opponent.column is not None
                     and int(opponent.position) == row
                     and int(opponent.column) == column

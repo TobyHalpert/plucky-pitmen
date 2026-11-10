@@ -570,3 +570,169 @@ def test_dropdown_labels_a_legal_push_as_a_push(tmp_path):
     )
     MineViewer._action_label_selected(viewer, None)
     assert viewer.action_var.get() == action
+
+
+def test_gui_renderer_draws_displacer_and_displaced_opponent_on_same_card():
+    """Headless canvas test: displaced opponent stays on the card side-by-side."""
+    from game_env import BACKSIDE_A, GEM, MAX_COLUMNS
+    from mine_gui import LAYOUT, MineRenderer
+
+    class FakeCanvas:
+        def __init__(self, width=640, height=520):
+            self.width = width
+            self.height = height
+            self.ovals = []
+            self.texts = []
+            self.rects = []
+
+        def delete(self, _tag):
+            self.ovals.clear()
+            self.texts.clear()
+            self.rects.clear()
+
+        def winfo_width(self):
+            return self.width
+
+        def winfo_height(self):
+            return self.height
+
+        def create_rectangle(self, *coords, **kwargs):
+            self.rects.append((coords, kwargs))
+
+        def create_oval(self, *coords, **kwargs):
+            self.ovals.append((coords, kwargs))
+
+        def create_text(self, *coords, **kwargs):
+            self.texts.append((coords, kwargs))
+
+    controller = GameController(3, "simple", seed=1)
+    controller.reset(3, "simple", seed=1, advance=False)
+    env = controller.env
+    env.rows[1][1] = (GEM, BACKSIDE_A)
+    env.players[1].position, env.players[1].column = 1, 1
+    env.players[0].position, env.players[0].column = 2, 0
+    env.planned_players = [True, True, True, True]
+    env.planning_player = 0
+
+    canvas = FakeCanvas()
+    renderer = MineRenderer(canvas)
+
+    # Before displacement: P2 is centered alone on (1, 1).
+    renderer.render(env)
+    p2_text_before = [coords for coords, kw in canvas.texts if kw.get("text") == "2"]
+    assert len(p2_text_before) == 1
+    center_x_before, center_y_before = p2_text_before[0]
+
+    # P1 displaces P2 on (1, 1): P2 stays on the same card alongside P1.
+    env.step_one_player(1 * MAX_COLUMNS + 1, force_action=True)
+    assert env.players[0].position == 1 and env.players[0].column == 1
+    assert env.players[1].position == 1 and env.players[1].column == 1
+    assert env.players[1].displaced is True
+
+    renderer.render(env)
+    p1_xy = [coords for coords, kw in canvas.texts if kw.get("text") == "1"][0]
+    p2_xy = [coords for coords, kw in canvas.texts if kw.get("text") == "2"][0]
+    assert p1_xy[1] == p2_xy[1] == center_y_before, "both tokens sit on the same card row"
+    assert p1_xy[0] < center_x_before < p2_xy[0], "claimant left, displaced opponent right"
+    assert abs(p2_xy[0] - p1_xy[0]) >= 14.0, "tokens do not overlap completely"
+    # Dashed amber ring marks the displaced token.
+    dashed_rings = [
+        (coords, kw) for coords, kw in canvas.ovals if kw.get("dash") is not None
+    ]
+    assert len(dashed_rings) == 1
+    ring_coords, _ = dashed_rings[0]
+    ring_cx = (ring_coords[0] + ring_coords[2]) / 2
+    assert abs(ring_cx - p2_xy[0]) < 1e-6
+
+    # Plan summary and displacement message reflect the rule.
+    assert "displaced, must move - cannot pass" in controller.plan_summary(1)
+
+    # After P2 takes its non-pass turn (e.g. row 0), P1 is centered alone on (1, 1).
+    env.step_one_player(0 * MAX_COLUMNS + 1, force_action=True)
+    renderer.render(env)
+    p1_after = [coords for coords, kw in canvas.texts if kw.get("text") == "1"][0]
+    assert abs(p1_after[0] - center_x_before) < 1e-6
+    assert not any(kw.get("dash") is not None for _, kw in canvas.ovals)
+    assert LAYOUT.token_radius > 0
+
+
+def test_gui_viewer_offers_all_regular_options_except_pass_when_p1_displaced():
+    """Headless viewer test: displaced P1 sees regular options + blasts, never Pass."""
+    from game_env import BACKSIDE_A, BACKSIDE_B, DYNAMITE, GEM, LORRY, MAX_COLUMNS, PASS, PIT_CAGE
+    from mine_gui import MineViewer
+
+    class Menu:
+        def __init__(self):
+            self.values = []
+            self.value = ""
+        def configure(self, **kwargs):
+            self.values = list(kwargs["values"])
+        def get(self):
+            return self.value
+        def set(self, value):
+            self.value = value
+
+    class Var:
+        def __init__(self, value=None):
+            self._value = value
+        def set(self, value):
+            self._value = value
+        def get(self):
+            return self._value
+
+    class TextBox:
+        def __init__(self):
+            self.content = ""
+        def configure(self, **_kwargs):
+            pass
+        def delete(self, _start, _end):
+            self.content = ""
+        def insert(self, _pos, text):
+            self.content += text
+
+    controller = GameController(3, "simple", seed=1)
+    controller.reset(3, "simple", seed=1, advance=False)
+    env = controller.env
+    env.rows[2][0] = (GEM, BACKSIDE_A)
+    env.rows[1][0] = (GEM, BACKSIDE_A)
+    env.rows[0][1] = (GEM, BACKSIDE_B)
+    env.players[0].collected_cards = [(DYNAMITE, BACKSIDE_A), (DYNAMITE, BACKSIDE_B)]
+    env.players[0].position, env.players[0].column = 2, 0
+    env.players[1].position, env.players[1].column = 0, 1  # displaceable shallower opponent
+    env.players[2].position, env.players[2].column = 2, 2
+    env.players[3].position, env.players[3].column = 3, None
+    env.planned_players = [True, True, True, True]
+    env.planning_player = 3
+
+    # P4 displaces P1 at (2, 0); next planning player is P1 (0).
+    env.step_one_player(2 * MAX_COLUMNS + 0, force_action=True)
+    assert env.planning_player == 0
+    assert env.players[0].displaced is True
+    assert PASS not in controller.legal_actions()
+    assert PIT_CAGE in controller.legal_actions()
+    assert LORRY in controller.legal_actions()
+    assert (1 * MAX_COLUMNS + 0) in controller.legal_actions()
+    assert (0 * MAX_COLUMNS + 1) in controller.legal_actions()
+
+    viewer = MineViewer.__new__(MineViewer)
+    viewer.controller = controller
+    viewer.action_menu = Menu()
+    viewer.action_var = Var(-1)
+    viewer.action_header_var = Var("YOUR ACTION")
+    viewer.players_text = TextBox()
+    viewer.blast_requested = False
+    viewer._action_choice_by_label = {}
+
+    MineViewer._update_action_options(viewer)
+    MineViewer._update_player_list(viewer)
+
+    labels = viewer.action_menu.values
+    assert "Pass" not in labels
+    assert "Leave via pit cage" in labels
+    assert "Lorry" in labels
+    assert "Card row 1, column 1" in labels
+    assert "Displace Player 2: card row 0, column 2" in labels
+    assert any(label.startswith("Blast: ") for label in labels)
+    assert viewer.action_header_var.get() == "YOUR ACTION (displaced - no Pass)"
+    assert "DISPLACED" in viewer.players_text.content
+

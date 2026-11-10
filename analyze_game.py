@@ -96,7 +96,15 @@ def positions_text(env: MineEnv) -> str:
             else f"r{player.position}c{player.column}"
         )
         held = [front for front, _ in player.collected_cards]
-        mark = " OUT" if player.escaped else " DEAD" if player.dead else ""
+        mark = (
+            " OUT"
+            if player.escaped
+            else " DEAD"
+            if player.dead
+            else " DISPLACED"
+            if player.displaced
+            else ""
+        )
         parts.append(
             f"P{index + 1} {where} {held.count(GEM)}g/{held.count(DYNAMITE)}d{mark}"
         )

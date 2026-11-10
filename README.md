@@ -41,7 +41,7 @@ On their turn, a player chooses **one** of the following options:
 *   **Move to a free card:** The player places their figure on an unoccupied card.
 *   **Move to the nearest pit cage:** A pit cage can accommodate any number of players.
 *   **Pass:** The player does not change their announced plan. If it is their turn again later, all options are open to them once more. Passing is not allowed during the first round of the planning phase.
-*   **Displace an opponent:** This is only possible if the opponent is standing on a card within that opponent's own column (the color of the player figure is the same as the color of the lorry). The player places their own figure on the opponent's card and moves the opponent to the next free card towards the lorries in that opponent's own column (skipping empty or occupied cells). If no card remains, the opponent goes to their lorry. The displaced player keeps their loot and their next planning decision. Landing on a card gives no pit-cage shelter: they must choose a cage themselves if they want shelter from a dragon.
+*   **Displace an opponent:** This is only possible if the opponent is standing on a card within that opponent's own column (the color of the player figure is the same as the color of the lorry). The player places their own figure on the opponent's card, while the displaced opponent stays on that same card until their next turn. When it is the displaced opponent's turn, they have all regular options from that card's row (a free card, displacing an opponent, the nearest pit cage, or their lorry) except **Pass**.
 *   **Sit on their lorry:** Anyone who has occupied their lorry at any point during a planning phase can only switch between the last pit cage and their lorry for the remainder of that planning phase.
 
 For the options "free card", "pit cage", and "displace", the following rule applies: The card or pit cage **must be closer to the lorries** than the row the player is currently in.
@@ -505,8 +505,10 @@ The full write-up, with confidence intervals and reproduction commands, is in
   Paired over 200 games the difference is **+0.000** — the line was missing, not
   harmful. The check is kept as a guard, with a test pinning the fact that makes it
   inert. BALANCE.md, "Sit on their lorry".
-* **Next-card displacement is now the default.** A push contests a rival's
-  chosen spot without giving that rival free pit-cage shelter. The displaced
+* **Same-card displacement is now the default.** A push contests a rival's
+  chosen spot without giving that rival free pit-cage shelter or moving them
+  automatically: the displaced figure stays on the same card and on its next
+  turn has all regular options from that position except `Pass`. The displaced
   figure keeps its loot and its next decision; a dragon can still make it choose
   shelter. The aim is competition for spots, not profitable indiscriminate pushing.
   Earlier pass-count comparisons did not distinguish passing on a card from

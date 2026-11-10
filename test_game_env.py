@@ -34,9 +34,12 @@ def test_random_game_terminates():
         if env._game_over():
             break
         legal = env.action_mask()
-        assert legal.any()
-        action = PASS if legal[PASS] else int(legal.argmax())
-        observation, _, terminated, truncated, _ = env.step(action)
+        if not legal.any():
+            assert env.players[0].escaped or env.players[0].dead
+            observation, _, terminated, truncated, _ = env.step_one_player()
+        else:
+            action = PASS if legal[PASS] else int(legal.argmax())
+            observation, _, terminated, truncated, _ = env.step(action)
         if terminated or truncated:
             break
     assert terminated or truncated
@@ -360,6 +363,7 @@ def test_woken_dragon_kills_everyone_still_in_the_mine():
 def test_player_can_displace_occupant_in_that_players_own_column(monkeypatch):
     import game_env
 
+    monkeypatch.setattr(game_env, "DISPLACEMENT_STAYS_ON_THE_SAME_CARD", False)
     monkeypatch.setattr(game_env, "DISPLACEMENT_STEPS_TO_THE_NEXT_CARD", False)
     env = MineEnv(opponents=2)
     env.reset(seed=4)
@@ -388,6 +392,7 @@ def test_a_pushed_figure_is_not_out_of_the_haul_yet(monkeypatch):
     """
     import game_env
 
+    monkeypatch.setattr(game_env, "DISPLACEMENT_STAYS_ON_THE_SAME_CARD", False)
     monkeypatch.setattr(game_env, "DISPLACEMENT_STEPS_TO_THE_NEXT_CARD", False)
     env = MineEnv(opponents=2)
     env.reset(seed=4)
@@ -599,26 +604,92 @@ def _pushable_board(env, column=1):
     return row, column
 
 
-def test_default_displacement_steps_the_victim_towards_the_lorry():
-    """``DISPLACEMENT_STEPS_TO_THE_NEXT_CARD``: the victim stays in the mine."""
+def test_default_displacement_keeps_victim_on_same_card_without_pass():
+    """Default displacement rule: victim stays on the same card and cannot pass."""
     import game_env
 
     env = MineEnv(opponents=2)
     env.reset(seed=4)
     row, column = _pushable_board(env)
-    assert game_env.DISPLACEMENT_STEPS_TO_THE_NEXT_CARD
+    assert game_env.DISPLACEMENT_STAYS_ON_THE_SAME_CARD
+    assert not game_env.DISPLACEMENT_STEPS_TO_THE_NEXT_CARD
+
+    # Place P3 on its own column at a shallower row so P2 can also displace on its turn.
+    env.players[2].position, env.players[2].column = 0, 2
+    env.planned_players = [True, True, True]
 
     push = row * MAX_COLUMNS + column
-    assert env._legal(push)
+    assert env._legal(push, player_index=0)
     env._apply_action(0, push)
 
     victim = env.players[column]
-    assert victim.position == row - 1, "one card closer to the lorries, not a cage"
-    assert victim.column == column, "still on its own column, so still in the game"
-    assert not victim.escaped, "a push no longer takes it out of the haul"
+    assert victim.position == row, "stays on the same card"
+    assert victim.column == column, "stays on the same column"
+    assert victim.displaced is True
+    assert not victim.escaped
     assert victim.cage_index is None
-    assert len(victim.collected_cards) == 1, "it still keeps what it collected"
-    assert env.players[0].position == row, "the pusher still stands on the card"
+    assert len(victim.collected_cards) == 1, "keeps collected loot"
+    assert env.players[0].position == row and env.players[0].column == column
+
+    # Nobody else can displace at (row, column) now because P1 holds it (not own column).
+    assert env._card_occupant(row, column) == 0
+    assert not env._can_displace(row, column, 2)
+
+    # On the victim's turn, all regular options from ``row`` are legal EXCEPT Pass.
+    mask = env.action_mask(column)
+    assert not mask[PASS], "Pass must not be allowed when displaced"
+    assert mask[PIT_CAGE], "nearest pit cage is allowed"
+    assert mask[LORRY], "sitting on lorry is allowed"
+    assert mask[(row - 1) * MAX_COLUMNS + column], "shallower free card is allowed"
+    assert mask[0 * MAX_COLUMNS + 2], "displacing a shallower opponent is allowed"
+    assert not any(mask[row * MAX_COLUMNS : PIT_CAGE]), "same or deeper rows are not allowed"
+
+
+def test_displaced_player_at_row_zero_has_pit_cage_and_lorry_but_not_pass():
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    env.players[1].position, env.players[1].column = 0, 1
+    env.players[0].position, env.players[0].column = 2, 0
+    env.planned_players = [True, True, True]
+
+    env.planning_player = 0
+    env.step_one_player(0 * MAX_COLUMNS + 1, force_action=True)
+
+    victim = env.players[1]
+    assert victim.position == 0 and victim.column == 1 and victim.displaced
+    legal = set(env.legal_actions(1))
+    assert legal == {PIT_CAGE, LORRY}
+
+    # Once the victim takes a legal move, ``displaced`` clears and Pass is legal next turn.
+    env.step_one_player(PIT_CAGE, force_action=True)
+    assert not victim.displaced
+    assert victim.position == PIT_CAGE and victim.cage_index == 0
+    assert env._legal(PASS, player_index=1)
+
+
+def test_displacing_a_blasting_player_cancels_blast_and_allows_reannouncing():
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    env.players[1].collected_cards = [(DYNAMITE, BACKSIDE_A), (DYNAMITE, BACKSIDE_B)]
+    env.players[1].position, env.players[1].column = 2, 1
+    env.begin_blast(1)
+    assert env.players[1].blast_pending
+
+    env.players[0].position, env.players[0].column = 3, None
+    env.planning_player = 0
+    env.step_one_player(2 * MAX_COLUMNS + 1, force_action=True)
+
+    assert env.players[1].displaced
+    assert not env.players[1].blast_pending, "blast on displaced card is aborted"
+    assert env.players[1].dynamite == 2, "dynamite returns to hand"
+
+    # On P2's turn, P2 can announce a blast on a shallower card, and cannot pass.
+    assert env.planning_player == 1
+    assert not env._legal(PASS, player_index=1)
+    env.step_one_player(1 * MAX_COLUMNS + 1, announce_blast=True, force_action=True)
+    assert not env.players[1].displaced
+    assert env.players[1].blast_pending
+    assert env.players[1].position == 1 and env.players[1].column == 1
 
 
 def test_the_next_card_variant_puts_a_victim_off_the_last_card_on_the_lorry(monkeypatch):
@@ -1098,7 +1169,7 @@ def test_a_live_locked_round_is_broken_rather_than_left_to_run_away():
 
 
 def test_default_push_preserves_victims_next_decision_and_shelter_choice():
-    """B takes A's dragon; A still gets to choose a cage, not free shelter."""
+    """B takes A's dragon; A stays on the card, cannot pass, and can choose a cage."""
     env = MineEnv(opponents=3)
     env.reset(seed=4)
     row, victim_index = _pushable_board(env)
@@ -1110,11 +1181,16 @@ def test_default_push_preserves_victims_next_decision_and_shelter_choice():
     victim = env.players[victim_index]
     assert env.round == old_round
     assert env.planning_player == victim_index
-    assert victim.position == row - 1
+    assert victim.position == row
+    assert victim.column == victim_index
+    assert victim.displaced
     assert not victim.escaped
-    assert env._legal(PASS, player_index=victim_index)
+    assert not env._legal(PASS, player_index=victim_index)
     assert env._legal(PIT_CAGE, player_index=victim_index)
+    assert env._legal(LORRY, player_index=victim_index)
     env.step_one_player(PIT_CAGE, force_action=True)
     assert victim.position == PIT_CAGE
+    assert victim.cage_index == row
+    assert not victim.displaced
     assert env.players[0].position == row
     assert env.round == old_round

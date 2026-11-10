@@ -66,11 +66,12 @@ LORRY_REWARD = -0.05
 # the old behaviour (BALANCE.md prices it).
 LORRY_COMMITS_THE_SEAT = True
 
-# Current displacement rule: move the victim to the next free card in its own
-# column towards the lorries (or its lorry if none remains). It keeps its loot
-# and its next planning decision, but receives no free pit-cage shelter.
-# Set False only to reproduce the former printed pit-cage rule.
-DISPLACEMENT_STEPS_TO_THE_NEXT_CARD = True
+# Current displacement rule: the displaced opponent stays on the same card
+# until their turn, and on their turn has all regular options from that card's
+# row except Pass. Set False only when reproducing historical displacement
+# variants in tests or probes.
+DISPLACEMENT_STAYS_ON_THE_SAME_CARD = True
+DISPLACEMENT_STEPS_TO_THE_NEXT_CARD = False
 
 
 @dataclass(frozen=True)
@@ -96,9 +97,12 @@ class OpponentPublicView:
     displacements: int = 0
     #: Whether this seat has already announced a move in the current planning
     #: phase. Planning is open -- figures are placed in front of everybody -- so
-    #: this is public. A seat that has planned can pass, which is what lets the
-    #: round close before a rival that was just pushed ever gets a turn.
+    #: this is public. A displaced seat has ``planned=False`` until it moves off
+    #: the card, because it may not pass on its next turn.
     planned: bool = False
+    #: Whether this seat is currently displaced on a card and must move on its
+    #: next turn without passing.
+    displaced: bool = False
 
 
 @dataclass(frozen=True)
@@ -152,6 +156,9 @@ class PlayerActionContext:
     #: pile.  ``features.suspected_dragon_counts`` prices it.  Defaulted so that
     #: contexts built before this field existed still construct.
     vacated_backsides: tuple[int, ...] = ()
+    #: True when this player was displaced on their card and has not yet moved:
+    #: they remain at that card's row/column until their turn and cannot pass.
+    own_displaced: bool = False
 
 
 @dataclass
@@ -167,6 +174,8 @@ class Player:
     blast_cards: list[tuple[int, int]] = field(default_factory=list)
     #: Displacements this seat has made this game, carried across hauls.
     displacements: int = 0
+    #: True while this player is displaced on a card and awaiting their turn to move.
+    displaced: bool = False
 
     @property
     def collected_backsides(self) -> list[int]:
@@ -323,7 +332,17 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                     continue
                 self._apply_action(player_index, opponent_action)
         else:
-            for _player_index in range(1, self.n_players):
+            for player_index in range(1, self.n_players):
+                player = self.players[player_index]
+                if player.escaped or player.dead:
+                    continue
+                if player.displaced:
+                    self.planning_turns += 1
+                    opponent_action = self._opponent_action(player_index)
+                    self.planned_players[player_index] = True
+                    self.consecutive_passes = 0
+                    self._apply_action(player_index, opponent_action)
+                    continue
                 if self.consecutive_passes >= self._pass_threshold():
                     break
                 self.consecutive_passes += 1
@@ -353,6 +372,8 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.consecutive_passes = 0
         self.planning_turns = 0
         self.lorry_touched = [False] * self.n_players
+        for p in self.players:
+            p.displaced = False
         reward, info = self._execute_round()
         self.last_reward = reward
 
@@ -453,6 +474,8 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.planning_player = 0
         self.planned_players = [False] * self.n_players
         self.lorry_touched = [False] * self.n_players
+        for p in self.players:
+            p.displaced = False
         reward, info = self._execute_round()
         self.last_reward = reward
 
@@ -560,6 +583,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         if action < PIT_CAGE:
             row, column = divmod(action, MAX_COLUMNS)
             self._record_vacated(player_index, row, column)
+            player.displaced = False
             self._displace(row, column, player_index)
             player.position = row
             player.column = column
@@ -567,6 +591,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             return
 
         previous_position = player.position
+        player.displaced = False
         player.position = action
         player.column = None
         if action == LORRY:
@@ -589,14 +614,16 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
     ) -> None:
         """Note a seat walking off a card in its own column.
 
-        Only *voluntary* moves land here: a displacement moves the victim inside
-        ``_displace`` and never calls this, and a departure for the cage or the
-        lorry is not recorded either, because banking loot is an ordinary reason
-        to leave and says little about the card.  What is recorded is a card-to-
-        card step inside the seat's own column, where the seat can see the front
-        it is abandoning -- which is why it is evidence, not proof.
+        Only *voluntary* moves land here: a displaced figure moving off its card
+        is involuntary, and a departure for the cage or the lorry is not
+        recorded either, because banking loot is an ordinary reason to leave and
+        says little about the card.  What is recorded is a card-to-card step
+        inside the seat's own column, where the seat can see the front it is
+        abandoning -- which is why it is evidence, not proof.
         """
         player = self.players[player_index]
+        if player.displaced:
+            return
         if player.column != player_index or player.position < 0:
             return
         if (row, column) == (player.position, player.column):
@@ -651,6 +678,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             if not player.escaped and not player.dead:
                 player.position = starting_position
                 player.column = None
+                player.displaced = False
 
     def _prepare_haul_scoring(self, info: dict[str, Any]) -> None:
         # On a dragon every survivor is already flagged escaped and every
@@ -842,7 +870,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         if action == LORRY:
             return player.position != LORRY and player.position >= 0
         if action == PASS:
-            return self.planned_players[player_index]
+            return self.planned_players[player_index] and not player.displaced
         return False
 
     def _nobody_can_reach_a_card(self) -> bool:
@@ -858,7 +886,11 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         progressed nor ended.
         """
         for index, player in enumerate(self.players):
-            if player.escaped or player.dead or player.position == LORRY:
+            if player.escaped or player.dead:
+                continue
+            if player.displaced:
+                return False
+            if player.position == LORRY:
                 continue
             depth = min(self._movement_depth(player), len(self.rows))
             for row in range(depth):
@@ -884,6 +916,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             player_index != ignore_player
             and not player.escaped
             and not player.dead
+            and not player.displaced
             and player.position == row
             and player.column == column
             for player_index, player in enumerate(self.players)
@@ -894,6 +927,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             if (
                 not player.escaped
                 and not player.dead
+                and not player.displaced
                 and player.position == row
                 and player.column == column
             ):
@@ -935,9 +969,18 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         occupant = self._card_occupant(row, column)
         if occupant is not None:
             self.players[player_index].displacements += 1
-            if DISPLACEMENT_STEPS_TO_THE_NEXT_CARD:
+            if self.players[occupant].blast_pending:
+                self._cancel_blast(occupant)
+            if DISPLACEMENT_STAYS_ON_THE_SAME_CARD and not DISPLACEMENT_STEPS_TO_THE_NEXT_CARD:
+                self.players[occupant].position = row
+                self.players[occupant].column = column
+                self.players[occupant].cage_index = None
+                self.players[occupant].displaced = True
+                self.planned_players[occupant] = False
+            elif DISPLACEMENT_STEPS_TO_THE_NEXT_CARD:
                 landing = self._next_card_towards_the_lorries(occupant, row, column)
                 self.players[occupant].cage_index = None
+                self.players[occupant].displaced = False
                 if landing is None:
                     # It was standing on the last card: the lorry is next, which
                     # commits it to the exit area, but does not remove its next decision.
@@ -952,6 +995,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                 self.players[occupant].position = PIT_CAGE
                 self.players[occupant].column = None
                 self.players[occupant].cage_index = cage_index
+                self.players[occupant].displaced = False
             self.displacement_events.append((occupant, player_index))
 
     # ------------------------------------------------------------------
@@ -1079,7 +1123,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         # Phase 2: reveal cards. A dragon ends the haul immediately.
         for player_index in player_order:
             player = self.players[player_index]
-            if player.escaped or player.dead:
+            if player.escaped or player.dead or player.displaced:
                 continue
             if (
                 player.position == LORRY
@@ -1393,6 +1437,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                 "blast_pending": other.blast_pending,
                 "displacements": other.displacements,
                 "planned": self.planned_players[idx],
+                "displaced": other.displaced,
             }
             for idx, other in enumerate(self.players)
             if idx != player_index
@@ -1411,6 +1456,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             "own_column": player.column,
             "own_cage_index": player.cage_index,
             "own_blast_pending": player.blast_pending,
+            "own_displaced": player.displaced,
             "opponents": opponents_public,
             "used_blast_backsides": list(self.used_blast_backsides),
             "haul": self.haul,
@@ -1464,6 +1510,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                 blast_pending=other.blast_pending,
                 displacements=other.displacements,
                 planned=self.planned_players[idx],
+                displaced=other.displaced,
             )
             for idx, other in enumerate(self.players)
             if idx != player_index
@@ -1503,6 +1550,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             consecutive_passes=self.consecutive_passes,
             passes_to_close=max(0, self._pass_threshold() - self.consecutive_passes),
             own_planned=bool(self.planned_players[player_index]),
+            own_displaced=bool(me.displaced),
         )
 
     def _observation(self) -> np.ndarray:

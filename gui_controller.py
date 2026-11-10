@@ -424,7 +424,7 @@ class GameController:
             player.dynamite >= 2
             and not player.blast_pending
             and 0 <= action < PIT_CAGE
-            and action < self.movement_depth() * MAX_COLUMNS
+            and action < self.env._movement_depth(player) * MAX_COLUMNS
             and self.env._legal(action, player_index)
         )
 
@@ -496,7 +496,8 @@ class GameController:
         new = self.env.displacement_events[self._shown_displacement_count:]
         self._shown_displacement_count += len(new)
         return "".join(
-            f" Player {d + 1} stood on his own card, Player {s + 1} displaced him."
+            f" Player {d + 1} stood on his own card, Player {s + 1} displaced him"
+            f" (Player {d + 1} stays on the card and must choose a regular option except Pass)."
             for d, s in new
         )
 
@@ -557,7 +558,7 @@ class GameController:
         while not terminated and self.env.planning_player != 0:
             # P1 may have left the mine or died with this action; in that case
             # its turn never comes again and the loop would spin forever.
-            if p.escaped or p.dead:
+            if p.escaped or p.dead or self.blast_pending or self.in_tie_breaker:
                 break
             _obs, reward, terminated, _trunc, info = self.env.step_one_player()
 
@@ -748,6 +749,8 @@ class GameController:
             where = "on the lorry"
         elif column is None or pos >= len(self.env.rows):
             where = "not planned yet"
+        elif player.displaced:
+            where = f"row {pos + 1}, column {column + 1} (displaced, must move - cannot pass)"
         else:
             card = self.env.rows[pos][column]
             action = pos * MAX_COLUMNS + column

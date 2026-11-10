@@ -222,6 +222,13 @@ def figure_dragon_risk(ctx: PlayerActionContext, player_index: int) -> float:
     see, and in 200 re-rolls from that position the haul ended on a dragon 1% of
     the time.
     """
+    if player_index == ctx.player_index:
+        if getattr(ctx, "own_displaced", False):
+            return 0.0
+    else:
+        for opponent in ctx.opponents:
+            if opponent.player_index == player_index and getattr(opponent, "displaced", False):
+                return 0.0
     row, column = _figure_cell(ctx, player_index)
     if not 0 <= row < PIT_CAGE:
         return 0.0
@@ -309,7 +316,11 @@ def state_features(ctx: PlayerActionContext) -> np.ndarray:
     best_other_score = max(opponent_scores) if opponent_scores else ctx.own_score
 
     own_row = ctx.own_position if 0 <= ctx.own_position < PIT_CAGE else -1
-    on_own_column = ctx.own_column is not None and ctx.own_column == ctx.player_index
+    on_own_column = (
+        not getattr(ctx, "own_displaced", False)
+        and ctx.own_column is not None
+        and ctx.own_column == ctx.player_index
+    )
     cage_index = ctx.own_cage_index if ctx.own_cage_index is not None else -1
 
     visible_gems, visible_dynamite, visible_dragons, visible_unknown = (
@@ -373,7 +384,8 @@ def state_features(ctx: PlayerActionContext) -> np.ndarray:
         values[base + 7] = opponent.card_count / 8.0
         values[base + 8] = float(opponent.blast_pending)
         values[base + 9] = float(
-            opponent.column is not None
+            not getattr(opponent, "displaced", False)
+            and opponent.column is not None
             and opponent.column == opponent.player_index
         )
         values[base + 10] = float(opponent.player_index in displaced)
@@ -476,10 +488,14 @@ def action_features(
 
 
 def _occupant(ctx: PlayerActionContext, row: int, column: int) -> int | None:
-    if ctx.own_position == row and ctx.own_column == column:
+    if (
+        not getattr(ctx, "own_displaced", False)
+        and ctx.own_position == row
+        and ctx.own_column == column
+    ):
         return ctx.player_index
     for opponent in ctx.opponents:
-        if opponent.escaped or opponent.dead:
+        if opponent.escaped or opponent.dead or getattr(opponent, "displaced", False):
             continue
         if opponent.position == row and opponent.column == column:
             return opponent.player_index
@@ -578,6 +594,11 @@ def can_wait_on_a_dragon(ctx: PlayerActionContext) -> bool:
     """
     if int(PASS) in {int(action) for action in ctx.legal_actions}:
         return False  # already planned this round: nothing behind us is forced to move
+    if getattr(ctx, "own_displaced", False):
+        return any(
+            not opponent.escaped and not opponent.dead and not opponent.planned
+            for opponent in ctx.opponents
+        )
     active = {ctx.player_index}
     active |= {
         opponent.player_index
@@ -669,6 +690,8 @@ def walks_past_a_free_card(ctx: PlayerActionContext) -> set[int]:
 
 def own_card_is_known_dragon(ctx: PlayerActionContext) -> bool:
     """True when the figure stands on a card the seat can see is a dragon."""
+    if getattr(ctx, "own_displaced", False):
+        return False
     row = ctx.own_position
     if not 0 <= row < len(ctx.public_rows):
         return False
@@ -729,6 +752,12 @@ def lorry_skips_a_card_worth_taking(ctx: PlayerActionContext) -> bool:
     """
     if ctx.own_position == LORRY:
         return False  # parked already; the move is not legal from here anyway
+    if getattr(ctx, "own_displaced", False) and not any(
+        0 <= int(a) < PIT_CAGE for a in ctx.legal_actions
+    ):
+        # Displaced on row 0: no card is reachable and Pass is illegal, so the
+        # only choice is leaving via pit cage vs staying in the haul on the lorry.
+        return not cage_banks_nothing(ctx)
     return not own_card_is_known_dragon(ctx)
 
 
@@ -744,7 +773,12 @@ def rival_is_on_my_dragon(ctx: PlayerActionContext) -> bool:
     """True when a rival stands on a card in this seat's column that it can see is
     a dragon: the seat knows the round is about to end with a dragon."""
     for opponent in ctx.opponents:
-        if opponent.dead or opponent.escaped or opponent.position == PIT_CAGE:
+        if (
+            opponent.dead
+            or opponent.escaped
+            or getattr(opponent, "displaced", False)
+            or opponent.position == PIT_CAGE
+        ):
             continue
         if opponent.column != ctx.player_index:
             continue
@@ -839,7 +873,7 @@ def _cage_reason(ctx: PlayerActionContext) -> str:
     elif any(opponent.blast_pending for opponent in ctx.opponents):
         why.append("a rival's blast")
     for opponent in ctx.opponents:
-        if opponent.dead or opponent.escaped:
+        if opponent.dead or opponent.escaped or getattr(opponent, "displaced", False):
             continue
         if opponent.column != ctx.player_index:
             continue

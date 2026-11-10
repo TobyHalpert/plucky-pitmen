@@ -4,9 +4,14 @@ from __future__ import annotations
 
 import argparse
 import sys
-import tkinter as tk
 from dataclasses import dataclass
-from tkinter import ttk
+
+try:
+    import tkinter as tk
+    from tkinter import ttk
+except ModuleNotFoundError:  # pragma: no cover - headless environments without Tk
+    tk = None  # type: ignore[assignment]
+    ttk = None  # type: ignore[assignment]
 
 from game_env import (
     BACKSIDE_A, BACKSIDE_B, BACKSIDE_C, DRAGON, DYNAMITE, GEM, LORRY,
@@ -200,6 +205,82 @@ class MineRenderer:
 
         return row_height, row_step, cage_centers, card_centers
 
+    @staticmethod
+    def token_positions(
+        env: MineEnv,
+        left: float,
+        column_width: float,
+        exit_y: float,
+        cage_centers: list[float],
+        card_centers: dict[tuple[int, int], tuple[float, float]],
+    ) -> dict[int, tuple[float, float]]:
+        """Compute canvas ``(x, y)`` coordinates for every visible player token.
+
+        When a player displaces an opponent, the opponent stays on that same
+        card until their turn. Grouping co-located card tokens and spreading
+        them horizontally keeps both tokens visible side by side inside the
+        card, with the active claimant on the left and displaced token(s) on
+        the right.
+        """
+        card_groups: dict[tuple[int, int], list[int]] = {}
+        for i, player in enumerate(env.players):
+            if player.escaped or player.dead:
+                continue
+            if (
+                player.position != PIT_CAGE
+                and player.position != LORRY
+                and player.column is not None
+                and (player.position, player.column) in card_centers
+            ):
+                card_groups.setdefault((player.position, player.column), []).append(i)
+
+        for members in card_groups.values():
+            members.sort(key=lambda idx: (env.players[idx].displaced, idx))
+
+        card_width = max(
+            2 * LAYOUT.token_radius + 4.0,
+            column_width - 2 * LAYOUT.card_pad_x,
+        )
+        positions: dict[int, tuple[float, float]] = {}
+        for i, player in enumerate(env.players):
+            if player.escaped:
+                continue
+            if player.position == PIT_CAGE and cage_centers:
+                x = left + i * column_width + column_width / 2
+                cage_index = (
+                    player.cage_index
+                    if player.cage_index is not None
+                    else len(cage_centers) - 1
+                )
+                y = cage_centers[min(cage_index, len(cage_centers) - 1)]
+            elif (
+                not player.dead
+                and player.column is not None
+                and (player.position, player.column) in card_centers
+            ):
+                cell = (player.position, player.column)
+                cx, cy = card_centers[cell]
+                members = card_groups[cell]
+                if len(members) == 1:
+                    x, y = cx, cy
+                else:
+                    slot = members.index(i)
+                    max_step = (
+                        card_width - 2 * LAYOUT.token_radius - 4.0
+                    ) / (len(members) - 1)
+                    step_x = min(2 * LAYOUT.token_radius + 6.0, max(14.0, max_step))
+                    x = cx + (slot - (len(members) - 1) / 2.0) * step_x
+                    y = cy
+            else:
+                y = (
+                    (LAYOUT.lorry_y1 + LAYOUT.lorry_y2) / 2
+                    if player.position == LORRY
+                    else exit_y + LAYOUT.exit_token_offset
+                )
+                x = left + i * column_width + column_width / 2
+            positions[i] = (x, y)
+        return positions
+
     def _draw_tokens(
         self,
         env: MineEnv,
@@ -209,28 +290,32 @@ class MineRenderer:
         cage_centers: list[float],
         card_centers: dict[tuple[int, int], tuple[float, float]],
     ) -> None:
-        for i, player in enumerate(env.players):
-            if player.escaped:
-                continue
-            if player.position == PIT_CAGE and cage_centers:
-                x = left + i * column_width + column_width / 2
-                cage_index = player.cage_index if player.cage_index is not None else len(cage_centers) - 1
-                y = cage_centers[min(cage_index, len(cage_centers) - 1)]
-            elif not (player.dead or player.escaped) and player.column is not None \
-                    and (player.position, player.column) in card_centers:
-                x, y = card_centers[(player.position, player.column)]
-            else:
-                y = (LAYOUT.lorry_y1 + LAYOUT.lorry_y2) / 2 if player.position == LORRY \
-                    else exit_y + LAYOUT.exit_token_offset
-                x = left + i * column_width + column_width / 2
-
+        positions = self.token_positions(
+            env, left, column_width, exit_y, cage_centers, card_centers
+        )
+        for i, (x, y) in positions.items():
+            player = env.players[i]
             color = PLAYER_COLORS[i]
             r = LAYOUT.token_radius
-            self.canvas.create_oval(x - r, y - r, x + r, y + r, fill=color, outline="#101820", width=2)
-            self.canvas.create_text(x, y, text=str(i + 1), fill="#101820", font=ui_font(9, "bold"))
+            self.canvas.create_oval(
+                x - r, y - r, x + r, y + r,
+                fill=color, outline="#101820", width=2,
+            )
+            self.canvas.create_text(
+                x, y, text=str(i + 1), fill="#101820", font=ui_font(9, "bold"),
+            )
+            if player.displaced:
+                dr = r + 3
+                self.canvas.create_oval(
+                    x - dr, y - dr, x + dr, y + dr,
+                    outline="#ff9f43", width=2, dash=(3, 2),
+                )
             if player.blast_pending:
                 br = LAYOUT.blast_radius
-                self.canvas.create_oval(x - br, y - br, x + br, y + br, outline="#ff6b6b", width=3)
+                self.canvas.create_oval(
+                    x - br, y - br, x + br, y + br,
+                    outline="#ff6b6b", width=3,
+                )
 
     def _draw_pit_cage_row(self, left: float, y: float, right: float, height: float) -> None:
         self.canvas.create_rectangle(left, y, right, y + height, fill="#263f48", outline="#52717a", width=1)
@@ -285,6 +370,7 @@ class MineViewer:
         self.haul_var = tk.StringVar()
         self.stack_var = tk.StringVar()
         self.message_var = tk.StringVar()
+        self.action_header_var = tk.StringVar(value="YOUR ACTION")
         self.action_var = tk.IntVar(value=0)
         self.blast_requested = False
         self._action_choice_by_label: dict[str, tuple[int, bool]] = {}
@@ -355,7 +441,7 @@ class MineViewer:
         self.players_text.configure(tabs=("1.55i",))
         self.players_text.pack(fill="x", pady=(8, 18))
 
-        tk.Label(side, text="YOUR ACTION", fg="#f5c451", bg="#14242c",
+        tk.Label(side, textvariable=self.action_header_var, fg="#f5c451", bg="#14242c",
                  font=ui_font(11, "bold")).pack(anchor="w")
         self.action_menu = ttk.Combobox(side, state="readonly", width=20)
         self.action_menu.pack(fill="x", pady=(8, 8))
@@ -629,7 +715,12 @@ class MineViewer:
         self.players_text.delete("1.0", "end")
         for i, player in enumerate(env.players):
             starting = " (starting player)" if i == env.starting_player else ""
-            status = " OUT" if player.escaped else ""
+            if player.escaped:
+                status = " OUT"
+            elif player.displaced:
+                status = " DISPLACED"
+            else:
+                status = ""
             collected = ", ".join(BACKSIDE_SYMBOLS[b] for b in player.collected_backsides) or "-"
             if i == 0:
                 gems = ", ".join(
@@ -713,7 +804,10 @@ class MineViewer:
         self.action_menu.set(selected_label)
 
     def _update_action_options(self, preferred_label: str | None = None) -> None:
+        header = getattr(self, "action_header_var", None)
         if self.controller.in_tie_breaker:
+            if header is not None:
+                header.set("YOUR ACTION")
             choices = [
                 (
                     "Draw from deck" if src == "deck"
@@ -728,12 +822,21 @@ class MineViewer:
 
         player = self.controller.player
         if self.controller.blast_pending:
+            if header is not None:
+                header.set("YOUR ACTION")
             choices = [
                 (f"Blast choice {index + 1} ({BACKSIDE_SYMBOLS[card[1]]})", index, False)
                 for index, card in enumerate(player.blast_cards)
             ]
             self._apply_action_choices(choices)
             return
+
+        if header is not None:
+            header.set(
+                "YOUR ACTION (displaced - no Pass)"
+                if player.displaced
+                else "YOUR ACTION"
+            )
 
         legal = self.controller.legal_actions()
         choices = [(self._action_label(action), action, False) for action in legal]

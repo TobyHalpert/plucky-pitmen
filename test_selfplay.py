@@ -1784,6 +1784,7 @@ def test_the_counter_banks_two_gems_and_hands_the_nets_a_losing_table(monkeypatc
     """
     import game_env
 
+    monkeypatch.setattr(game_env, "DISPLACEMENT_STAYS_ON_THE_SAME_CARD", False)
     monkeypatch.setattr(game_env, "DISPLACEMENT_STEPS_TO_THE_NEXT_CARD", False)
     # Pin the historical action safeguard as well as the historical checkpoint.
     import features
@@ -2088,6 +2089,7 @@ def test_a_push_sends_the_victim_to_a_cage_with_every_card_it_collected(monkeypa
     """
     import game_env
 
+    monkeypatch.setattr(game_env, "DISPLACEMENT_STAYS_ON_THE_SAME_CARD", False)
     monkeypatch.setattr(game_env, "DISPLACEMENT_STEPS_TO_THE_NEXT_CARD", False)
     from game_env import BACKSIDE_A, BACKSIDE_B, GEM, PIT_CAGE
 
@@ -2272,3 +2274,64 @@ def test_reachable_rival_does_not_make_a_last_chance_dragon_safe():
     assert not mask[dragon]
     assert not mask[dragon + N_BASE_ACTIONS]
     assert mask.any()
+
+
+def test_same_card_displacement_policy_masks_and_dragon_bait_safety():
+    """Displaced victim stays on the card, cannot pass, and avoids late dragon traps."""
+    from features import action_mask, can_wait_on_a_dragon
+    from game_env import BACKSIDE_A, DRAGON, GEM, LORRY, PASS, PIT_CAGE
+
+    # 1. Late-round displacement (all rivals already planned): Pass is absent,
+    #    and stepping onto a shallower own-column dragon is NOT safe because the
+    #    other three seats can pass in a row and close the phase on top of it.
+    env = MineEnv(opponents=3)
+    env.reset(seed=4)
+    env.starting_player = 0
+    env.rows[2][0] = (GEM, BACKSIDE_A)
+    env.rows[1][0] = (DRAGON, BACKSIDE_A)
+    env.rows[0][0] = (GEM, BACKSIDE_A)
+    env.players[0].position, env.players[0].column = 2, 0
+    env.players[1].position, env.players[1].column = 2, 1
+    env.players[2].position, env.players[2].column = 2, 2
+    env.players[3].position, env.players[3].column = 3, None
+    env.planned_players = [True, True, True, True]
+    env.planning_player = 3
+    env.step_one_player(2 * MAX_COLUMNS + 0, force_action=True)  # P4 displaces P1
+
+    ctx = env.player_action_context(0)
+    assert ctx.own_displaced is True
+    assert PASS not in ctx.legal_actions
+    assert not can_wait_on_a_dragon(ctx)
+    mask = action_mask(ctx)
+    assert not mask[PASS]
+    assert not mask[1 * MAX_COLUMNS + 0], "shallower dragon is doomed when all rivals planned"
+    assert mask[0 * MAX_COLUMNS + 0], "shallower gem remains available"
+
+    # 2. Displaced at row 0 with 0 gems and no threat: chooses LORRY (stays in haul).
+    env.reset(seed=4)
+    env.rows[0][1] = (GEM, BACKSIDE_A)
+    env.players[1].position, env.players[1].column = 0, 1
+    env.players[0].position, env.players[0].column = 2, 0
+    env.planned_players = [True, True, True, True]
+    env.planning_player = 0
+    env.step_one_player(0 * MAX_COLUMNS + 1, force_action=True)  # P1 displaces P2 at row 0
+
+    ctx_r0_safe = env.player_action_context(1)
+    assert set(ctx_r0_safe.legal_actions) == {int(PIT_CAGE), int(LORRY)}
+    mask_r0_safe = action_mask(ctx_r0_safe)
+    assert mask_r0_safe[int(LORRY)] and not mask_r0_safe[int(PIT_CAGE)]
+
+    # 3. Displaced at row 0 off a known dragon (displacer now stands on our dragon!):
+    #    chooses PIT_CAGE to survive the dragon reveal.
+    env.reset(seed=4)
+    env.rows[0][1] = (DRAGON, BACKSIDE_A)
+    env.players[1].position, env.players[1].column = 0, 1
+    env.players[0].position, env.players[0].column = 2, 0
+    env.planned_players = [True, True, True, True]
+    env.planning_player = 0
+    env.step_one_player(0 * MAX_COLUMNS + 1, force_action=True)
+
+    ctx_r0_dragon = env.player_action_context(1)
+    mask_r0_dragon = action_mask(ctx_r0_dragon)
+    assert mask_r0_dragon[int(PIT_CAGE)] and not mask_r0_dragon[int(LORRY)]
+
