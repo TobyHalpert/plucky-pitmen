@@ -1,0 +1,31 @@
+{
+  "checkpoint": "checkpoints/selfplay4_blast_trigger.npz",
+  "resume": "checkpoints/selfplay4.npz",
+  "blind": true,
+  "positions": 96,
+  "held_out": 48,
+  "samples": 24,
+  "continuations": 4608,
+  "held_continuations": 2304,
+  "before_train": {
+    "conditional_estimated_win_share": 0.2676228836730974,
+    "mean_candidate_probability_mass": 0.5992241592041125,
+    "teacher_best": 0.32906539351851855
+  },
+  "after_train": {
+    "conditional_estimated_win_share": 0.2710175374399716,
+    "mean_candidate_probability_mass": 0.912278426811099,
+    "teacher_best": 0.32906539351851855
+  },
+  "before_held": {
+    "conditional_estimated_win_share": 0.32572621516053785,
+    "mean_candidate_probability_mass": 0.7213342724086639,
+    "teacher_best": 0.36935763888888884
+  },
+  "after_held": {
+    "conditional_estimated_win_share": 0.3221122518736916,
+    "mean_candidate_probability_mass": 0.9048525982846817,
+    "teacher_best": 0.36935763888888884
+  },
+  "final_loss": 0.8274250533431768
+}

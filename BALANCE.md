@@ -1,0 +1,3435 @@
+# Is Plucky Pitmen balanced?
+
+**Correction (this revision).** An earlier version of this document claimed
+that "leave on turn one" is a dominant strategy. That claim was wrong, and the
+error is worth keeping on the record because it is the classic benchmarking
+trap. Against opponents who collect loot and then leave — which the printed
+rules let them do — an empty-handed escape is worth **exactly zero**. The
+rusher's big margins came from opponents who *stayed in the mine and died*, and
+from a stall valve that voided those opponents' loot while still paying the
+escaping player. With that valve replaced by a real rule (a lorry stand-off ends
+the haul and the players still inside leave and are scored), the rusher is worth
+**+0.26 points [-0.23, +0.77]** against the scripted bots — noise.
+
+The supportable conclusions are:
+
+* There is **no dominant strategy**. Leaving early is a *parasite*: it converts
+  other players' mistakes into points, and it is worthless against a player who
+  simply takes a gem and walks out.
+* The best policy in this repository is the opposite of rushing: **collect loot,
+  then leave**. It beats the rusher **+8.37 points, 100% top score** and beats
+  the trained self-play agent **+3.10 points**.
+* A leaderboard against fixed bots cannot detect this on its own, because the
+  ranking depends on what the bots do. Head-to-head against a leaver is the test
+  that matters.
+* **Blasting is not too weak, but it is not a free win either.** It is a strong
+  move on the old peeking engine (**+1.00** at four players) and a coin-flip
+  under the printed face-down rule (**+0.38**, interval touching zero); against
+  a field that banks loot it *loses* points (**-0.52**). That is a coherent
+  design; and the fact that the self-play learners barely blast is mostly an
+  artefact of the learner, not a verdict on the rule — it seldom holds two
+  dynamite and cancels most of the blasts it announces (§5).
+* **The threat of a blast is real — worth about 0.4 points to a non-blaster —
+  and the AI never learns to react to it.** A one-line "walk to the pit cage
+  when someone's blast is pending" policy recovers the whole loss; the trained
+  network moves its action distribution by 0.65% (§6).
+* Answering the 4-player question: the game does **not** get more random or
+  less skill-driven at four players, the leaver is still the best single seat,
+  and the learner trained on four players (**+1.11**, 40.7% wins) is genuinely
+  better than the same learner trained on three (**-0.31**) (§4).
+* **Two engine bugs** were found, and both charged the agents for them. A
+  player killed by a dragon while its blast was pending left the haul unable to
+  finish, so the game was scored all-zero (36 of 60 always-blaster games). And
+  the action grid was sized by the *opening* board — five rows — while the mine
+  keeps growing a row every round: rows 5 and deeper could not be named as an
+  action and were cut out of the observation, so the agents could not dig the
+  front of a deep mine (10-13% of dealt cards were stranded there). Both fixed,
+  every checkpoint retrained, every number in this document regenerated, and
+  every report now prints its abandoned-game count (§7).
+* A third "bug" I initially reported in the same area — an unwinnable
+  tie-breaker — does not exist: a haul spends one dragon and the deck is
+  rebuilt every haul, so five remain against the four a tie-break can need. §7
+  records the withdrawal, including the bad arithmetic in my first correction.
+
+All numbers were regenerated after the action-grid fix and a full retrain of
+every checkpoint (§7), because the grid changed what the agents could do.
+4-player results are labelled as such; everything else is 3 players. Seats
+rotated every game, 300 games per leaderboard row, 60 games per head-to-head
+direction, 240 games per blast measurement, 95% bootstrap CIs (2000 resamples).
+Every report states how many games the engine had to abandon (always zero now —
+see §7, because it used to be a silent source of fake data).
+
+---
+
+## 1. The parasite: what "leave on turn one" is actually worth
+
+`agents.RusherAgent` walks to the nearest pit cage and never looks at a card.
+Against the shipped benchmarks it looks strong:
+
+| policy | win % | mean score | margin vs 2 × rule [95% CI] | escapes (0 gems) |
+| :-- | --: | --: | :-- | --: |
+| **leaver (collect + leave)** | 46.7% | +3.26 | **+1.19 [+0.68, +1.75]** | 99% (94%) |
+| random | 37.3% | +1.70 | +0.35 [-0.14, +0.80] | 58% (67%) |
+| rusher | 35.7% | +2.79 | +0.26 [-0.23, +0.77] | 100% (100%) |
+| rule | 31.3% | +2.33 | +0.08 [-0.36, +0.48] | 82% (24%) |
+| selfplay (60 gens) | 35.3% | +1.32 | -0.31 [-0.75, +0.10] | 67% (79%) |
+| cautious | 30.7% | +0.76 | -0.56 [-0.91, -0.18] | 48% (52%) |
+| greedy | 24.3% | +0.18 | -1.00 [-1.30, -0.66] | 31% (51%) |
+
+Now split the rusher's points by what its opponents did (300 games, rusher vs
+2 × rule, per haul):
+
+| what the other two did | share of hauls | rusher points/haul |
+| :-- | --: | --: |
+| at least one left the mine **with gems** | **65.9%** | **0.00** |
+| nobody banked loot (dragon or lorry stand-off) | 34.1% | +2.72 |
+
+(The mechanism is unchanged by the lorry rule and is still visible in every
+report: the rusher scores **0.00** in every haul where a rival banks loot. What
+changed is that campers now get to bank theirs.)
+
+**Every single point the rusher earns comes from hauls where nobody else
+banked loot.** When the other players leave with gems, the rules compare gems
+among everybody who left and the rusher's empty escape is worth nothing. This
+is the mechanism the first version of this report missed.
+
+The same split for every policy in the pool is in the report's
+"Where the points come from" section, which is generated for exactly this
+reason.
+
+### The valve was part of the problem
+
+The first version of this repository patched the lorry deadlock with a
+`stall_rounds` valve: a haul in which nobody collected a card for eight rounds
+was scored as "stalled", campers got nothing, and **the player who had already
+escaped kept the bonus**. That is not a rule, it is a subsidy: it converts "the
+campers might still have left and beaten me" into "their loot is void and I keep
+the +3".
+
+It is replaced by an actual rule, contributed in review:
+
+> If all players still in the mine stand on their lorry at the end of a planning
+> phase, the haul is over.
+
+A lorry collects nothing, so such a haul can never progress. Crucially, ending
+the haul means the remaining players **leave the mine automatically and take
+part in the scoring** with the loot they are holding — the same treatment the
+rules already give "only one player remains" and "a full row cannot be formed".
+Standing on a lorry costs a turn; it does not cost you the haul.
+
+That second half is what closes the exploit. Measured over the same benchmark:
+
+| metric | old valve (campers voided) | lorry rule (campers scored) |
+| :-- | --: | --: |
+| rusher margin vs 2 × rule | **+2.69 [+2.13, +3.27]** | **+0.26 [-0.23, +0.77]** |
+| trained agent margin vs 2 × rule | +4.14 [+3.54, +4.70] | -0.31 [-0.75, +0.10] |
+| trained agent's escape rate | 99% | 67% |
+| hauls ended by a lorry stand-off | 20.8% | 19.2% |
+
+The escapee's empty +3 now competes with campers who hold two or three gems, so
+the free ride disappears. Self-play notices immediately: the retrained agent is
+at parity with the scripted bots instead of far ahead.
+
+## 2. The counter: collect loot, then leave
+
+`agents.LeaverAgent` is the cheapest policy that exploits the race: take a gem,
+then walk to the pit cage. It is not clever — it picks a card, holds position,
+and leaves once it holds loot.
+
+| A | B | A top-score % | A margin [95% CI] | B top-score % | B margin [95% CI] |
+| :-- | :-- | --: | :-- | --: | :-- |
+| **leaver** | **rusher** | **100.0%** | **+8.37 [+7.92, +8.79]** | 35.0% | -0.92 [-1.54, -0.30] |
+| **leaver** | **selfplay** | 71.0% | **+3.10 [+2.38, +3.83]** | 21.0% | -1.68 [-2.17, -1.17] |
+| rule | selfplay | 57.0% | +1.68 [+0.89, +2.46] | 43.0% | +0.24 [-0.42, +0.95] |
+| rusher | rule | 49.0% | +0.67 [-0.25, +1.53] | 100.0% | +1.30 [+0.99, +1.65] |
+| rule | leaver | 43.0% | +0.75 [+0.06, +1.49] | 52.0% | +1.20 [+0.17, +2.22] |
+
+* A single rusher against two leavers tops the scoreboard 35.0% of the time
+  with a **negative** margin: it is a losing seat.
+* A single leaver against two rushers wins **99.5%** of games (measured over 200
+  games) with a **+7.98** margin, because the rushers leave, no further rows are
+  dealt, and the leaver then picks up loot unopposed before walking out with
+  more gems than the empty-handed pair. At four players it is the same story:
+  one leaver against three rushers wins **99.5%** with **+7.94**.
+* The trained self-play agent loses to the leaver as well (−1.68 as the lone
+  seat, +3.10 for the leaver). Self-play converged on an empty-handed escape
+  because its opponent pool — scripted bots and its own snapshots — kept giving
+  it away.
+
+Under the fixed scoring (`--no-solo-escape-bonus`) the ordering flips exactly
+where the bonus is doing the work: leaver vs rusher is still **+8.37**, leaver
+vs the retrained agent **+2.19** at 69.0% top score, and **every** policy now
+loses to `rule` (leaver **-1.79**, rusher **-2.30**, the retrained agent
+**-1.23**, `rule` itself **-0.01**). The empty-escape bonus is what makes the
+parasite pay; without it, collecting and leaving is the only thing that works.
+
+## 3. Why the leaderboard lied
+
+Two things made the rusher look dominant, and neither is about the game's
+quality:
+
+1. **The benchmark population decides the ranking.** Against the scripted bots
+   the order used to be selfplay > rusher > leaver. Against a leaver it inverts
+   completely — the leaver is now the top row. A margin measured against a fixed, exploitable opponent says
+   nothing about whether a strategy is strong — only that it is strong *there*.
+2. **The old stall valve paid the parasite** — see above. It voided the
+   campers' loot while the escapee kept the bonus, so a policy that made other
+   players park was rewarded twice over. With campers scored instead, the rusher
+   falls from +2.69 to +0.26 and the trained agent from +4.14 to -0.31.
+
+The methodological fix that is now built in: always include a `rusher` **and** a
+`leaver` in `--agents`, and read the "Where the points come from" table. A
+policy whose points vanish whenever a rival banks loot is farming mistakes.
+
+## 4. Three players vs four players
+
+Everything above is three players, because that is what the original question
+was measured on. The printed game seats up to five, and player count changes the
+incentives: the haul bonus goes to the single escapee holding the most gems, so
+a fourth player is one more rival to out-collect *and* one more body left in the
+mine to die. So the same benchmark was re-run with four players and a learner
+trained on four players (`checkpoints/selfplay4.npz`).
+
+| policy | win % | top-score % | margin vs 3 × rule [95% CI] | escapes (0 gems) |
+| :-- | --: | --: | :-- | --: |
+| **selfplay4 (4-player learner)** | **44.3%** | 50.7% | **+1.65 [+1.24, +2.07]** | 85% (88%) |
+| **leaver (collect + leave)** | 39.0% | 46.3% | **+1.30 [+0.84, +1.78]** | 99% (99%) |
+| random | 27.7% | 33.7% | +0.22 [-0.10, +0.58] | 46% (64%) |
+| rule | 23.3% | 28.0% | +0.03 [-0.29, +0.37] | 64% (21%) |
+| rusher | 28.3% | 32.3% | -0.11 [-0.46, +0.26] | 100% (100%) |
+| cautious | 23.3% | 31.7% | -0.30 [-0.56, -0.03] | 39% (59%) |
+| greedy | 18.3% | 26.3% | -0.63 [-0.85, -0.41] | 24% (65%) |
+
+What changes with a fourth player:
+
+* **The mine is more lethal, not more random.** Hauls end on a dragon 61.3% of
+  the time (52.8% at three players), lorry stand-offs rise to 26.8% (19.2%),
+  and a game takes 101 planning decisions instead of 64. The luck band barely
+  moves: mirror-match spread 4.63 points and 15% tied top scores, against 5.01
+  and 13% at three players. Four players is *more* mine, not more coin-flip.
+* **The cheap escapes get worse, playing gets better.** The rusher's margin goes
+  from +0.26 to -0.11 and a lone rusher tops the board only 7% of the time
+  against three leavers (+8.05 for the leaver and -2.02 for the rusher, both
+  directions, both intervals excluding zero). With one more rival left inside,
+  there is one more player to out-collect, and an empty-handed escape competes
+  with three loot bags instead of two.
+* **The learner is genuinely better at four players.** The 4-player network has
+  a **+1.65** margin and 44.3% wins while the 3-player network managed -0.31 in
+  its own setting — and it is now the top row of the table, ahead of every
+  scripted policy including the leaver. It is not a different algorithm; it is
+  the same REINFORCE net, and the 4-player league gave it opponents worth
+  copying. Head-to-head it still loses to the leaver: **+2.63** for the leaver,
+  **-1.57** for the learner — the leaderboard is one seat against three `rule`
+  bots, and against a field that banks loot the leaver is still king.
+* **The leaver survives the extra seat.** Its margin is +1.30 against +1.19 at
+  three players, and it still beats every scripted policy in both directions
+  (+1.82 head-to-head against `rule`). It is now the second row, because the
+  learner passed it on this benchmark — but not in a direct duel, below.
+
+So the answer to "is this balanced" does not flip with player count: collect and
+leave is the best *scripted* policy at both counts, rushing is a parasite at
+both counts, and no scripted policy is dominant. What player count changes is
+how much the trained agent gets out of self-play.
+
+### Training on: 120 more generations
+
+The 4-player learner was resumed from its 60-generation checkpoint and trained
+for **120 more generations** (7,680 more games, 11,520 in total), saved as
+`checkpoints/selfplay4_long.npz` and promoted to `selfplay4.npz` (the checkpoint
+this section benchmarks; the old one is kept as `selfplay4_g060.npz`).
+
+Head-to-head, both networks in the same games (200 games, seats rotated, two
+`rule` bots filling), the new network is **+1.13 points per game** better
+(se 0.25) and ahead in 76% of games. The benchmark win rate against three `rule`
+bots went from 35% to **45%**, the margin from +0.72 to **+1.52**. So the extra
+training helped — but *how* it helped is the interesting part
+(`profile_agent.py`, 600 games each, one seat, seats rotated):
+
+| habit | 60 generations | 180 generations |
+| :-- | --: | --: |
+| win % / margin / score vs 3 × rule | 35% / +0.72 / +1.56 | **45% / +1.52 / +2.44** |
+| planning decisions per game | 14 | 12 |
+| digs per game | 7.1 | **5.3** |
+| ...in its own column (fronts visible) | 42% | **50%** |
+| ...in the front row | 14% | 12% |
+| ...mean row dug (0 = nearest the lorry) | 0.89 | 0.72 |
+| ...into a face-up dragon in its own column | 0.54 | 0.46 |
+| passes per game | 2.61 | 2.92 |
+| **pit-cage retreats per game** | 2.32 | **2.96** |
+| **lorry exits per game** | 1.97 | **0.75** |
+| decisions with a dynamite pair in hand | 0.32 | 0.22 |
+| blasts announced / fired per game | 0.12 / 0.03 | 0.07 / 0.02 |
+| hauls ending on a dragon | 56% | 51% |
+| counted as escaped (with 0 gems) | 76% (83%) | **88% (89%)** |
+| gems carried out per escape | 0.21 | 0.13 |
+| points/haul when a rival banks loot | -0.01 | +0.02 |
+| points/haul when no rival does | +1.17 | **+1.96** |
+
+Three things changed, and they are one thing:
+
+1. **It stopped leaving and started camping.** Lorry exits fell from 1.97 to
+   0.75 per game while pit-cage retreats rose from 2.32 to 2.96 and passes from
+   2.61 to 2.92. A seat standing in a pit cage is immune to the dragon revealed
+   in that round — it is marked escaped before the cards are turned — so
+   "be in a cage when the mine kills everyone else" is a real line, and the
+   learner found it.
+2. **It digs less, shallower, and nearer home.** Digs per game fell 7.1 → 5.3,
+   the mean dug row moved from 0.89 to 0.72, and the share of digs in its own
+   (fully visible) column rose 42% → 50%. Consequently fewer hauls end on a
+   dragon (56% → 51%) and its escape count rises to 88% — while gems carried
+   out per escape fall 0.21 → 0.13. It is buying survival, not loot.
+3. **The points now come from opponents' graves.** When a rival banks loot it
+   still scores nothing (+0.02); when nobody does, it scores +1.96 per haul, up
+   from +1.17. Read together with the escape lines, the extra training taught
+   it the same lesson the leaver exploits, one row earlier in the game: let the
+   others die in the mine, and be the one who is not in it.
+
+Two honest caveats. The training curve itself is noisy and *not* monotone — the
+benchmark win rate at 20-generation checkpoints during the extra run went
+41.7 / 43.3 / 40.0 / 36.7 / 35.0 / 40.0% — so the headline is the paired
+head-to-head, not the curve. And the crown is benchmark-specific: it tops the
+leaderboard against three `rule` bots, but in a direct duel the leaver still
+beats it **+2.63 to -1.57**, because the leaver banks loot before the dragon
+arrives and the camper does not.
+
+One habit did not improve and is worth watching in the viewer: it still steps
+onto a **face-up dragon in its own column 0.46 times per game** (down from
+0.54), where the `rule` bot does it 0.00 times. In a 100-game sample of that
+habit, all 41 cases had at least one other legal action available, so it is a
+policy choice rather than a forced move. What that choice is worth is the next
+question, and the answer is not the one the count suggests.
+
+### The dragon in your own column is bait, not a blunder
+
+The habit looks suicidal and is not. The rule that decides it is displacement:
+
+* only the **owner** of a column knows the front of a card in it — everyone else
+  sees a backside, so nobody else can know the card is a dragon;
+* anyone standing **deeper in the mine** may displace an opponent who occupies a
+  card in that opponent's own column, and the displaced figure goes to the
+  nearest pit cage *towards the lorries*;
+* a figure in a pit cage **leaves the mine at the start of the execution phase**,
+  before the cards are turned. It is safe from the dragon and it banks the gems
+  it is carrying. The rival who pushed it is now standing on the card.
+
+So a known dragon in your own column is a lever: stand on it, and the first
+rival who gambles on that backside pushes you into a free, safe exit and then
+eats the dragon himself. Note also that the blunder audit behind this section's
+predecessor counted every *intermediate* planning decision, not the committed
+one — a plan can be changed up to the last turn, so a figure seen on the card in
+the viewer is not yet a figure that will take it. Ask the engine instead: 600
+games, learner in seat 0 against three `rule` bots, temperature 0.7.
+
+| measurement | value |
+| :-- | --: |
+| hauls where the learner named its own face-up dragon | 257 of 1,800 (0.43/game) |
+| ...of those, hauls where some rival stood deep enough to push | 251 |
+| times a rival did push it off a dragon card | 248 |
+| in the 242 hauls holding such a push: a rival took the dragon | 228 (94%) |
+| in those hauls: the learner escaped (in the cage) | 173 (71%) |
+| times the learner ended up eating the dragon itself | 3 of 251 (1.2%) |
+| hauls where **no** rival was deep enough to push | 6 |
+| ...of those, the learner took the card and died | 3 of 6 |
+
+The last two rows are the only real mistake in the whole pattern: with nobody
+deep enough, there is nothing to bait, so stepping on the card means eating it.
+That variant is now filtered out (`features.doomed_dragon_digs`, applied in
+`action_mask`), and it costs nothing measurable — 400 games, guard on vs off:
+
+| | win % | score | doomed digs | ate the dragon |
+| :-- | --: | --: | --: | --: |
+| guard on | 43.2% | +2.08 | 0 | 0 |
+| guard off | 43.5% | +2.08 | 10 | 2 |
+
+What is *not* filtered is the bait itself, because it is not a mistake. An
+earlier attempt did mask every dig onto a visible dragon; it cost the 4-player
+learner **8.7 points of win rate** (29.8% with, 38.5% without, 400 games) by
+forbidding a legal move that pays. That mask is gone.
+
+Two honest limits on the table above. First, it measures the `rule` bot, which
+picks uniformly among the cards it can reach and therefore pushes without
+looking at the backside at all — precisely the opponent a bluff is designed for.
+Against three copies of the same network the same plan appears (86 of 600 hauls)
+but a rival takes the dragon in only 16 of them and the learner eats it itself
+13 times. Second, this is why "the points come from opponents' graves" is a
+statement about this field, not a law: the trap works while the field is naive,
+and a field that respects backside odds walks away from it.
+
+What changed, in one line: the learner was not talked out of the move, the
+measurement around it was fixed — the "blunder" counted every intermediate
+planning decision as a commitment — and the one genuinely losing variant, the
+dig nobody can punish, is now removed from the action space instead of being
+argued about.
+
+### Displacement is a tax on the seat that parks, not a weapon
+
+The bait above only works because a push is cheap for the pusher, so the obvious
+next question is whether it is cheap for the *victim*. In the viewer's seed 7 it
+was not: P3 parked on its own front-row gem with three rivals deeper than it,
+P4 pushed it off four decisions later at a 13% sample, and P3 — holding nothing
+— left the mine with nothing. That is the whole haul gone, and it looks like the
+kind of mistake a policy should not make.
+
+Over twenty four-net games it is not a rare accident: **1.15 pushes a game**, and
+**18 of the 23 victims were holding no gems** (a push always parks the victim in
+a pit cage, i.e. safely out of the mine, so it only *banks* anything for a seat
+that has already collected). The network does not price any of it:
+
+| measurement, twenty four-net games | value |
+| :-- | --: |
+| probability on its own-column gem, while a rival could still push it | 18% (615 options) |
+| ...with no rival deep enough to push it | 19% (85 options) |
+| times the net took a displacement when one was on offer | 2% (0 of 495 first choices) |
+
+So both halves are blind: the net neither pushes nor steps around the risk. The
+question is whether either blindness costs points. 1,000 seed-paired games per
+arm, four seats, temperature 0.7, one arm in seat 1 (`probe_displacement.py`):
+
+| arm | win | score | pushes/game | pushed off/game | paired difference |
+| :-- | --: | --: | --: | --: | :-- |
+| four networks | 24.1% | +1.09 | 0.20 | 0.21 | — |
+| **pusher**: takes every displacement the hand rule would | 24.3% | +0.98 | 1.62 | 0.10 | +0.2pp (se 1.9), −0.11 pts (se 0.10) |
+| **cautious**: never ends a phase on a pushable own-column card, empty-handed | 20.2% | +0.83 | 0.31 | **0.04** | **−3.9pp (se 1.8), −0.26 pts (se 0.09)** |
+| **front row only** | 21.7% | +0.90 | 0.28 | 0.14 | **−2.4pp (se 1.8), −0.19 pts (se 0.09)** |
+
+Eight times the pushes buys nothing; cutting its own exposure by five buys
+*worse* results. Both ends of the mechanic are a wash at best, because a push
+hands the victim a safe exit with whatever it holds — and if it holds nothing it
+was going to lose the haul anyway — while the pusher spends a turn to take a card
+it could usually take by waiting. Parking on your own front-row card is not a
+blunder: it is what collecting your own column costs.
+
+Two caveats, both about the field rather than the rules. The hand `rule` bot
+never even offers the opportunity — it digs its own column on 2.6% of its
+decisions, so in ten rule-vs-rule games **not one push was available** — which is
+why no table in this file had shown the mechanic's price until now. And the nets
+push at 0.2 a game, so a league that pushes ten times as often might teach the
+cautious side to be worth something; the arms above say it is not worth anything
+against the population that exists.
+
+### Why a push is not the sharpest move in the game
+
+A push reads like the strongest thing on the board: you take a card out of a
+rival's column, out of a rival's hand, and send it to the cage. Asked why the nets
+use it so little, the answer is in three parts — what the rules actually do, what
+the nets can see, and what the numbers say.
+
+**What the rules do.** A push drops the victim into the cage at the row it stood
+on, and a figure in a cage may only reach rows *shallower* than that
+(``MineEnv._displace``, ``MineEnv._movement_depth``):
+
+| pushed from | cage index | what the victim can still do |
+| :-- | --: | :-- |
+| row 0 | 0 | no dig at all — lorry (lose the round) or leave with what it holds |
+| row 1 | 1 | rows 0 only |
+| row 3 | 3 | rows 0–2, i.e. its position was all it lost |
+
+So a push is only a *weapon* at row 0. Everywhere else it is a swap of positions.
+Three things hammer the value home even at row 0:
+
+- the pusher spends its own card of the round, and the card it takes is one it
+  cannot read (only the owner sees a column's fronts) — usually the *safer* of the
+  two options is a card in its own column;
+- the victim's remedy is cheap: park on the lorry and it is back at the front of
+  the mine next round, with the same gems;
+- a victim holding cards *banks* them by being pushed, so the push saves its loot,
+  and an empty-handed victim was worth nothing in the gem race to begin with. The
+  push denies it a card; the pusher was going to take a card anyway.
+
+**What the nets can see.** They cannot see the row interaction. Over 20 seeds
+there were **1,798 decisions with a push on offer** (11 a game in the reasoned
+case: a row-0, empty-handed victim) and the net's probability on the push barely
+moved with the row:
+
+| victim's row | 0 | 1 | 2 | 3 | 4 | 5 |
+| :-- | --: | --: | --: | --: | --: | --: |
+| net's probability on the push | 2.0% | 1.8% | 1.4% | 1.2% | 0.8% | 0.5% |
+| decided to push | 1.4% | 1.1% | 1.9% | 2.1% | 2.0% | 0% |
+
+The action block carried "a rival on its own column" and the row separately, so the
+product was representable but never learned. Two action features spelling out the
+consequence — *this push leaves the victim no card* and *this push banks the
+victim's loot* — were added and a network was fine-tuned from the shipped
+checkpoint for 24 generations. It pushed **less**: 0.1% of the offers, entropy down
+to 0.44. So the encoder was not the binding constraint; exploration was.
+
+**What the numbers say.** Pushing is priced against the model's own best non-push
+move at the same decision, same re-roll seeds, 20 positions per bucket, 60
+re-rolls per arm:
+
+| bucket | push | push − best other move |
+| :-- | --: | :-- |
+| row 0, empty-handed victim | +1.60 | **−0.01 (se 0.23)** |
+| row ≥ 1, empty-handed victim | +1.05 | **+0.00 (se 0.06)** |
+| victim carrying cards | +1.50 | **+0.30 (se 0.25)** |
+
+and forcing the reasoned push on one seat, 800 paired four-net games, is
+**+1.6pp wins (se 1.8), +0.11 points (se 0.09)** — positive, underpowered, and
+inside the noise of the earlier `pusher` arm (+0.2pp, −0.11).
+
+**Priced again under the promoted net, on held-out seeds.** The checkpoint in
+`checkpoints/selfplay4.npz` now refuses every push it is offered — 0 of 150 offers
+across 60 four-net games — so it is worth asking whether that is a learned
+indifference or a blind spot. Same-position forks, the push against the net's own
+best non-push move, 30 re-rolled continuations per arm:
+
+| sample | positions | pusher | the victim |
+| :-- | --: | --: | --: |
+| seeds 0-29 | 90 | **−0.11 (se 0.04)** | +0.13 |
+| held out, seeds 90-119 | 60 | **−0.16 (se 0.06)** | +0.14 |
+
+**A push is not a forced exit, and that is the correction this section needed.**
+The earlier drafts of this file, and the price above, treated the cage as the end
+of the victim's haul. It is not. The cage only takes a figure out *at the beginning
+of the execution phase* (`MineEnv._execute_round`, phase 1), and the push happens
+during the **planning** phase — the victim's turn comes again, and from a cage it
+can take the lorry or step onto a card shallower than the cage index. Only if the
+phase closes before its turn does the push put it out. Measured on 60 declined
+pushes, by what the victim did with the next turn it got:
+
+| what the victim did | positions | pusher | victim |
+| :-- | --: | --: | --: |
+| dug off the cage, back into the mine | 30 | +0.10 | −0.03 |
+| **took the lorry** | 24 | **+0.55 (se 0.11)** | **−0.39** |
+| never got a turn: the push put it out | 6 | **−2.37 (se 0.17)** | +2.65 |
+| all | 60 | −0.07 (se 0.06) | +0.22 |
+
+The lorry branch is the one to look at, because it is the reading a player has of
+the move: the victim spends its round on the lorry, cannot dig, and stands exposed
+(dragon: loses the loot), while the pusher takes the card it was standing on. That
+branch is worth **+0.55 a push**. It is also the branch a push most often gets,
+because a pushable rival is by definition one that has already moved this round,
+so it has planned and can be passed over — the table just usually does not pass.
+
+What kills the average is the 6 in 60 that stick. There the round resolves
+immediately with the pusher standing on the victim's card, and a card in somebody
+else's column is a 1-in-3 dragon: the pusher eats the reveal, and the victim banks
+its hand and takes the bonus with it.
+
+**What the net cannot see** is which of the three it is buying. `PlayerActionContext`
+carries the seat order and the seat's own "have I planned" (its PASS is legal or
+not), but nothing about how many passes the phase still needs, nor which rivals
+have planned — and those two facts decide whether the victim answers the push at
+all. So every push looks like the mixture, and the mixture prices at zero. That is
+the same shape as the hazard input that was missing in "A cage is insurance":
+a mechanic whose value depends on an unrepresented variable gets learned as its
+average.
+
+#### The planning clock went into the input, and the net still does not push
+
+The paragraph above said the missing variable was the phase clock, so it was added.
+`PlayerActionContext` now carries `consecutive_passes`, `passes_to_close` and
+`own_planned`, every rival carries `planned` (planning is open — figures are placed
+in front of everybody), and `state_features` grew three inputs: a 13th
+per-opponent flag (*has this rival planned*) and two table readings (*how close the
+phase is to closing*, *how many seats are still forced to move*). Input width 104 →
+110; `python migrate_checkpoint.py old.npz new.npz --add-phase-clock` widens an old
+file with zero columns, which makes the same decisions as before (verified on seed
+7: 53 flagged decisions, −1 / 1 / 5 / −1, unchanged).
+
+Retrained 20 generations from the widened weights, same league and flags as the
+promoted run. One net in all four seats, 100 games:
+
+| | before | **with the clock** |
+| :-- | --: | --: |
+| mean seat score | +1.68 | **+1.95** |
+| gems per haul | 2.85 | 2.92 |
+| hauls ending on a dragon | 0.58 | **0.39** |
+| hauls thrown away | 20% | 30% |
+| escapes per game | 6.99 | 8.60 |
+
+Head to head, 600 games a side on fresh seeds: **+0.02 (se 0.12)** as seat 0 and
+**+0.35 (se 0.12)** as seat 1 — pooled +0.19 (se 0.09), and the asymmetry is not
+something the previous comparison showed (+0.37 / +0.31).
+
+**It did not change the push habit at all.** Pushes on offer over 30 games: 1,953
+with the clock, taken **1**; 1,961 without it, taken **5**. And the pushes the new
+net declines price *worse*, not better: **−0.30 (se 0.06)** over 60 held-out
+positions, with the branch that used to pay best — the victim answering with the
+lorry — down to **−0.03 (se 0.10)**.
+
+So the blind spot was real, the input is now there, and the answer did not change.
+That closes the question rather than the case: with the clock in the input the net
+can represent "this rival has planned and can be passed over, one more pass closes
+the phase, its figure is inside my depth", and it still declines the move. The
+older line in this section that called row 0 "a genuine weapon" is superseded by
+the held-out pricing above: it is not one.
+
+`checkpoints/selfplay4.npz` therefore stays **behaviourally identical** — it is the
+widened copy, so the viewer and every number above are unaffected by the layout
+change — and the retrained net is kept beside it as
+`checkpoints/selfplay4_clock.npz` (not shipped). It does not clear the bar this
+document has been holding itself to since the cage fix: it throws away half again
+as many hauls, and its head-to-head is a wash in one seat. If the balance is
+preferred on the other side of that line, that file is the one to promote.
+
+None of that is the *rate* the mechanics suggest, and the honest conclusion is
+the one already in "Displacement is a tax on the seat that parks": a push is worth
+about what the card you would otherwise take is worth. What the analysis adds is
+*where* it is not: at row 0 it is a genuine weapon, and the nets are blind to that
+distinction rather than indifferent to it. Teaching it is a training question — a
+scripted pusher in the league, so the population both exercises the push and
+punishes the seats that park in front of it — not a mask rule.
+
+### The lorry and the cage: nothing to fix, and a correction
+
+The previous commit claimed a livelock here: a seat on the lorry stepping back
+into a cage whose escape banks nothing, the mask pushing it straight out again, the
+round never closing. It reported 19 of 200 four-net games never finishing inside
+4,000 decisions and 820 decisions a game against 113 after a fix. **That claim is
+withdrawn. It was an artefact of the A/B harness, not a property of the net.**
+
+What the harness did: it patched the *output* of `action_mask` to make the cage
+legal from the lorry, then compared against the real mask. But rule 4 already masks
+an escape that banks nothing *wherever it is offered*, the lorry included, so the
+patch did not test the rule it was meant to test — it disabled rule 4 for one
+position and measured that. Both arms of a correct ablation (neutering only the
+lorry-side branch, if there were one) are identical: one generation of training
+produces byte-identical weights with and without it.
+
+What is actually true, measured on the shipped checkpoint:
+
+| | |
+| :-- | --: |
+| decisions per game (4 nets) | **108**, worst 285 |
+| games that finish | **100 / 100** |
+| decisions per planning phase | 3.13, worst 14 |
+| decisions taken from the lorry | 661 of 10,640 |
+| ...with the cage offered from the lorry | 143 |
+| ...where the escape would bank nothing (mask has something to remove) | **0** |
+| ...where the seat could not pass instead | **0** |
+
+Every one of the 143 is a real escape: a blast is charged, so the cage is worth
+taking. A seat on the lorry can always fall back on its pass. The branch that was
+committed to close the "loop" could not fire in a single one of those decisions, so
+it has been **removed** — `features.py` is back to the code of the previous commit
+apart from one docstring. The two tests written for it stay, re-framed: one pins
+that an escape banking nothing is refused from the lorry too, the other that a
+four-net game finishes inside a sane number of decisions.
+
+The lesson is the one this file keeps relearning: an A/B is only worth the thing it
+actually changes. Patching a function's *result* is not the same as switching off
+the rule inside it.
+
+### Out of the cage is out
+
+A figure in a pit cage leaves the mine at the execution phase and **keeps its
+loot**, so a seat standing there has made its escape. What the shipped checkpoint
+did with its next decision of the same phase, over 60 four-net games:
+
+| | |
+| :-- | --: |
+| decisions taken from inside a cage | 1,235 |
+| ... stepped back **onto a card** | **604** |
+| ... of those, while holding a gem the escape would have banked | 313 |
+| ... took the lorry (stayed in the haul) | 344 |
+| ... held the departure | 171 |
+
+Priced from the identical position, 20 re-rolled continuations an arm, leaving
+against stepping back out:
+
+| position | step out − leave |
+| :-- | --: |
+| all 24 positions | **−0.72 (se 0.12)** |
+| holding no gems | −0.71 |
+| holding at least one gem | −0.73 |
+
+So it is not a close call about loot: **a seat walks out of a safe exit and back
+into a mine one row shallower than where it started, and it is worth −0.72 a
+time.** Rule 10 (`steps_out_of_the_cage`) refuses the card move when there is a
+bank to forfeit, which is the case that cannot be defended: 54 of 107 such
+decisions in 30 games before, **0 after**. It costs nothing measurable — 200
+paired four-net games, **+0.029 (se 0.032)**, gems per haul unchanged at 4.33 —
+because it removes a move the seat had no reason to want.
+
+**The empty-handed case is left alone on purpose.** With nothing to bank there is
+nothing to undo: leaving is worth nothing to that seat, a card in the mine is not,
+and the lorry is a round spent for nothing — so all three are real options and the
+net picks. Masking those as well is a different rule with a different price
+(+0.176 a seat, but gems per haul 4.33 → 3.55 and hauls thrown away 12% → 27%),
+and it is the trade #27 was about.
+
+**Why the figure still looks like it dithers.** A seat that walks into a cage can
+have the escape *refused* on its next turn: rule 4 re-reads the table, and the
+table has moved since it planned, so a hazard that was above the bar can fall
+below it and the mask puts the seat back on the lorry — whereupon it digs its way
+out of the cage instead. On screen that is a figure that goes into the pit cage and
+straight back out. Pinning the departure fixes it, and it is priced:
+
+| | rule off | **escape stands** |
+| :-- | --: | --: |
+| mean seat score | +2.204 | **+2.349** |
+| decisions per game | 97 | **55** |
+| worst game | 197 | 90 |
+| games that finish | 200/200 | 200/200 |
+| **gems per haul** | **4.33** | **3.13** |
+| hauls thrown away | 14% | **34%** |
+
+`ESCAPE_STANDS_ONCE_TAKEN` is therefore **off** by default: it is worth +0.145 a
+seat (se 0.042) and a third fewer decisions, and it costs 28% of the gems in the
+mine and doubles the hauls the table abandons. A seat held to its escape leaves
+earlier, dies less, and takes the loot with it. Flip the constant to trade loot
+for score; the mask reads it at decision time and a test pins what it does.
+
+**The rule bot had the same habit, and worse.** `rule_policy.deterministic_policy`
+— the viewer's default opponent, and the policy behind every seat the controller
+does not own — walked back out of a cage 520 times in 40 rule-vs-rule games, and
+its "re-entry from cage" section is why. It now holds the departure when the
+escape banks something (the narrow rule, same as the net), which takes its card
+moves from **1.43 to 1.12 a seat-phase**, phases with two or more card moves from
+**40% to 23%**, and the steps out of a cage to **171**. It also makes the bot
+harder to farm: a `rusher` against two of them fell from **+2.83 to +1.18** points
+with the solo bonus (and +0.33 → +0.20 without), which is why
+`test_rusher_loses_its_edge_without_the_solo_bonus` now asserts the bonus is worth
+0.7 rather than 1.0 of the rusher's score: the field stopped handing it points.
+
+**A retrain under the rule is a wash**, as every retrain since the cage bar has
+been: 20 generations from the shipped weights, native +2.20 a seat against +2.26,
+head to head **−0.09 (se 0.17)** and **+0.07 (se 0.18)** over 300 games a side
+(`checkpoints/selfplay4_cage.npz`, not shipped). The mask is the fix; nothing in the
+training signal charges the seat for the move it is not making.
+
+**What is left is the rules, not the policy.** The net still makes about 2.8
+decisions per seat-phase, and the pass rule is why: a round closes on `n - 1`
+consecutive passes, so three of the four seats have to be asked again before every
+round can end. Those extra turns are mostly *passes* (1,765 of 3,345 repeat
+decisions). What changed is the ones that move a figure: 0.92 extra card moves a
+seat-phase before rule 9, 0.28 after, and the remainder are the visible-gem swaps
+the rules keep on purpose.
+
+And the first decision of every round is not optional: a figure is reset to the
+mouth of the mine when the round is dealt (``_set_players_to_starting_positions``),
+so every seat digs again at the start of every planning phase. A spectactor who
+sees "it never stays in the first row" is seeing that rule, not a policy.
+
+### Sit on their lorry
+
+The printed rule is one line in the planning section: *"Anyone who has occupied
+their lorry at any point during a planning phase can only switch between the last
+pit cage and their lorry for the remainder of that planning phase."* `MineEnv`
+never enforced it. From the lorry the cage is legal, and from a cage at index 1 or
+deeper the whole mine is legal again (`_movement_depth` returns the cage index), so
+`card -> lorry -> cage -> card` was a legal sequence and a figure could re-enter
+the mine from an exit it had already taken. That is the shape of the move the
+viewer reports, so the rule is now enforced: `LORRY_COMMITS_THE_SEAT` is `True`,
+`_apply_action` records that the seat has sat on its lorry, and `_legal` refuses a
+card move for the rest of the phase.
+
+**It changes nothing, and it cannot.** 200 paired four-net games, same seeds, flag
+on and off:
+
+| | rule off | **rule on** |
+| :-- | --: | --: |
+| mean seat score | +2.204 | **+2.204** |
+| gems per haul | 4.33 | **4.33** |
+| hauls thrown away | 14% | **14%** |
+| decisions per game | 97.4 | **97.4** |
+| worst game | 197 | 197 |
+| lorry hauls | 128 | 128 |
+| games that finish | 200/200 | 200/200 |
+
+Paired difference: **+0.000**. The reason is not that the nets behave: sitting on
+the lorry *is* the seat's planning decision for that phase, so it is never handed
+another question before the round ends. Measured both ways — 30 four-net games
+through the controller, and 60 random-action games through the single-agent
+`step()` path that `--pass-rule` and the evaluators use — a seat that had sat on
+its lorry was asked to plan again in the same phase **0 times**; a figure still on
+the lorry when a new round starts cannot step onto a card either, because `_legal`
+refuses every card move from the lorry. So the old code could not have let a seat
+re-enter the mine, and the missing line was dead rather than wrong.
+
+The check stays as a guard — it is what the rules say, it costs nothing, and the
+first change to the planning order makes it live —
+`test_a_seat_that_has_sat_on_its_lorry_is_not_asked_again_in_the_phase` pins the
+fact that makes it inert, so a future change that breaks that fact fails a test
+instead of quietly reopening the rule.
+
+**What the figure on screen is actually doing.** The shipped net digs, holds the
+card, and stays; over 60 four-net games and 1,836 seat-phases:
+
+| | |
+| :-- | --: |
+| dug a card and still held it when the cards turned | 1,291 |
+| dug, then left the phase before the cards turned | **249 (13.6%)** |
+| dug and was still standing on a card when the game ended | 262 |
+| never dug | 34 |
+
+Of the 249, **124 left through a cage or the lorry it had already taken**,
+**111 stepped off a dragon it could see under itself** — the printed bait: a
+rival that pushes the figure off the dragon stands on it and turns it — 11 were
+plain and 3 were a reaction to a charged blast. Almost every abandoned dig is a
+deliberate one.
+
+Holding a seat to the card it just stepped onto (rule 12, `DIG_COMMITS_THE_SEAT`)
+was tried and rejected: over 200 games it does not bite the case it was written for
+(abandoned digs 892 of 6,534 seat-phases off, 876 of 6,568 on) and costs **−0.06**
+a seat (+2.204 → +2.141). Banning the bait outright is worse still, because the
+lure pays: **−0.23** a seat (+2.204 → +1.974), gems per haul 4.33 → 5.63 but
+hauls thrown away 14% → 24% and decisions up 97 → 118. `BAIT_IS_ALLOWED` is
+therefore `True` and the constant exists only so the trade can be re-measured.
+
+**The motion that is left is the rules.** `_set_players_to_starting_positions`
+puts every surviving figure back at the mouth of the mine when a round is dealt,
+so **the first dig of every planning phase is mandatory** — a seat cannot stay in
+row 0, and it cannot keep the row it finished the last phase on. The visible
+pattern "it moves forward again and again" is that rule plus the `n - 1` pass
+count, which asks the other three seats again before a round can close.
+
+**One inconsistency found and not fixed.** The single-agent `step()` path resets
+`planned_players` only in `reset()`, not when a round executes, so a seat that has
+left the mine can be asked again and get an empty mask (seeds 3-6 under random
+play; `test_random_game_terminates` fails if the reset is added there). It is
+pre-existing, it is not reachable through the controller, and fixing it changes
+`step()` behaviour, so it is recorded here rather than slipped into a rule fix.
+
+### The card you are standing on
+
+A seat scores the card **under its figure when the planning phase closes**, and a
+figure only ever moves towards the lorries. So a second move in the same phase does
+not collect a second card: it gives up the card the seat already chose for a
+shallower one it did not, and at the bottom of the column the only moves left are
+the lorry (collects nothing) and the cage (leaves the haul). Passing is legal for
+any seat that has planned, so holding is always available.
+
+The shipped checkpoint did not hold. Over 40 four-net games:
+
+| | before the rule | after |
+| :-- | --: | --: |
+| seat-phases measured | 1,360 | 1,351 |
+| phases with two or more moves | **66%** | **23%** |
+| phases with exactly one move | 33% | **75%** |
+| moves made after the first one | 1,326 (0.92 a phase) | 412 (0.28 a phase) |
+| ...of those, with a pass available (it could simply have held) | **100%** | 100% |
+| phases that ended with the figure on its lorry | 11% | **8.7%** |
+| standing on the row-0 card, then taking the **lorry** with nothing under it | 2 | 4 |
+| standing on the row-0 card, then taking the **cage** (banking or fleeing) | 298 | 211 |
+
+What the extra moves were giving up, among decisions where a pass was available
+(30 games): 217 climbed off a **dynamite** in its own column, 63 climbed off a
+**dragon** it could see (that one is right — rule 1's waiting square), 27 left a
+**gem** it could see to raid another column, and the rest were raids or moves off a
+card whose front it had not seen. Priced from the identical position, the extra
+move against holding the card to the end of the phase is **−0.08 (se 0.09)** a move
+— small per move, but there are about 33 of them a game, which is **−2.7 points a
+game** across the four seats.
+
+**Rule 9 masks it** (`climbs_off_the_card_it_chose`): a seat that has already
+planned this phase holds, unless it is stepping **off a dragon it can see** or
+**onto a gem it can see** in its own column — and the gem exception only applies
+when the seat is not already standing on one, because a gem for a gem is a wash
+with a step attached, which is the same drift one row at a time. (Without that
+second condition the rule still left 230 gem-for-gem swaps in 40 games and 37% of
+phases taking two moves; with it, 23%.) Same weights, same seeds, 200 paired
+four-net games:
+
+| | rule off | **rule on** |
+| :-- | --: | --: |
+| mean seat score | +1.734 | **+2.175** |
+| gems per haul | 2.90 | **4.33** |
+| hauls thrown away | 22% | **12%** |
+| hauls ending on a lorry | 229 | 188 |
+
+paired **+0.441 a seat (se 0.065)**. What is left of the two-move phases is the
+visible-gem swap the rule keeps on purpose (a card the seat can see is a gem beats
+the one it is standing on) and the first move of the phase, which the seat has to
+make.
+
+Seed 7 under rule 9 (same weights): **3 / 3 / 1 / 4**, haul gems
+`[[3,3,1,2],[4,0,1,3],[0,1,1,1]]`, 27 decisions flagged for a look instead of 53.
+Both of the first two hauls run four planning phases with the figures holding the
+cards they chose — 9 and 8 gems collected — and both end on a dragon, which is the
+cost side of staying in: the seats that banked first keep their points (P1 and P3
+leave haul 1 with gems in hand) and the one still inside takes the −1.
+
+**A retrain under the rule changed nothing**, twice. 20 generations from the
+shipped weights with the first (looser) version of the rule in the mask: native
++2.04 a seat against +2.12, head to head **−0.06 (se 0.17)** and **−0.05 (se 0.16)**
+over 300 games a side. And 20 more under the tightened rule: native +2.17 against
++2.19, head to head **−0.04 (se 0.18)** and **−0.14 (se 0.16)**. So the mask is not
+papering over a policy the net would have found by itself — it had no way to be
+rewarded for holding, because every extra dig is scored by the shaping term while
+the card it forfeits never appears as a cost. Both files
+(`checkpoints/selfplay4_stay.npz`, `selfplay4_stay2.npz`) are **not shipped**.
+
+**What is left of the drift, measured on 1,985 seat-phases in 60 games** with the
+current mask: **75.6% of phases take exactly one card move**, 18.6% take two, 3.6%
+three, 0.4% four. Every one of the second digs has a reason: 605 are a **re-entry
+from a cage** (the seat refused an empty-handed escape, so it is back in the mine by
+rule and has to dig) and 98 are a **step off a dragon it can see**. Not one is a
+seat wandering towards the lorry. The remaining lorry/cage movement in the viewer is
+in the same category — a real escape taken when a blast is charged, and the pass a
+seat takes while standing on the lorry.
+
+**It also closes most of the counter's edge.** The same agent against the same
+seats, 200 games, the rule off and on:
+
+| | counter | nets | margin | counter wins |
+| :-- | --: | --: | --: | --: |
+| rule off | +4.29 | +1.07 | **+3.21 (se 0.24)** | 65% |
+| rule on | +3.38 | +1.36 | **+2.02 (se 0.24)** | 50% |
+
+That is worth writing down plainly: the habit was not only ugly, it *was* the
+exploit. A seat that forfeits the card it chose, a row at a time, hands the haul to
+whoever banks first — which is what the counter was doing.
+
+### Next-card displacement: current rule and retraining
+
+The current rule sends a displaced figure to the nearest free card towards the
+lorries in its own column, skipping missing or occupied cards, or to its lorry
+if none remains. It keeps its loot and its next planning decision. It is **not**
+given free pit-cage shelter. `DISPLACEMENT_STEPS_TO_THE_NEXT_CARD = True` is the
+default; False reproduces the former pit-cage rule for historical comparisons.
+
+The design goal is to encourage contesting each other's chosen spots rather
+than quietly harvesting one's own column. If A is pushed from row 2 to row 1
+and B takes a dragon on row 2, A must still choose shelter if it wants protection.
+B used its decision to select a contested spot; it did not lose a turn.
+
+**Correction of the earlier analysis:** the points price of indiscriminate
+pushes is not a test of this design goal. Nor is the frequency of a pushed
+player's pass: passing on a card is not passing from shelter. The previously
+published clock verdict is withdrawn. `probe_push_clock.py` is a historical,
+flawed diagnostic, not evidence against the rule: it also inferred pushes from
+card moves rather than recording actual displacement events, and its no-count
+hook ran after a pass could already execute the round. Do not use those tables.
+The historical sections below were measured under the former pit-cage rule.
+
+#### Retraining run (next-card rule)
+
+Four seats, three hauls. Resumed the shipped net for **120 generations × 64
+training games = 7,680 games**, seed 7001, otherwise default trainer settings
+(including reward shaping, masks, scripted/older-net league and bonus rules).
+This is continued training, not a fresh-net test or a guarantee of convergence.
+The resulting net is shipped as `checkpoints/selfplay4.npz`; its predecessor is
+`checkpoints/selfplay4_pitcage.npz`. Training history is preserved as
+`checkpoints/selfplay4_nextcard.history.json`.
+
+```sh
+python train_selfplay.py --players 4 --resume checkpoints/selfplay4_pitcage.npz --generations 120 --games-per-generation 64 --seed 7001 --out checkpoints/selfplay4_nextcard.npz
+python probe_nextcard_training.py --games 200
+python profile_agent.py --checkpoints checkpoints/selfplay4_pitcage.npz,checkpoints/selfplay4.npz --games 200 --players 4
+```
+
+Both evaluations below use the **new rule**, temperature 0.7 and seeds starting
+at 424242. Thus they measure adaptation, not the isolated effect of changing the
+rule. Mirror games use four copies of each checkpoint, with identical game and
+agent seeds between runs. Pushes are counted from actual displacement events.
+
+| four-net mirrors, 200 games each | old net | retrained net |
+| :-- | --: | --: |
+| mean score per seat | 2.000 | 2.215 |
+| actual pushes per game (whole table) | 0.105 | 0.035 |
+| card moves in own column | 92.8% | 96.1% |
+| card moves per game (whole table) | 40.625 | 38.590 |
+| gems banked per haul (whole table) | 4.515 | 4.280 |
+| decisions per game | 100.600 | 97.205 |
+| unfinished games | 0 | 0 |
+
+Against three scripted `rule` seats, 200 games per net with seats rotated:
+old/new win rates 74%/77%, margins +5.33/+5.39, scores +5.29/+5.38. These are
+small descriptive differences, not evidence of a reliable strength improvement.
+They are also opponent-conditioned: the scripted opponents leave empty often;
+85%/84% of the evaluated net's escapes banked zero gems. The profile reports
+score when rivals banked loot versus stayed as −0.46/+3.07 (old) and
+−0.41/+3.16 (new). Do not read that benchmark as successful gem competition.
+
+**What happened to the intended behaviour?** This run did **not** produce more
+contesting. The retrained nets pushed less and chose their own column more.
+The new rule removes free pit-cage shelter, as intended, but the existing
+training setup has not learned the desired competition. All other rules and
+masks were left unchanged. No claim is made that more training alone will fix it.
+Watch the new net and compare the saved predecessor before changing incentives.
+
+### Deterministic pusher versus the retrained next-card nets
+
+Rerun requested after next-card retraining. Four seats, three hauls, **400 games
+per arm**, seeds 424242–424641, deterministic seat rotated through all four
+positions. Opponents are three copies of the newly shipped `selfplay4.npz`,
+temperature 0.7, with matching agent seeds across arms. Current next-card rule,
+all other game and shaping defaults unchanged. Actual successful pushes are
+counted in the engine, not inferred from decisions. No private information is
+exposed to the bot.
+
+```sh
+python probe_pusher_match.py --games 400
+```
+
+| deterministic seat | outright wins | tied for top | mean score | mean rival score | score margin | actual pushes |
+| :-- | --: | --: | --: | --: | --: | --: |
+| CounterAgent, no pushing | 141 (35.25%) | 48 (12.00%) | 3.208 | 1.757 | +1.451 | 0 |
+| PusherAgent, held tell (default) | 139 (34.75%) | 50 (12.50%) | 3.190 | 1.756 | +1.434 | 11 |
+| PusherAgent, any tell | 123 (30.75%) | 40 (10.00%) | 2.763 | 1.688 | +1.075 | 629 |
+| PusherAgent, any tell, also after planning | 131 (32.75%) | 47 (11.75%) | 2.865 | 1.571 | +1.294 | 1,115 |
+
+All 1,600 games finished. Outright wins exclude tied tops; ties here mean tied
+on final score, before any tie breaker. The paired score-margin changes against
+no pushing are −0.017 (give or take 0.027), −0.376 (0.158), and −0.157 (0.180).
+These uncertainties are one standard error over paired games, not win-rate
+uncertainties. Banked gems per game are 3.470, 3.485, 3.645 and 3.828 respectively.
+Thus the pushing versions bank more gems but do not win more often in this run.
+
+**Interpretation:** the deterministic seat wins more often than a symmetric
+four-seat baseline, but these pushes do not improve on the no-push control.
+The default held-tell pusher barely pushes, so its result is not a strong test
+of displacement. The two explicit any-tell arms supply that test. These are
+still the existing pusher heuristics: they retain banking priorities, avoid
+abandoning a known gem, reject known dragons, and use a backside-risk bar of
+0.2. They are not an optimal pusher, nor a bot that blindly pushes every legal
+target. The result describes these policies against these retrained nets, not
+proof that the new displacement rule cannot encourage contesting.
+
+### Score-aware deterministic pushers
+
+Added two deterministic targets: prefer the eligible rival with the highest
+**total score**, or attack only rivals tied for the table lead (including our
+own score in that maximum). No private information is used. Ties resolve by
+shallowest row then action index. Both use the any-tell pusher with pushes also
+allowed after planning, retaining banking, known-gem and dragon-risk safeguards.
+The original pusher is unchanged for comparison. Factory names are
+`pusher-leader` and `pusher-leader-only`.
+
+Fresh seeds 910000–910399, 400 games per arm, four seats rotated, three hauls,
+next-card rule, three retrained nets at temperature 0.7. Matching game and agent
+seeds across arms. These seeds were not used for the earlier pusher comparison.
+
+```sh
+python probe_pusher_match.py --games 400 --seed 910000 --score-aware
+```
+
+| deterministic seat | outright wins | tied top | score | mean rival score | margin | actual pushes |
+| :-- | --: | --: | --: | --: | --: | --: |
+| no pushing | 131 (32.75%) | 48 | 2.960 | 1.716 | +1.244 | 0 |
+| old any-tell pusher, also after planning | 135 (33.75%) | 49 | 2.788 | 1.584 | +1.203 | 1,197 |
+| prefer highest-scoring eligible rival | 134 (33.50%) | 49 | 2.755 | 1.595 | +1.160 | 1,193 |
+| only attack a table leader | 132 (33.00%) | 52 | 2.825 | 1.677 | +1.148 | 768 |
+
+All 1,600 games finished. Paired margin differences versus no pushing are
+−0.041 (give or take 0.190), −0.084 (0.188) and −0.096 (0.179). These are one
+standard error over paired games, not uncertainty on the win rates. The gaps do
+not establish a reliable gain or loss. Banked gems per game were 3.478, 3.865,
+3.848 and 3.715. Scores/margins are conditioned on these opponents and this
+training checkpoint, not universal values of the displacement rule.
+
+**Outcome:** score-aware targeting is now available, but neither variant
+improved wins clearly in this run. Merely preferring the top scorer changed
+little; restricting attacks to leaders removed many pushes without producing a
+win-rate gain. This is a test of two fixed, public-information heuristics, not
+an optimal tactical search. No claim that they are stronger than the old bot.
+
+### The parked seat: can a deterministic seat rob the nets by pushing?
+
+Rule 9 holds a seat on the card it chose, so a net that has decided its round
+stops moving and sits there. It looks farmable: displace it, take its card. It is
+not, and the reason is in the rules rather than in the nets.
+
+**The read is correct.** 60 four-net games, 887 seat-phases that ended with a
+figure on a card:
+
+| where the figure closed the phase | share that are gems |
+| :-- | --: |
+| any card | 57% |
+| a card in its own column | 60% |
+| **its own column, after exactly one card move** | **82%** (39 of the 50 that a rival could reach) |
+
+So "it hops onto a gem and then passes" is an accurate description. The problem
+is what a push costs.
+
+**Three rules close the door.**
+
+1. *You can only push a figure standing in its own column.* "This is only
+   possible if the opponent is standing on a card within that opponent's own
+   column" (README, planning phase). And a column's fronts are seen only by its
+   owner: "a seat's own column is a card only that seat can see." **So every
+   legal push takes a card the pusher has never seen** -- 4 gems, 4 dynamite and
+   2 dragons in a set of 10, whatever the tell.
+2. *You pay the move you had.* A displacement is a move: your figure ends on the
+   rival's card, and every move goes towards the lorries. The sane way to use it
+   is on the decision that decides your round -- the first one, when the figure
+   stands at the mouth of the mine with nothing under it -- so the real choice is
+   "a face-down card under a rival" against "a card in my own column I can see",
+   which is exactly what the fork below compares. Used later in the phase it
+   also gives up the card already chosen, which is the drift rule 9 exists to
+   stop.
+3. *You do not get their loot.* A displaced figure goes to the nearest pit cage,
+   where it leaves the haul and keeps every card it has collected. A push costs a
+   rival its round, never its hand -- the correction in #29 applies to every
+   push, not just the polite one. At the moment of a push the victim held **0.2
+   collected cards**, and 83% of victims had collected nothing at all.
+
+**What one push is worth**, forked from the identical position (`probe_push_value.py`,
+120 games, 3 continuations an arm, 109 positions): the copy that pushes plays out
+against the copy that makes the same policy pick again with the push targets
+removed.
+
+| the push took | positions | value of the push |
+| :-- | --: | --: |
+| all | 109 | **−0.41 (se 0.18)** |
+| a gem | 64 (59%) | **+0.69 (se 0.20)** |
+| a dynamite | 15 (14%) | −0.96 (se 0.38) |
+| **a dragon** | 30 (27%) | **−2.48 (se 0.34)** |
+
+The tell *works* -- it finds a gem 59% of the time against a 40% base rate -- and
+it does not matter, because one push in four takes a dragon and one dragon costs
+three and a half gems. A net does not stay on a dragon it can see (only 5% of the
+cards nets close a phase on are dragons), so the dragons a pusher meets are the
+ones a seat was allowed to stand on for a single decision: the mask only permits
+a visible-dragon dig when the seat is guaranteed another decision, or when a
+rival is deep enough to push it -- the bait.
+
+**More pushing is monotonically worse.** 300 paired four-net games, the same
+deterministic seat, only the push rule changed:
+
+| pushes taken | margin over 3 nets | paired vs no push |
+| --: | --: | --: |
+| 0 (the plain `counter` seat) | +2.193 | -- |
+| 6 (held tell, deciding turn only -- the shipped default) | +2.190 | −0.003 (se 0.020) |
+| 98 (held tell, any turn) | +2.167 | −0.027 (se 0.109) |
+| 522 (any rival, deciding turn) | +1.642 | **−0.551 (se 0.231)** |
+| 988 (any rival, any turn) | +1.274 | **−0.919 (se 0.234)** |
+| 1,933 (any rival, any turn, no risk filter) | +0.85 | **−2.747 (se 0.188)** |
+
+**The hole is information, not the rules.** A test-only bot that is allowed to
+*see* the front under each rival -- a cheat, not a policy -- pushes 1,376 times in
+300 games, every one of them onto a gem, and is worth **+1.76 (se 0.19) a seat**
+over the same seat without pushing, taking the nets from +1.45 to +0.75 a seat.
+That is the shape of the exploit the nets *would* be open to if fronts were
+public. Under the printed information rules it is not reachable.
+
+**So: yes, the nets are beatable by a plain deterministic seat.** 300 four-net
+games, one `agents.CounterAgent` against three `selfplay4` seats, seats rotated:
+**+3.60 a seat, margin +2.19, best score in 56% of games**. What does the work is
+digging, banking two gems and leaving; the push adds **−0.003 (se 0.020)**. The
+weapon is patience, not displacement.
+
+**The field matters more than the tactic.** Against the *viewer's* default
+opposition -- three `rule` bots, which is what the controller seats when no
+checkpoint is loaded -- the same seat scores +0.88 a seat and a margin of −1.37:
+three copies of the scripted policy outscore one of anything. Check which table
+you are looking at before concluding that the AI is weak.
+
+`agents.PusherAgent` keeps the experiment: `tell="held"` (the default, and the
+shipped configuration, which is harmless) and `tell="any"`, plus
+`before_planning=False`, reproduce each row above. `probe_push_value.py` prices a
+single push from a real position.
+
+### The counter: a deterministic seat that farms this field
+
+`agents.CounterAgent` (policy name `counter`) is forty lines of rules, no dice and
+no hidden information — it reads only `PlayerActionContext`, exactly like every
+other agent, so it cannot see a card the seat it plays could not see. It exists to
+answer a plain question: given everything measured above, how much is the trained
+net worth to an opponent who plans around it?
+
+What it does:
+
+* **never displaces** — pushes are worth −0.30 and the nets take 1 in 2,000, so
+  there is nothing to defend against and nothing to gain;
+* **never takes a card it has not seen the front of** — a seat sees its own column,
+  so it digs only there, and a card in another column (or one drawn blind) is a
+  1-in-3 dragon it simply never risks;
+* **reads the empty-handed exit** — a seat is only allowed to leave with nothing in
+  hand to answer a charged blast or a dragon it can see under itself, so a rival
+  that exits with an empty hand has named the card it was standing on. That cell
+  goes on a never-step-here list for the haul;
+* **banks** — two gems, or one gem with an escape that costs nothing, and it is
+  out, because a banked gem is scored and a gem in a dead hand is not.
+
+**It wins, and comfortably.** One counter against three copies of the shipped
+checkpoint — 300 games per seat on seeds 3000–3299, the counter in one chair and
+three copies of the checkpoint in the others:
+
+| the counter in | the counter | the three nets | margin | outright wins |
+| :-- | --: | --: | --: | --: |
+| seat 0 | +4.55 | +0.83 | +3.72 (se 0.20) | 66% |
+| seat 1 | +4.10 | +1.15 | +2.95 (se 0.20) | 56% |
+| seat 2 | +4.37 | +1.00 | +3.37 (se 0.19) | 61% |
+| seat 3 | +3.88 | +1.16 | +2.71 (se 0.21) | 53% |
+
+and on a second, disjoint block (seeds 4000–4299, seat 0 only) the same shape:
+**+3.94 against +1.16, margin +2.77 (se 0.20), 57% outright wins.**
+
+Four counters in four seats is a quiet game: **0% of hauls end on a dragon**,
++1.97 a seat, 5.88 gems a haul — the "never dig blind" rule is what makes it safe,
+and it is the same rule that makes it dull to watch it play itself.
+
+**What each tell is actually worth** (300 games, seeds 4000–4299):
+
+| arm | its score | the nets | margin | wins |
+| :-- | --: | --: | --: | --: |
+| the counter as shipped | +3.94 | +1.16 | **+2.77 (se 0.20)** | 57% |
+| ... without the dragon tell | +3.94 | +1.16 | +2.77 | 57% |
+| ... raiding instead of safe digs | +3.49 | +1.08 | +2.40 | 54% |
+| ... raiding, without the tell | +3.32 | +1.13 | +2.20 | 52% |
+| ... banking at one gem | +3.70 | +1.22 | +2.48 | 54% |
+| ... allowed to push | +3.92 | +1.04 | +2.87 | 58% |
+| `leaver` (one gem, then out) | +3.96 | +0.99 | +2.96 | 58% |
+| `rule` bot | +0.87 | +1.29 | −0.41 | 23% |
+
+These margins are measured with rule 9 switched off, because the counter was
+published before that rule existed. **With the rule on, the same agent's edge drops
+to +2.02 (se 0.24) and it wins 50% of games** — see "The card you are standing on".
+
+Read honestly, that table says something other than "the tells are the exploit":
+
+* **Not displacing is worth nothing to the opponent.** Turning pushes on changes
+  the margin by +0.10 (se 0.12) — the counter barely ever has one on offer, and
+  taking it is worth -0.30. What the absence of pushes *does* buy is that a seat can
+  park in its own column without fear, which this bot does not need.
+* **The dragon tell is worth +0.20** in the variant that raids (2.40 → 2.20 without
+  it) and **exactly nothing** in the shipped one, because a seat that only digs
+  cards it has seen never meets the risk the tell is about. Staying out of the dark
+  is a better use of the same information than reading it.
+* **The lever is banking early.** Every early-banking arm beats the nets by 2.4–3.0
+  points a seat, including `leaver`, which is thirty lines and reads nothing at all.
+
+**Why the field is farmable, in one number:** with four nets at the table, **60% of
+hauls end on a dragon** and a net seat dies **0.41 times per haul**; the counter,
+sitting on cards it has seen, dies to blasts only. A haul that ends on a dragon pays
+the seats that already left and voids the loot of the seats still inside, so the
+bonus goes to whoever banked first. That is not a bug in the nets — it is the trade
+this file recorded when the cage bar moved: fewer thrown hauls, more dragons, mean
+seat score +1.67 → +1.39. Repeated against this opponent, the same trade reads:
+
+| cage bar (mask only, same weights) | counter's margin | dragon hauls |
+| :-- | --: | --: |
+| 0.45 (shipped) | **+2.91 (se 0.24)** | 51% |
+| 0.15 (before the fix) | +2.47 (se 0.21) | 38% |
+
+So the fix that stops the table leaving for no reason also made it **0.44 points a
+game easier to farm** by an opponent that banks. Both statements are true and both
+belong here: the rule is right for the game the user wanted, and it hands a
+deterministic opponent a bigger edge.
+
+#### One gem in hand is not a reason to leave either
+
+The escape rule said: with loot in hand, leave when the hazard is above
+`CAGE_ANSWERS_A_HAZARD`. The constant was **0.15**, and four figures on face-down
+cards read **0.2–0.3 every single round**, so the rule was vacuous in a four-seat
+game: any seat holding one gem could leave at any moment, and the net — which had
+learned exactly that — took the cage at 85–95% whenever it held one.
+
+Seed 7, haul 3, before this change: **all four seats left with one gem each** at a
+hazard of 0.22–0.29 while P2 could see *three* gems in its own column, and the haul
+paid a four-way tie of +1 with the mine abandoned. The same shape cost haul 1 too:
+gems 1-1-1-1. That is the complaint in one line — a round is worth more than the
+insurance on it when nothing unusual is happening.
+
+`CAGE_ANSWERS_A_HAZARD` is now **0.45**, i.e. "not the ordinary weather of a mine",
+plus the case a hazard cannot see at all (a rival standing on a dragon in the
+seat's own column, which the seat knows is about to be turned). Measured table-wide
+on 120 four-net games, all seats under the bar:
+
+| bar | gems per haul | hauls thrown away* | hauls ending on a dragon | mean seat score |
+| :-- | --: | --: | --: | --: |
+| 0.15 (old) | 2.34 | 23% | 51% | +1.67 |
+| 0.25 | 2.38 | 19% | 60% | +1.59 |
+| 0.35 | 2.58 | 13% | 71% | +1.50 |
+| **0.45 (shipped)** | **2.69** | **11%** | 76% | +1.39 |
+
+\* at least three seats escaped and the table collected two gems or fewer.
+
+Seed 7 under those weights (the ones the bar change shipped with) plays a real haul 1
+(gems 3-4-0-2) and scores **-1 / 0 / 3 / 2** instead of 0 / −1 / −1 / 5 with two hauls
+thrown away. The retrained weights below move seed 7 again — see their own
+paragraph.
+
+The trade is on the table and should be read honestly: the stricter bar **halves the
+thrown-away hauls and collects 15% more gems per haul**, and those extra rounds cost
+**more dragons** — a seat that stays with a gem in hand is standing in the 20-30%
+that the old rule was running away from — so the mean seat score falls from +1.67 to
++1.39 and the table gets more volatile. The bar is one constant if the balance is
+preferred on the other side of that line; what it should not be is below the table's
+own base rate, where it means "leave, always", which is what it meant.
+
+#### The nets were retrained under the new bar
+
+`checkpoints/selfplay4.npz` is now the weights from 20 generations resumed off the
+old ones with the escape rule above in the mask
+(`--resume checkpoints/selfplay4.npz --generations 20 --games-per-generation 150
+--league-prob 0.6 --league-blast-mode always --league-blast-prob 0.5 --seed 9091`).
+Generation 20 self-play score +1.23, 2.99 blasts a game, entropy 0.527. The
+intermediate runs sit beside it as `checkpoints/selfplay4_blast*.npz` (git-ignored)
+and the replaced weights are in the previous commit if the margin is ever
+challenged. `checkpoints/selfplay4_prehazard.npz` is older than all of these: it is
+the net from before the per-opponent displacement feature.
+
+One net in all four seats, 100 games each:
+
+| | old net | **promoted net** |
+| :-- | --: | --: |
+| mean seat score | +1.33 | **+1.71** |
+| gems per haul | 2.38 | **2.83** |
+| hauls thrown away (≥3 out, ≤2 gems) | 11% | 23% |
+| hauls ending on a dragon | 81% | **57%** |
+| escapes per game | 4.95 | 6.88 |
+| blasts per game | 0.13 | 0.27 |
+| **pushes per game** | 1.74 | **0.15** |
+
+Head to head, 300 games a side with the new net in one seat and the old one in the
+other three: **+0.37 (se 0.19)** as seat 0, **+0.31 (se 0.18)** as seat 1, so about
+**+0.34 a seat** and ~2.5σ over the 600 games. Symmetric across the two seats, which
+is the check that the margin is not a seat artefact.
+
+**The falling push count is not a regression, and it is not the mask.** Over 40
+four-net games the mask refused a legal push **0 times in 2,282 push-legal decisions**
+under the old net and **0 times in 2,586** under this one — `action_mask` never
+mentions a push, so the two nets can only differ in what they *think* it is worth.
+They do: the policy's probability mass on push actions at those decisions fell from
+0.067 to 0.011.
+
+That valuation is the right one. Masking pushes table-wide (all four seats, 200
+paired games on the same seeds) gives mean seat score **+1.323 with pushes and
++1.390 without**, a paired **−0.068 (se 0.047)**: the old net's 1.74 pushes a game
+were buying nothing. It is the same fact as "the victim's side of a push" below —
+a push hands the rival a card in a cage, and a caged rival leaves with its loot, so
+the pusher mostly buys a round of immunity it did not need. Two further runs (8
+generations at a low learning rate, and 20 generations with the blasting league
+turned down to 30%) both drifted to the same place — 0.32 and 0.15 pushes a game —
+which is what a learner with more games does, not an artefact of the league.
+
+**Every cage still has a reason behind it.** All 2,192 cage decisions in 80
+four-net games were audited against the rule that allowed them:
+
+| what the cage answered | share |
+| :-- | --: |
+| banks ≥1 gem, hazard 1.00 | 37% |
+| banks nothing, **a rival's blast is charged** | 25% |
+| banks nothing, **its own blast is charged** | 18% |
+| banks nothing, **the dragon under it** | 17% |
+| banks nothing, a rival stands on its dragon | 1.5% |
+| **banks nothing and answers nothing** | **0%** |
+
+The zero-reason row is the one #27 was about and it is empty. The blast rows are the
+interesting ones, because a charged blast threatens a point (a woken dragon kills
+everyone still in the mine) but not the hand — so an empty-handed exit is a *defence
+of the score*, not a free forfeit. Tested as a rule: forbid an empty cage unless the
+death is already certain (a dragon under the seat with no safe card to take, or a
+rival on the seat's dragon). Thrown-away hauls collapse — 12%→3% on the old net,
+22%→2% on the new one — and gems per haul rise (2.51→2.90 and 2.84→3.67), **but mean
+seat score falls 1.37→1.13 and 1.74→1.48** and the dragon count rises, which says the
+empty exits are worth about a quarter of a point a game to the seats that take them.
+The rule is therefore left as it is: the exit is allowed when a blast is charged, and
+what #27 fixed — leaving because the mine is *ordinarily* risky — stays forbidden.
+
+The remaining difference between the two nets on that row is a consequence of the
+rest: the new net blasts twice as often, so more hauls have a charged blast in them,
+so more empty exits are available, and it takes them.
+
+**The exit a charged blast justifies is the most valuable single move measured in
+this file.** Forbid the cage while any blast is in the table's hand (keeping the
+exits that dodge a dragon the seat can already see) and, over 150 paired games,
+the seats lose **+0.342 (se 0.066)** — about 5σ, and larger than the whole margin
+between the two checkpoints. What the ban does to the board says why: the table
+collects *more* gems per haul (2.88 → 4.06) and throws away more of them (hauls
+thrown away 28% → 33%), because a charged blast that wakes a dragon ends the haul
+with everybody still in the mine dead and their unbanked cards void. So the exit is
+not "leaving with nothing" — it converts a 46% chance of losing the hand into a
+banked hand, and the mask has to allow it whenever a blast is charged
+(`round_dragon_hazard` reads 1.00 then, and the net takes the cage at 92-98%).
+
+
+Seed 7 under the promoted weights: **-1 / 1 / 5 / -1**, haul gems
+`[[3,3,1,1],[1,2,2,1],[0,0,0,1]]`, outcomes `lorry / lorry / dragon`, and 53 decisions
+flagged for a look instead of 109. Both of the first two hauls end with all four seats
+out, and that is the shape to watch — but every one of those exits banks at least one
+gem (P1 leaves haul 1 with 3, haul 2 with 3; P3 leaves both with 1), and the only
+empty exit in the game is P4 stepping off a rival's charged blast in haul 3. The haul
+the old weights won by staying in (3-4-0-2) is now split 3-3-1-1: the same table, the
+same total, the loot banked instead of carried.
+
+#### The lure: the trap the rules actually build
+
+**"Raider" means one thing here**: a figure that turned a card in a column its own
+seat does not own (`column != player_index`; the engine's `home_column_dragon` is
+False for it). Every figure is reset to the front of its *own* column at the start
+of a round and may then step into any column, so being a raider is always a choice
+made that round — never a state a seat is pushed into (a displaced figure goes to
+the cage with no column at all, and phase 1 removes it before any reveal). It is
+not the seat that *pushes*; that is the pusher.
+
+Two consequences of that definition are worth having on the record. First, a raider
+is **the one figure a push cannot touch**, because `_can_displace` requires the
+occupant to be standing in its own column: raiding buys immunity from displacement
+and pays for it with the information you cannot have. Second, over 20 four-net
+games, of 319 cards actually turned:
+
+| the figure stood in | cards turned | gem | dynamite | **dragon** |
+| :-- | --: | --: | --: | --: |
+| its own column | 259 (81%) | 126 (49%) | 120 (46%) | **13 (5%)** |
+| somebody else's | 60 (19%) | 21 (35%) | 19 (32%) | **20 (33%)** |
+
+A blind choice should hit a dragon at the deck's rate, one card in five, so 33% is
+not the deck being cruel — it is selection: seats raid *into columns whose owners
+have left*, and owners leave columns that hold dragons. The trap is visible from
+this side of the table too, and a net that cannot read fronts cannot see it coming.
+
+Your last two scenarios are the reason the push is not the sharpest weapon -- a
+push gets a rival out of a card, but the *trap* gets it out of a haul. Two rules
+do the work, and they interlock:
+
+1. Within a round, **phase 1 comes before phase 2**: everybody standing in the pit
+   cage leaves, and is then immune to anything revealed that round; only after
+   that does every remaining figure reveal the card it is standing on.
+2. A column's fronts are readable only by its owner. Everybody else sees a
+   backside.
+
+So the owner of a column can see a dragon under a rival's figure and get out of
+the mine **on the very round that dragon is turned** -- collecting the haul bonus
+while the raider takes −2 and every other figure still inside takes −1. Nothing
+else in the game gives a seat that pairing of information and immunity.
+
+Measured over 30 four-net games (`lure3`-style engine instrumentation, every round
+recorded at the reveal):
+
+| dragons turned by a raider standing in somebody else's column | 31 (≈1 per game) |
+| :-- | --: |
+| ...and the column's owner was **already out** of the mine | **30** |
+| ...of those, the owner left in the *same* round as the reveal | 24 |
+| ...of those, the owner had left a round or more earlier (trap left set) | 6 |
+| ...and the owner was still inside and ate the −1 with everybody else | 1 |
+
+What it pays, per haul, in the hauls where it happened:
+
+| | same-round (n=24) | left earlier (n=6) |
+| :-- | --: | --: |
+| the column owner | **+2.42** | +0.17 |
+| the raider that turned it | **−0.83** | −0.17 |
+| everybody else | +0.71 | +2.08 |
+
+Two readings, and the second is the interesting one:
+
+* **The trap fires about once a game and the owner is out for 30 of the 31.** In
+  10 of the 24 same-round cases the owner planned *after* the raider, so it could
+  see the figure on its dragon and choose the cage knowing why: that is your
+  "player A goes to the pit cage" line, and the nets already find it.
+* The other 14 are the same trap without the intent: the owner was leaving anyway
+  and the raider walked into a column whose owner was publicly in the cage. That
+  is a misread the raider cannot fix -- it cannot see the front, and the only
+  warning is "the owner is leaving", which it has no rule for.
+
+The cost of *not* leaving is on the same table: the one owner that stayed inside
+took the −1 with the rest.
+
+#### Banking dynamite across a haul
+
+The second scenario is real in the engine and has an exact rule: **dynamite is the
+only card that survives a haul boundary**, and it survives only if you are not
+dead (`_start_next_haul` keeps `DYNAMITE` and nothing else, and only for live
+seats). So a seat holding two dynamite that leaves the mine keeps them and starts
+the next haul able to blast; a seat that dies holding them loses them, and pays −1
+as well.
+
+It is already happening a lot. Per seat-haul at the start of a haul, over 30
+four-net games:
+
+| dynamite in hand | 0 | 1 | 2 | 3 | 4 |
+| :-- | --: | --: | --: | --: | --: |
+| seat-hauls (n=360) | 273 | 49 | **32** | 5 | 1 |
+
+So **38 of 360 seat-hauls (10.6%) start with enough dynamite to blast**, without
+anybody planning it. What is that worth? Paired from the same haul-start position,
+seat 0, same agent dice in every arm, 42 haul starts × 8 re-rolls:
+
+| arm | seat 0's haul points | vs plain |
+| :-- | --: | --: |
+| plain (no dynamite) | +0.62 | — |
+| **banked two dynamite, net's own play** | +0.61 | **−0.01 (se 0.10)** |
+| **banked two and spent them at the first opportunity** | +0.81 | **+0.20 (se 0.11)** |
+
+So the bank is worth nothing *in itself* (-0.01) and about a fifth of a point per
+haul **if it is spent**. Held and never spent, dynamite is dead weight.
+
+That last sentence used to end "so it is not a massive bonus", and that was the
+wrong conclusion from the right table -- see the re-pricing below. The +0.20 is the
+value of one blast forced at the *earliest* opportunity, which turns out to be the
+worst moment to fire one.
+
+Which gives the answer to "should A leave to protect its dynamite?". Leaving
+protects the dynamite only because death loses it, and death also costs −1 and the
+haul's loot, so **leaving to dodge a likelier dragon is right and leaving purely
+to bank dynamite is not**: a zero-gem exit pays nothing (the sole-escapee bonus is
+withheld at zero gems) and costs every card left in the mine. The dynamite bank is
+a reason to *prefer an exit you were taking anyway* over a risky last dig, not a
+reason to leave early.
+
+#### Re-priced: what blasting is worth, and how much of it the nets leave
+
+The cleanest way to price a blast is not to hand somebody the dynamite (which
+changes their hand as well as their options) but to change only their *policy*: the
+same seat, the same seed, the same four neural seats, and seat 0 blasts whenever it
+can instead of never. Paired over 160 games (and 100 under the printed rule):
+
+| rule | never blasts | blasts whenever it can | delta |
+| :-- | --: | --: | --: |
+| engine default (the chooser sees the three cards) | +1.76 | +2.21 | **+0.46 (se 0.14)** |
+| printed rule (three cards face down) | +1.48 | +2.01 | **+0.53 (se 0.19)** |
+
+About **half a point a game**, and it does not depend on the peeking rule, which is
+not what I expected. The blaster fires roughly **0.4 blasts a game** in that arm, so
+a blast is worth on the order of **+1.2 points** -- six times the +0.20/haul that
+forcing one blast at the first opportunity produced. Both numbers are real and the
+gap between them is the lesson: a blast is worth what its *timing* is worth, and
+the self-feeding part is real (of the cards kept out of blast draws, about 40% are
+dynamite, so a blast tends to pay for the next one).
+
+**And the nets leave most of it on the table.** Over 24 four-net games, at the 724
+seat-decisions where the seat to plan held two dynamite and could announce a blast,
+it announced one **156 times -- 21.5%**. So there is an unexploited gap worth about
+**+0.5 points a game per seat**, which on a table where a seat's whole game is worth
+two or three points is not a detail.
+
+That also reconciles with §5 rather than contradicting it: the +0.38/+1.00 margins
+there are *whole-policy* comparisons against scripted fields, where a pending blast
+also makes rule bots flee. The paired number here is the value to the blaster of
+using the dynamite it already has, on the field it actually plays.
+
+#### Does the aggression belong in the last haul, and only for the seats behind?
+
+The obvious refinement of "blast more" is "blast when you need the haul": in the
+last haul, everybody not leading on points should blast to win it. That was not in
+the earlier measurement (it forced blasts with no regard for the score), so it is
+here. Same protocol -- one seat's *policy* changes, the other three play as they
+always do, 120 paired games:
+
+| when seat 0 may blast | its score | delta vs its own unforced play | blasts/game | per blast |
+| :-- | --: | --: | --: | --: |
+| unforced (the net's own choice) | +1.67 | -- | 0.08 | -- |
+| **whenever it legally can** | **+2.21** | **+0.54 (se 0.17)** | 0.60 | +0.90 |
+| whenever it is behind on points | +1.98 | +0.32 (se 0.12) | 0.40 | +0.79 |
+| whenever it is ahead on points | +1.97 | +0.30 (se 0.13) | 0.28 | +1.06 |
+| last haul, behind | +1.93 | +0.27 (se 0.10) | 0.28 | +0.94 |
+| last haul, any standing | +2.06 | +0.39 (se 0.11) | 0.35 | +1.12 |
+
+Read the last column: **a blast is worth about +1 point whether you are ahead,
+behind, in the last haul or in the first**, and the differences between those
+columns are inside the noise. The total only moves with how *often* the seat blasts.
+So the score-conditioned version of the rule captures +0.27 where the unconditional
+one captures +0.54, and the missing half is frequency, not timing.
+
+What the nets actually do is already conditional in the right direction, and far too
+timid in level. Resolved blasts by the whole table over 120 four-net games: **34 in
+total, 0.28 per game** -- haul 1: 8, haul 2: 8, haul 3: 18, and of the 18 in the
+last haul **16 were made by seats behind on points**. So the net has learned "be
+aggressive when you need the haul" and has not learned "blast when you can"; the
+gap is the 0.60-a-game the forced seat manages against 0.08 a game left to itself.
+
+What the target rate is worth depends on whether the rest of the table joins in,
+and that is measurable too -- 120 paired games, four neural seats:
+
+| who blasts whenever legal | blasts/game | seat 0 | table mean | spread (best - worst) |
+| :-- | --: | --: | --: | --: |
+| nobody (native) | 0.28 | +1.67 | +1.67 | 5.23 |
+| seat 0 alone | 0.77 | **+2.21 (+0.54, se 0.17)** | +1.73 | 5.17 |
+| all four seats | 1.20 | +2.02 (+0.36, se 0.19) | **+1.86** | **4.45** |
+
+So it is a partial arms race: the unilateral edge (+0.54) is the largest, and it
+shrinks to +0.36 when everybody takes it -- but the table mean still rises (+0.19)
+and the spread **narrows** (5.23 -> 4.45), because the dynamite that scored nothing
+is being turned into gems. Blasting is not a zero-sum weapon; it is mostly a
+different use of a dead card.
+
+**"Close the gap in the learner" means something specific**, and the machinery is
+already here: the blast announcement is a bit in the action space (`split_action`),
+so nothing in the mask blocks it, and the net simply puts almost no probability on
+it. The trainer already seeds blasting opponents into the league --
+`train_selfplay.py --league-blast-mode {never,rich,always,trap,behind}` (default
+`rich`) with `--league-blast-prob` (default `0.15`, i.e. one scripted opponent in
+seven) -- so closing the gap is a matter of volume: more blasting opponents in the
+league, so blasts are both *seen* and *suffered* (the reaction side is §6, where a
+pending blast should send you to the cage), then a conservative warm restart from
+`checkpoints/selfplay4.npz` with the same guardrails, watching entropy and
+blasts/game so the collapse that happened the last time a warm start was pushed hard
+does not repeat. The alternative, given how flat the value is across standings, is
+to treat "blast when you can" as a derived move and ship it as a policy rule the way
+the eight mask rules are shipped -- cheap and immediately testable, at the price of
+the learner's own judgement about *when*.
+
+Why the flatness is not a surprise in hindsight: a blast buys **two cards** at the
+cost of dynamite that scores nothing, and the failure is only the dragon pair in the
+draw (about 6-10% of blasts, because the keeper can drop one dragon but not two).
+Extra gems are never wasted either -- they secure the haul bonus and break gem ties
+-- so there is no standing in which the blast is a bad buy. The one thing that *is*
+standing-dependent is the threat it poses to other people, and that is §6's subject:
+a pending blast is worth about 0.4 points to whoever it is aimed at.
+
+#### The abandoned column: the deadliest cell, and a weak threat
+
+Once a column's owner has left the mine, nobody can read that column and nobody can
+be signalled about it -- there is no owner left to read a front or say a word. If
+that is true anywhere on the board it is true there, and the numbers agree. Over 25
+four-net games, cards actually turned, by whose column the figure stood in:
+
+| the figure stood in | cards turned | gem | dynamite | **dragon** |
+| :-- | --: | --: | --: | --: |
+| its own column | 322 | 157 (49%) | 151 (47%) | **14 (4%)** |
+| a live rival's column | 68 | 22 (32%) | 23 (34%) | **23 (34%)** |
+| **a column whose owner had left** | 10 | 2 (20%) | 2 (20%) | **6 (60%)** |
+
+Those ten cards are the *turns*, not the population. The whole population is
+measurable: every card left in a column whose owner has left the mine, over the same
+25 games, is **117 cards -- 43 gems (37%), 38 dragons (32%), 36 dynamite (31%)**.
+Against a deck that is 20% dragons, an abandoned column is half again as dangerous
+as the deck, because the seat that owns it took the safe cards out before leaving
+and the haul is over before anyone works through the rest.
+
+**The window is short, not long.** An earlier version of this section said "a mean
+of 3.4 more rounds after the first escape". That was a bug in the probe -- it summed
+*all* rounds of each haul instead of the rounds after the first escape -- and the
+truth is the opposite of what I claimed, because of a rule I should have quoted:
+**once anybody has escaped, no new row is dealt** (`_finish_round`:
+`if not haul_over and not any(player.escaped ...)`). The mine is frozen from that
+moment and only shrinks. Measured properly, over 75 hauls (23 of them with an
+escape): **mean 1.83 rounds after the first escape, median 2, maximum 3**
+(10 hauls 1 round, 7 hauls 2, 6 hauls 3). One column goes dead, a couple of figures
+dig out what is left, and the haul is over.
+
+The pressure you describe -- *someone raids the dead column, so the leader should
+get out* -- therefore has very little room, and fires almost never in the current
+meta: **10 cells in 25 games**, and only **2 rounds in 25 games** had a non-leader
+standing in an abandoned column while the score leader was still inside. In the one
+of those where the leader had a choice it left. Outside that, score leaders leave in
+12% of rounds and everyone else in 10%: no learned "the leader gets cautious"
+behaviour at all.
+
+And when it does fire, the pressure is worth less than it looks, for a reason that
+is in the scoring and not in the dragon:
+
+* The bonus is a **gem race among the escaped**, not a rank bonus: it goes to the
+  seat with the most gems of those who left (`_score_haul`), so a score leader with
+  few gems in this haul is paid nothing for walking out while somebody else holds
+  more. What makes an exit free is a *different* rule: with `solo_escape_bonus` on
+  (the default) a **sole** escapee is paid +3 (+4) even with no gems at all -- the
+  zero-gem escape this document already refuses, because it is the parasite.
+* A wipe costs **every figure still inside the same -1** and the thrower **-2**, so
+  it barely moves the standings between the survivors and moves them one step
+  *against* the seat that caused it.
+
+Put together: the abandoned column is a minefield, not a lever, and the fuse is
+short. It hurts whoever *cannot* afford to leave -- the seats still chasing gems --
+and the only seats that get a free exit for it are the ones paid by the zero-gem
+solo bonus. That is also the honest reading of what made the lure pay earlier: not
+the dragon's damage to other people (which is uniform), but the **bonus secured by
+being the one who is already out**.
+
+#### What a push actually takes, and when it is right
+
+A push is legal only onto a figure standing in **its own** column, so the victim
+chose the cell with the fronts in front of it. Its choice is therefore a signal, and
+that changes the arithmetic from "a card for a card". Over 20 four-net games, at
+every one of the **1,069 decisions where a push was legal**:
+
+| | gem | dynamite | dragon |
+| :-- | --: | --: | --: |
+| card under the victim (unreadable to me, but chosen by the victim) | **52%** | 20% | 28% |
+| best card left in my own column (readable) | **13%** | 70% | 17% |
+
+| shape of the decision | count | share |
+| :-- | --: | --: |
+| my column has no reachable gem, the victim's card is a gem | 417 | **39%** |
+| both are gems | 300 | 28% |
+| my column has a gem, the victim's card is not | 254 | 24% |
+| my own column has no reachable card at all | 98 | 9% |
+
+So the "is a push worth it" question is not "is my column a coin flip" — at the
+moments a push is even available, **my own column offers a gem only 13% of the time,
+because it is already dug out**. The push is a gem upgrade in 39% of those moments
+and an equal card plus a denial in another 28%; it is a downgrade in 24%. Among the
+27 pushes the nets actually made, the card they pushed onto was a gem 41% of the
+time, a dragon 30%.
+
+The price is the dragon, and it is asymmetric in a way worth naming: **the dragon
+in my own column is readable — I only ever stand on one when nothing better is
+legal — while the dragon under a victim is a lottery I cannot see.** A push that
+lands on one is a −2 for me, ends the haul for everyone inside, and sends the
+victim to the cage where phase 1 turns it into an **escape**. The mirror image of
+the lure is real: a figure standing on a dragon in its own column is *inviting* a
+push, and the pusher pays for it.
+
+Which gives the rule this section keeps arriving at, from a third direction: a push
+is worth taking when **my own column has nothing to take** and the victim's cell is
+probably a gem (39% + 28% of decisions), and it is a mistake when I have a readable
+gem of my own (24%). That is a policy, not a mask rule — the engine already offers
+the push in all those states (1,798 of 1,798 in the mask), and the agent has to
+learn that its own column being empty *raises* the value of displacement instead of
+lowering it.
+
+#### Measured as denial: the victim's side of a push
+
+The price above is measured on the **pusher's** score, which is the wrong lens if a
+push is really about "not giving the rival what it wants". So it was measured again
+from the victim's side: same paired design, same re-roll seeds, push against the
+model's own best non-push move, this time reporting both seats and the gap to the
+best rival.
+
+Row-0 pushes (the only ones that cost the victim a dig at all), **40 positions, 50
+paired re-rolls each**:
+
+| delta (push − best other move) | value |
+| :-- | --: |
+| my score | +0.175 (se 0.177) |
+| **the victim's score** | **−0.140 (se 0.188)** |
+| my score − best rival | +0.192 (se 0.194) |
+| win share | +4.1pp (se 2.7) |
+
+and restricted to pushes on **the current score leader**, 28 positions: my score
++0.152 (se 0.229), **the leader's score +0.146 (se 0.230)** — pushing the seat you
+have to beat does not cost it a point at all — win share +4.7pp (se 3.3).
+
+So the denial is real at row 0 but small, about the same size as the gain, and it
+disappears against the leader. The mechanism explains why, and it is the same fact
+as the price above seen from the other side: **a push transfers one card, it does
+not destroy one.** The card the victim stood on goes to the pusher; everything else
+in the victim's column is untouched; the figures reset to the front every round; so
+the victim arrives at the next round with a fresh choice and the same column. And
+if it was holding gems, being pushed *banks* them, which is why its score does not
+fall. What the push costs the victim is a **round**, and a round is cheap while the
+gem it wanted is still in the mine.
+
+The intuition would be right in a game that scored the race — "reach N gems before
+anyone else" — where one card taken from the leader is worth a tempo. This one
+scores *hauls*: the bonus goes to the escapee with the most gems at the end of each
+haul, so a single card only matters when it changes who that is. That is why the
+win share is the metric that moves (+4pp, ~1.5σ) and the victim's score is not.
+
+### The information the table cannot spend
+
+The one genuinely cooperative act this game would reward is a word in a rival's
+ear: *"the card you are standing on is a dragon, I can see it, get off."* The
+printed rules give the table no channel for it, and the cost of that is
+measurable.
+
+A column's fronts are readable only by its owner, so the case is common and one
+sided: a rival raids into somebody else's column, lands on a card it cannot read,
+and the owner is looking straight at it. Over 20 four-net games there were **40
+such positions — two a game**. The owner's side of it is handled correctly: the
+hazard reads **1.00 in 49 of 49** decisions taken in that position, and the owner
+gets out (18 cages, 29 stays that mostly left later; it died exactly once), which
+is right, because the dragon is certain for it and only the cage removes a figure
+from the haul.
+
+What cannot happen is the warning. In **15 of those 40 positions the raider turned
+the dragon itself** — −2 for it, −1 for every other figure still in the mine, the
+haul's loot gone. Roughly **0.75 hauls a game** are lost to a fact somebody at the
+table could see and could not say.
+
+The rules do offer one implicit channel: a seat can **act** its information — a
+column owner leaving the mine reads as "there is something under that card" — and
+the rule bot grew a reader for exactly that (``_is_signaled_danger``: the owner of
+my column fled, and was not displaced, so it left on purpose). It was measured, and
+it is the weaker of the two inferences: a seat that flees is equally likely to be
+banking loot or waiting out a blast, so reading the *behaviour* is what
+``trust_sitter`` does, and the backside-honest `reader` policy beats it (see
+"Backsides have to be read"). Signalling by action is real but noisy; signalling by
+declaration does not exist.
+
+Two ways to give the table the channel, both rules changes and neither made here:
+
+1. **A guard move.** Today a raider standing in your column cannot be displaced:
+   ``MineEnv._can_displace`` requires the occupant to be standing on its *own*
+   column, so the owner can evict nobody. Letting the owner push a raider off a
+   card it can see is a dragon converts private information into an action the
+   engine already understands — and it would make raiding a column genuinely
+   dangerous, which is a real change to the game's core economy.
+2. **A declaration.** Once per haul, a seat may reveal one card. That is table
+   talk: a new mechanic, and the only one that would let the informed seat spend
+   what it knows without spending its turn.
+
+### A rival walking off its own card is a dragon tell
+
+The same missing channel has a one-way mirror: a seat *cannot* say "there is a
+dragon here", but it can *show* it. A seat standing on a card in its own column
+can see the front. When it walks off that card onto another one, the step is
+public and the backside is public, so the table learns "that seat was looking at
+something it preferred to leave" — and the obvious candidate is a dragon it saw.
+That inference is worth money if it is true, because a dragon in a column is a
+dragon that is **not** in the draw pile: each backside colour is ten cards with
+two dragons, so one such dragon takes that colour from 2-in-10 to 1-in-9, and two
+take it to zero. `features.suspected_dragon_counts` counts the departures per
+colour and `features.backside_stats(trust_suspected=...)` prices them; the default
+trust is 0, so every measurement recorded before this existed is unchanged, and
+`game_env` records only *voluntary card-to-card* steps inside the seat's own
+column (a displaced figure, or a departure for the cage or the lorry, is not a
+tell).
+
+`probe_vacated_dragons.py`, 150 four-seat neural games (seed 2120000):
+
+| | value |
+| :-- | --: |
+| departures recorded | 28 (**0.19 per game**) |
+| ...that really were dragons | **28** |
+| precision | **100%** |
+| base rate for a card left in the mine | 28.7% |
+
+The tell is **right every single time** in this population, and it is *rare*: a
+neural seat almost never leaves a card it can see unless the card is a dragon,
+which is exactly what the mask's "hold the card you planned" rule implies. Trust
+prices it as a halving of the per-colour risk at the positions where the evidence
+exists (0.198 → 0.099).
+
+**And the policy still does nothing with it.** Paired counterfactual on the blast
+announcement over 2,898 positions where the evidence was in hand: P(announce)
+0.0780 without it and 0.0785 with it, a shift of **+0.0005 [0.0003, 0.0007]**
+that rises in only 10% of positions. Whole table, 150 paired games each:
+
+| inference | score / seat | hauls ending on a dragon | blasts fired | paired margin |
+| :-- | --: | --: | --: | :-- |
+| off (default) | +2.11 | 16.2% | 161 | — |
+| on (trust = 1) | +2.09 | 16.2% | 159 | +0.00 [−0.07, +0.07] |
+
+So the third piece of otherwise-unspendable information runs into the same
+bottleneck as the first two (the backsides, the hazard, the pending blast): it is
+*available, accurate, and unused*. The nets are not short of reasons to blast;
+they are short of a trigger that fires.
+
+### Backsides have to be read
+
+The trap above pays only against a table that watches the *player* instead of
+the *backside*. The baseline `rule` policy did exactly that: `_find_displacement_raid`
+treated a rival sitting quietly on its own column as proof that the card was
+safe (`risk × 0.1`), which is an inference about behaviour, not a reading of the
+card, and against a sitter on a visible dragon it is wrong 100% of the time.
+Two things were changed.
+
+1. **`reader`, a backside-honest opponent.** Same policy, with
+   `trust_sitter=False`: the only evidence is the backside and the cards already
+   known off it, so a fresh backside (2 dragons in 10) is not raided. It is not
+   a weakened bot — against three `rule` bots it is indistinguishable from
+   `rule` (32.0% wins, margin +0.21 both ways, 600 games; with no sitter to
+   misread, the two policies take the same actions). It is now 2 of the 7
+   scripted opponents in the training pool, which previously was three parts
+   `rule` to one part everything else.
+2. **The encoding stopped calling a visible dragon safe.** In the action
+   features, a card whose front the player can see had the risk channel at 0 and
+   the safety channel at 1 — so a *visible dragon* was encoded exactly like a
+   *visible gem*, with only a one-hot to tell them apart. A visible front is now
+   scored as the answer it is (risk 1, safety 0 for a dragon; 0 and 1 for a gem),
+   and an unknown front keeps the diluted backside risk.
+
+The 4-player net was then resumed for 60 more generations (4,800 games) with
+that pool and that encoding, and evaluated on both fields, 400 games each,
+temperature 0.7, learner in seat 0:
+
+| checkpoint | vs 3 × `rule` | vs 3 × `reader` | card-risk rank | ate its own bait |
+| :-- | :-- | :-- | --: | --: |
+| `selfplay4_blind.npz` (before) | 42.8% · +1.08 margin | 36.2% · +0.37 | 0.382 | 0.17/game vs readers |
+| `selfplay4_reader.npz` (after) | **47.0% · +1.40** | **43.5% · +0.68** | **0.270** | 0.13/game vs readers |
+
+Card-risk rank is the mean percentile of the chosen card's dragon risk among the
+cards on offer, over decisions where the risks differ: 0 is "always the safest
+card", 0.5 is "blind". Reading backsides is not a detail — it is the whole
+difference between a fair trade and a free one. Two caveats keep this honest:
+the retrained net is *not* stronger in general (paired head-to-head against the
+blind checkpoint is +0.02, se 0.05, over 800 seat-games), the gain is
+field-specific; and the bluff survives against the blind field (0.30 pushes per
+game, it eats its own bait 0.003 times per game), so what changed is that the
+table can now punish it, not that the move disappeared.
+
+Shipped then: `selfplay4_reader.npz` was promoted to `checkpoints/selfplay4.npz`
+(superseded by the loot-gated snapshot in the next subsection; the file is kept
+under its own name), the predecessor is `checkpoints/selfplay4_blind.npz`, and
+`reader` is available everywhere a scripted policy is
+(`make_scripted_agent("reader")`).
+
+### Pricing the bluff, per table
+
+"The field matters" is a claim until it is a number per decision, so
+`probe_bait_value.py` forks it. Every time the learner names a move onto a
+dragon it can see, one copy of the game plays that move and the other copy makes
+the same policy choose again with face-up-dragon digs removed; a dragon in a
+column is visible only to its owner, and the fork diverges from that one
+decision alone, so the difference in the seat's final score is what the move was
+worth there.
+
+| field (3 opponents) | forked decisions | worth of the bait | forks it helped / hurt |
+| :-- | --: | :-- | --: |
+| `rule` | 122 | **+1.16** (se 0.24) | 42% / 14% |
+| `reader` | 140 | **+0.64** (se 0.31) | 43% / 31% |
+| the same net in all four seats | 156 | **-0.78** (se 0.16) | 15% / 40% |
+
+Every fork here has a rival deep enough to push, because the variant without one
+is already masked (`doomed_dragon_digs`). So the move is worth more than a point
+against a bot that raids on confidence, half that against a bot that reads the
+backside, and it is a loss against its own peers. The flow of the same decision
+says why: over 200 games the learner is pushed off a dragon card in
+**0.00** cases per game against peers — nobody takes the bait — and instead eats
+the dragon itself **0.45** times a game, against **0.01** against `rule` bots.
+
+What the learner cannot do is tell the two tables apart: nothing in its input
+says whether the field punishes a bluff, and until now nothing in the engine
+recorded the evidence either. That is the change. Displacements are made in the
+open, so every seat can see them; the engine now counts them per player, carries
+the count across hauls, and the state encoding carries each tracked opponent's
+count (capped at three). "Has this table ever taken a bait?" is now answerable
+from `PlayerActionContext` alone. The counter adds one feature per opponent
+(82 state features, 103 inputs), so checkpoints trained before it need
+`migrate_checkpoint.py`, which inserts zero columns — the migrated net behaves
+exactly like the original until it is retrained.
+
+Two interventions were then measured and **not** shipped:
+
+| intervention | vs 3 × `rule` | vs 3 × `reader` | vs 3 × itself |
+| :-- | :-- | :-- | :-- |
+| hide the bait while no rival has ever displaced (rule) | -2.5pp, -0.25 | -0.2pp, -0.08 | -9.5pp, -0.74 |
+| 60 more generations with the count in the input | 40.9% (was 54.9%) | 44.0% (was 44.1%) | 32.0% (was 43.0%) |
+
+The mask turns a read into a rule and pays for it everywhere — including the
+peer field, where switching it off for *all four* seats is worth 9.5 points:
+at a table that bluffs back, the bluffs are load-bearing, and taking them away
+from everybody helps nobody. The retrain did learn something real (it names a
+bait four times less often, 0.09 against 0.41 per game, and each one is worth
++2.81 instead of +1.16) but it paid 14 points of win rate against `rule` bots
+for it, so the promoted checkpoint stays `selfplay4.npz` and the run is kept as
+`checkpoints/league/selfplay4_dispfeat-gen0060.npz`. The information is now in
+the input; 4,800 games were not enough to make the network use it, and the
+honest reading is that a rule cannot stand in for the read.
+
+### The training signal was paying for empty-handed exits
+
+A viewer reported seats walking into a pit cage "with no present danger
+whatsoever". The frequencies are real, but the asymmetry is the news. Over 400
+games each, counting only the plan that stands when the phase executes:
+
+| seat | cage commitments / game | ...empty-handed | ...empty-handed with nothing pressing |
+| :-- | --: | --: | --: |
+| `rule` bot | 0.66 | 24% | 11% |
+| learner (`selfplay4`) | 0.21 | **86%** | 57% |
+
+The hand-written bot leaves more often but almost always with loot in hand; the
+learner leaves less often and usually with nothing. The cause was in the reward,
+not in the rules: `_reward_vector` paid `ESCAPE_SHAPING = 0.30` for *any* escape,
+loot or not, and a gem is only worth `GEM_SHAPING = 0.20`. Walking out
+empty-handed therefore scored like one and a half gems in training, whatever the
+board said.
+
+So the bonus now requires at least one gem banked (`test_an_empty_handed_escape_is_not_paid_for`).
+Fine-tuning the shipped net for 30 generations under the corrected signal keeps
+its strength and halves the habit it never should have learned:
+
+| checkpoint | vs 3 × `rule` (800 games) | empty-handed cage walks | of those, unthreatened |
+| :-- | :-- | --: | --: |
+| `selfplay4_reader.npz` (before) | 47.4% · +2.67 | 0.18/game | 0.12/game |
+| `selfplay4` (after, gen 30) | 48.1% · +2.61 | 0.12/game | 0.07/game |
+
+Paired head-to-head over 800 seat-games is +0.04 (se 0.05): the same strength,
+less of the habit. Reproduce with
+
+```bash
+python train_selfplay.py --players 4 --resume checkpoints/selfplay4_reader.npz \
+  --generations 30 --games-per-generation 80 --seed 6161 --name selfplay4 \
+  --out checkpoints/selfplay4.npz
+```
+
+Two things this does not fix, stated plainly. Running the fine-tune for 60
+generations instead of 30, or dropping the escape bonus entirely, both *lost*
+strength (42.5% and 39.5% against three `rule` bots, with the policy entropy
+collapsing from 1.27 to 0.93), so the 30-generation snapshot is what shipped.
+And an empty-handed exit is not always wrong: it collects the printed
+sole-escapee bonus of +3, which the learner actually won in 11 of its 53
+empty-handed exits. That is why the move stays legal and why no mask forbids it;
+only the shaping that paid for it unconditionally is gone.
+
+### "It climbed past two free cards"
+
+That is the next thing a viewer notices, and the first question is whether it is
+even a decision. It is not: planning is sequential, so what the viewer shows as
+a step is a *plan*, and the plan that counts is the one standing when the phase
+executes. In 300 four-player games with a network in every seat:
+
+| observation | count |
+| :-- | --: |
+| steps onto a card shallower than free cards still in the mine | 3,061 |
+| ...where the target card was in the mover's own column (its front visible to that seat alone) | 2,079 (68%) |
+| ...a raid on a rival standing on their own card | 79 (2.6%) |
+| ...no visible reason at all | 897 (29%) |
+| planning phases that actually **ended** on a hidden card while a free known gem sat deeper | 19 in 250 games (0.08/game) |
+
+The viewer draws nothing but backsides, so the 68% are invisible knowledge: the
+seat is digging a card it can see the front of, which is the one thing the rules
+keep private. For the rest, the depth of the card buys nothing — every figure is
+put back at the front of the mine at the start of each planning phase
+(`MineEnv._set_players_to_starting_positions`), and a player takes exactly one
+card per round either way, and a skipped card stays in the mine rather than
+being consumed — though it usually does not come back either: of 955 skips of a
+free known-safe card, 111 (12%) were taken later in the same haul. What the skip
+does *not* decide is the score: committing to the skipped gem instead is worth
+**+0.00 points (se 0.59)** over 19 forced forks, because one gem rarely decides a
+haul and the hidden card pays a gem or a dynamite often enough to cancel it.
+
+So the move is legal, informed, and roughly free — but it *looks* arbitrary, and
+that part was a real defect. The viewer now annotates every candidate with what
+the deciding seat knows, and whether the standing plan is locked or tentative
+(`features.action_reason`, `GameController.reason_for` / `plan_summary`). This is
+the same trap as the "92 blunders" audit in the previous section: everyone,
+including me, reads an intermediate planning step as a commitment.
+
+The same question came back sharper — *"that is irrational"* — so the moves were
+classified instead of explained, 250 four-player games with a network in every
+seat, looking at the card the figure walks past on the next row up:
+
+| why the shallower card was taken | share |
+| :-- | --: |
+| a card in the mover's own column, front visible to that seat alone | 91.5% |
+| the shallower card is **dearer** than the card it passed | 4.1% |
+| the two cost the same | 3.3% |
+| the shallower card is **cheaper**: it is reading the backsides | 1.1% |
+
+The first row is invisible knowledge — the viewer draws backsides, so a seat
+digging its own column looks like it is guessing. The last row is the behaviour
+that was asked for. The middle two rows are the ones with no defence: if two
+face-down cards cost the same, walking past one to take the other buys nothing,
+because **the backside is the price** and the position you end the round on does
+not matter (every figure is put back at the front of the mine each round, and a
+player takes one card per round either way).
+
+So that is now a rule (`features.walks_past_a_free_card`, applied in
+`action_mask`): a face-down card is dominated when a deeper free card is at
+least as safe, and the dominated ones are removed unless that would empty the
+action space. Measured on the promoted checkpoint, 4 players, seed-paired
+800-game cells:
+
+| field | rule off | rule on | delta |
+| :-- | :-- | :-- | :-- |
+| 3 × `rule` | 54.9% · +3.12 | **56.4% · +3.18** | +1.5pp |
+| 3 × `reader` | 44.1% · +2.34 | **46.1% · +2.51** | +2.0pp |
+| 3 × `leaver` | 22.5% · +1.22 | 21.2% · +1.21 | -1.2pp (noise) |
+
+With the rule in, the same audit finds the "dearer" and "same price" rows down to
+1.0% and 0.2%, i.e. what a spectator still sees is almost entirely a card whose
+front only that player is allowed to look at.
+
+### Four nets parked on their lorries
+
+Seed 7, network in every seat: all four figures stood on their lorries at the end
+of the first planning phase and the haul ended there with nobody having taken a
+card. That is not a rare accident of one seed — over 200 games with the shipped
+checkpoint in all four seats, **93 lost the first haul that way**, and it was a
+sampling artefact in the strict sense: under the argmax (the viewer's "Greedy"
+box) it happened **0 times in 200**.
+
+What the move is worth, read off the rules rather than argued about: standing on
+a lorry collects nothing, and it does not protect the figure either. A woken
+dragon kills **every** player still in the mine, the ones on their lorry
+included — only a pit cage takes a figure out of the haul. So the lorry has one
+use, refusing the card under your own figure, and that is worth a round *only*
+when that card is a dragon the seat can see. Everywhere else it trades a card
+(eight in ten are a gem or a dynamite) for nothing.
+
+It is also a coordination trap, which is what makes the whole table do it: each
+seat dodges for itself, so four seats on lorry is not four mistakes in isolation
+but one outcome. And the seat-level numbers say where the habit came from — over
+300 games the learner parked **2.49 times a game** against `rule` bots (0.46 of
+them in the first planning phase of a haul), *and won 48.1% doing it*. Parking
+was not costing it points against a field that also leaves loot behind, so
+nothing in the reward was pushing back.
+
+`features.lorry_skips_a_card_worth_taking` (applied in `action_mask`) hides the
+lorry unless the seat is standing on a dragon it can see, and never empties the
+action space. A/B, 4 players, learner in seat 0, seed-paired:
+
+| field | rule off | rule on | first haul lost to a stand-off | any haul |
+| :-- | :-- | :-- | :-- | :-- |
+| 3 × `rule` (800) | 48.1% · +1.82 | **56.2% · +2.81** | 22.5% → 32.9% | 20.5% → 29.9% |
+| 3 × `reader` (800) | 37.5% · +1.02 | **44.1% · +1.77** | 17.9% → 23.2% | 18.1% → 22.2% |
+| 3 × `leaver` (400) | 19.5% · +0.73 | **24.5% · +0.81** | 7.8% → 0.0% | 7.7% → 0.1% |
+| the same net in all four seats (400) | 37.8% · +1.81 | 37.8% · +1.86 | **29.8% → 1.2%** | 29.2% → 0.8% |
+
+Three things in that table are worth reading carefully.
+
+1. **The habit was the field's, and fixing it pays: +8.1 points against `rule`
+   and +6.6 against `reader`.** The seat stops parking, takes its card, and the
+   points follow because the card is usually worth something.
+2. **The stand-off rate against scripted bots rises, and that is the control
+   being the control.** In every one of those stand-offs the learner had already
+   left; the parked seats were bots, whose policy this repo does not mask. What
+   changes is that the learner no longer joins them.
+3. **In a field of its own kind the stand-off disappears (29.8% → 1.2%) and the
+   win rate does not move** (37.8% both ways, +1.86 against +1.81). A table of
+   copies splits a fixed pot, so removing a symmetric mistake helps everybody
+   equally — it is the spectator-facing defect that goes away, not a new edge.
+   Seed 7 under the rule: haul 1 ends normally with 4 gems on the table instead
+   of nobody collecting anything.
+
+Closing the lorry was the right fix for the lorry and the wrong fix for the
+habit: the next seed the viewer opened had all four figures in **pit cages**
+instead, which is the subject of the next subsection.
+
+### An escape has to bank something
+
+The lorry rule closes one way of throwing a round away, and the viewer found the
+next one immediately: **seed 7, network in every seat, every figure in a pit cage
+at the end of the first planning phase, not one gem collected** — and the same
+thing in the next haul, so two of the three hauls banked nothing at all and the
+game (5–4–1–1) was decided by the last haul alone, which is exactly the "skill
+becomes luck" outcome the design is supposed to avoid.
+
+The chain is worth reading in the log. Seat 3 was **displaced** into a cage by a
+raid in the first planning phase — ordinary, aggressive play — and the escape
+rule of the previous section counted "somebody is already in a cage" as a
+*threat*: seat 2 read it as danger and left, seat 1 read two caged seats, seat 0
+read three. Four figures in cages, no cards turned, +1 each. It is the same class
+of mistake as the lorry: a rule that was written about danger, applied to a table
+state that is not dangerous.
+
+What an escape is actually worth: the cage is the only exit that takes the figure
+out of the haul *before* the cards are turned and banks the gems in hand. So it
+is worth a round for exactly two reasons — there is loot to bank, or there is
+something to escape from (a blast is charged, or the seat can see a dragon about
+to be turned: the card under its own figure, or a card in its column with a rival
+standing on it). Everything else is a wasted round, and "somebody is in a cage"
+is not on the list. That is `features.cage_banks_nothing`, applied in
+`action_mask`.
+
+Measured on the viewer's own harness (`gui_controller.GameController`, four
+neural seats, temperature 0.7, 150 games = 450 hauls; `probe_escape.py`):
+
+| escape rule | hauls thrown away | games with one | gems collected per haul | seed 7 |
+| :-- | --: | --: | --: | :-- |
+| as first written (a cage is a reason to flee) | **40.0%** | 76.0% | 0.89 | two hauls in cages with nothing banked, 5–4–1–1 |
+| without the cage/herd clause | 4.9% | 13.3% | **1.91** | haul 1 collects 7 gems, 4–6–0–0 |
+| only a rival who has *left* counts | 5.8% | 16.7% | 1.52 | 7 gems over two hauls, 0–2–−1–−1 |
+| **an escape must bank a gem (shipped)** | **2.9%** | **8.0%** | 1.63 | 7 gems over two hauls, 3–4–0–−1 |
+
+"Thrown away" is a haul where at least three seats escaped and the table
+collected no gems at all. A third of all hauls were being thrown away before
+this, and three quarters of games contained one.
+
+The price, against scripted fields (4 players, learner in seat 0, 1,600 games per
+cell, seed-paired):
+
+| field | as first written | shipped rule | paired difference |
+| :-- | :-- | :-- | :-- |
+| 3 × `rule` | 56.0% · +2.89 | 52.3% · +2.68 | -0.21 points (se 0.06), -3.7pp wins |
+| 3 × `reader` | 44.1% · +1.79 | 40.3% · +1.70 | -0.09 (se 0.06), -3.8pp |
+| 3 × `leaver` (800) | 22.6% · +0.77 | 25.6% · +0.81 | wins more |
+
+So the old rule was **worth about a fifth of a point per game**, and it earned
+them by joining herds of empty-handed escapes: the printed scoring gives a sole
+escapee +3 even with no gems, and a tie for most gems +1 each, so being the
+fourth seat into a cage is cheap insurance against a haul other seats were going
+to end anyway. That is not skill and it is not what the game is about — it is a
+way to skip a third of the hauls — so the points are the cost of the fix, and
+they are small. In exchange, seed 7 plays a real haul 1 (2, 1, 0, 1 gems), loses
+haul 2 to a dragon in round 0, and lets haul 3 finish 1–1–1–0: every haul is
+played rather than skipped.
+
+That game is read move by move — what each seat knew, the probability the network
+put on the move, and what one move was worth from that position — in
+**[SEED7.md](SEED7.md)**, which is also where the sample noise behind the viewer
+(47% of moves are not the network's first choice) is quantified.
+
+### A cage is insurance, and the table's hazard was not an input
+
+The rule above leaves one case open, and the viewer found it too: **seed 7, a
+seat holding a gem walks to the cage while nobody is standing on a card that can
+be a dragon.** Nothing on the table can blow, so the escape buys nothing. The
+seat can leave later in the same planning phase, once a rival has moved onto a
+card, and it can leave later in the haul with more gems in hand — and the haul
+bonus compares gem *counts*, so a gem banked in round 0 is the weakest claim a
+seat can make.
+
+What a cage actually buys is insurance against the one thing that destroys loot:
+a dragon, which ends the haul and scores every figure still in the mine as dead.
+Priced that way the escape is right when the table is dangerous (three rivals
+each on a 20% card is ~50% that the mine blows this round) and wrong when it is
+not. Seed 7, every escape priced with 60 re-rolled continuations of the same
+position (`analyze_game.py --forks`):
+
+| table hazard at the escape | what the cage was worth | escapes |
+| :-- | :-- | --: |
+| 0.00 – 0.22, nothing on the board can blow | −0.35 points on average (+0.27, −0.12, −0.18, −1.38) | 4 |
+| 0.44 – 1.00, a card or a blast that can blow | +0.53 points on average (+0.88, +0.00, +0.72) | 3 |
+
+The network could not make that distinction, and not because it is hard: **the
+hazard was not in its input.** The state vector carries the seat's own column
+and a twelve-number block per rival — position, column, score, card count, blast
+flag, displacement count — but never the card *under* a rival, and the board
+enters the policy only through the candidate-action block. There was no way to
+represent "three of us are standing on cards that can be a dragon". Two seats,
+one at a table hazard of 0.00 and one at 0.56, looked identical to the encoding
+on the escape decision. Among 471 chosen escapes in 60 sampled four-net games,
+**11% were taken at a table where nothing could blow** — and 49 of those 54 were
+a single gem banked.
+
+The fix is in three parts, and each part is measured:
+
+1. **`features.round_dragon_hazard(ctx)`** — one minus the product, over the
+   surviving figures, of the risk of the card each is standing on, and a flat
+   1.0 whenever a blast is charged. It is appended to the state vector
+   (`HAZARD_FEATURE` = index 82, `N_INPUT_FEATURES` 103 → 104) and
+   `migrate_checkpoint.py --append-hazard` widens checkpoints that predate it.
+   It is deliberately a *lower* bound: a rival is free to walk onto a card
+   mid-round, so a table where nobody stands on a dragon-capable card is more
+   dangerous than zero. (What it counts as dangerous was wrong at first — see
+   the correction at the end of this section.)
+2. **`cage_banks_nothing` reads it.** One gem in hand is no longer enough on its
+   own: the cage needs a hazard above 0.15, or a charged blast, or a dragon the
+   seat can see about to be turned. The reason this is right and not just
+   tidy — leaving is a decision that *repeats*, so waiting one move gives the
+   same information and keeps the gems. Worth, 1,000 paired four-net games with
+   the tested seat's escapes masked against the same seat unmasked:
+
+   | checkpoint | paired difference | escapes blocked |
+   | :-- | :-- | --: |
+   | the previous one (`selfplay4_prehazard.npz`) | +0.02 points (se 0.04), −0.6pp wins | 0.71/game |
+   | retrained with the hazard as an input | **+0.10 points (se 0.04), +1.5pp wins** | 0.79/game |
+
+   The rule is worth something only once the net can *use* the round it buys,
+   which is the whole point of the feature: it waits, watches, and leaves in the
+   same phase once the danger is on the board.
+3. **The checkpoint is retrained** from the shipped one — the new input starts at
+   zero weight, so this is learning what to do with it, not starting over:
+   30 generations with the feature in place, then 20 more under the rule above.
+   Against the previous checkpoint, 800 paired four-net games with the tested net
+   in seat 0: **+4.5pp wins (se 2.0), +0.45 points (se 0.10)**. Against scripted
+   fields: 3 × `rule` **51.8% · +3.27** (was 48.2% · +2.60), 3 × `reader`
+   **41.0% · +2.22** (was 33.6% · +1.41).
+
+Seed 7 now plays a different game — 82 decisions, 13 escapes and not one of them
+at a table where nothing could blow, scores 5–4–0–1. The checkpoint that played
+the game analysed in [SEED7.md](SEED7.md) is kept as
+`checkpoints/selfplay4_prehazard.npz`, so that analysis stays reproducible.
+
+The residual is honest: about five escapes a game are still empty-handed. The
+rule allows them whenever a card or a blast can blow, and an empty escape still
+takes +3 when it is the only exit — that is the game's own bargain, insurance
+paid for with a round, not a defect in the model.
+
+#### Correction: the hazard was priced on the wrong cards
+
+The viewer came back with one case from seed 7: **haul 1, planning round 1**,
+P1 holding one gem and standing on the gem it could see in its own column, no
+blast charged, no dragon face up — and it walked to the cage at 89%. The rule
+above allowed it, because the table hazard read **0.61**: three rivals, each
+standing on a face-down card.
+
+That reading was wrong, and the game says why. A rival standing in **its own
+column** can see the card under it, and stepping away from a dragon is always
+legal — the pit cage is reachable from any card — so it will not turn one. The
+figures that can wake a dragon are the ones standing on a card *nobody at the
+table can see*: a raid into somebody else's column, plus a charged blast.
+Re-rolled from that exact position 200 times, the haul ended on a dragon **1%**
+of the time, against a believed 61%. The escape itself was worth −0.21 ± 0.24
+points against staying to collect: not a blunder, but insurance bought at a price
+eight times too pessimistic.
+
+`figure_dragon_risk` now charges only the raiders. That makes the same clause
+*safe*, which the earlier mask tests could not show — they were run with the
+miscalibrated hazard, and raising the bar then cost points (−0.19 at 0.45,
+−0.34 at 0.60) because those thresholds were forbidding escapes at tables that
+merely looked dangerous. With the raider-only hazard, 1,000 paired four-net games
+per row:
+
+| escape clause (hazard ≤ 0.15 masks the cage) | score | wins |
+| :-- | :-- | :-- |
+| the checkpoint before this change, off → on | −0.04 (se 0.07) | −0.3pp |
+| retrained under the corrected feature, off → on | −0.05 (se 0.08) | +2.9pp (se 1.7) |
+
+The checkpoint was retrained again, 20 generations under the corrected feature:
+**+0.03 points (se 0.09)** against the one it replaces in 800 paired four-net
+games — parity, because the point of the change is a truthful input rather than a
+stronger player — and 54.2% · +3.50 against three `rule` bots (1,000 games),
+38.5% · +2.21 against three readers (the predecessor's 41.0% is inside the noise,
+se 1.6). Seed 7 no longer contains an escape at a table where nothing visible can
+blow.
+
+#### Correction: an empty escape with a gem one step away
+
+The next report from the same game: **P3 leaves through the cage in the first
+planning phase, with no danger on the table.** There *was* a danger — P3 was
+standing on a dragon in its own column, and only the owner of a column sees its
+fronts, so the viewer draws a plain card — but the escape was wrong anyway. P3
+held nothing, and a gem it could see sat one row away. The rule treated "a dragon
+I can see is under me" as licence to leave the haul; it now also needs the seat to
+have **no card it can see is safe** to step onto instead. Priced from that
+position: the gem **+2.59 ± 0.12**, the empty escape **+2.23 ± 0.10** — and P3
+took the gem at its next decision in the same phase, so the cage was a plan it
+abandoned. Worth, 1,000 paired four-net games with the clause on one seat against
+the same seat without it: **+0.00 points (se 0.03)**, i.e. free.
+
+The rest of the class stays legal, and that is measured too: forbidding every
+empty escape taken while *any* card is reachable — including a card the seat
+cannot see — costs **−0.11 points (se 0.04)**, so stepping onto an unknown card
+instead of leaving is a real trade rather than a wasted round.
+
+#### Whose escape you are watching
+
+Three reports in a row (this section, its predecessor, and #15) said the trained
+AI leaves the mine through the cage with no danger on the table, and each time the
+all-neural game of that seed had no such move. The reason is the viewer's table.
+It is mixed unless "AI in every seat" is ticked: `--policy neural:selfplay4` puts
+the network on P1 and leaves P2–P4 on the built-in `simple` bot, and with no
+`--policy` every seat is that bot. The scripted bot escapes far more often, and
+now that every escape prints what it banks and what it runs from, it says why:
+over 60 default-viewer games it takes **1,362 escapes, 444 of them with no gem in
+hand, 158 of those in a haul's first planning phase**, and every one of them now
+carries its reason — *`pit cage, banks 0g (P2 is on my dragon)`*, a dragon in its
+own column with a rival standing on it, a card only that seat can see.
+
+Those gem-less escapes are not a bug either. Removing them from the bot (an
+escape banks nothing, so stay and dig) costs it **0.76 points a seat and wins 32.8%
+of tables against a 50% null** over 400 paired games, because fleeing before a
+dragon it can see turns a sure −1 into 0 or, as sole escapee, +3. What looked arbitrary
+is a private read. The all-neural table escapes far less often: seed 7 plays 94
+decisions with fourteen, five of them with nothing in hand.
+
+Both the player list and `analyze_game.py` now name the policy behind every seat,
+and `--viewer` replays the mixed table, so a report can be matched to the game it
+came from.
+
+#### A pass in the cage is the escape
+
+The mask that refuses an escape with nothing to bank only ever gated the *cage
+move*. A seat already standing in a cage could take the same departure by
+passing, and a second rule made that the only move it had: the lorry is masked
+unless it skips a card the seat can see is a dragon, and in a cage there is no
+card at all. So the mask removed the lorry and left one legal action — a pass that
+ends the haul.
+
+Seed 7, haul 1, planning phase 1 is exactly that position. P3 takes the gem it can
+see at r0c2 (45%, its second choice), P1 raids that slot off a 1% sample and
+displaces P3 into cage index 0, the hazard reads **0.00**, nothing is banked, and
+the network takes the pass at 100% while the lorry was the better move: **lorry
++0.93 ± 0.11 against pass +0.55 ± 0.10** over 200 re-rolls from that position.
+
+The two moves are now decided together: from a cage, an escape that banks nothing
+is refused and the lorry keeps the haul alive; an escape that banks something or
+answers a charged blast drops the lorry and keeps the pass. Over 1,200 paired
+four-net games that is 25.1% / +1.70 before and 25.8% / +1.62 after — **+0.8pp
+wins (se 1.7), −0.09 points (se 0.08)**, a wash, and the reason to ship it is that
+the old rule did not *let* the seat choose. The lorry standoff does not come back
+with it: **0 wasted hauls in 900** in both arms (BALANCE.md, "Four nets parked on
+their lorries").
+
+#### Correction: the row you take a card at decides what a raid can do to you
+
+An earlier version of this paragraph argued the opposite of what follows, and it
+was wrong about the mechanism. It priced taking the front gem of your own column
+against the bottom one — **+0.13 ± 0.16**, a wash — and concluded the front gem is
+fine because "a displacement banks the loot; the figure leaves with the gems it
+carries". That part is true and beside the point: what a displacement does is end
+the *phase*, and the row the card was taken at is the cage index it leaves the
+figure with. From a cage only rows **shallower** than the cage index are legal
+again (``MineEnv._movement_depth``), so
+
+- displaced from **row 0** → cage index 0 → **no card is legal at all**; the only
+  moves are the lorry and the pass, and a pass in a cage is a departure;
+- displaced from **row 3** → cage index 3 → rows 0–2 are open, so the seat acts
+  again and can still take the shallow gem it passed over.
+
+Seed 7, haul 1, planning phase 1 is the same table twice: P3 is pushed into cage
+index 0 and has exactly `{lorry, pass}`; P1, on the same board, has gems at r0, r1
+and r3 in its column and takes **r0c0 at 55%** while the bottom gem is legal. Over
+200 four-net games, **114 of 209 mid-phase raids landed on a figure standing in
+row 0** (a deep figure can only be raided by one standing at the front of the
+mine) and **136 of those 209 — 65% — left the victim with no card move at all**.
+
+So the two orders are not the trade the earlier section claimed. Taking the deep
+gem first is the same gem, raidable by fewer seats, and if a raid does land the
+seat can still take the shallow one *in the same phase*: deep-first can bank two
+cards in a phase, shallow-first at most one. The rest of the codebase already
+prefers deeper for face-down cards (`walks_past_a_free_card`, which masks a
+shallower dig behind an equally-priced deeper one, and justified it with "ending
+the round on a deeper card buys nothing" — true *across* rounds, since every round
+resets the figures to the front, false *within* one). This is the same rule for
+cards the seat can see: ``strands_the_figure``.
+
+**What it costs, measured.** 2,000 paired four-net games with the rule on seat 1
+and three identical opponents: 25.6% / +1.59 with it against 25.7% / +1.60
+without — **−0.1pp wins (se 0.9), −0.01 points (se 0.046)**. Mechanism check over
+400 games: raids on that seat's cell 127 → 115, and of those, phases it could not
+recover from 77 → 75. The frequency is the honest weakness of this section: a seat
+is raided mid-phase about 0.3 times a game, so the option this restores is worth
+little on average and the rule cannot be justified by its score. It is shipped on
+the argument instead: the mask should not hand the network a move that is
+dominated inside the position it is in, and a network that has not learned the
+engine's cage-index rule cannot be relied on to see the difference itself.
+
+#### A face-down card is not a trade against a gem you can see
+
+Seed 7, haul 1, planning phase 1: P1 stands at row 2 of its own column, whose
+fronts read gem (r0), gem (r1), dynamite (r2). It takes **r1c1** — an empty cell
+in P2's column, face down, backside "~", **25% dragon** — at 4%, while the gem at
+r1c0 is legal and was the model's own first choice at 59%.
+
+Two facts decide this, and neither needs a simulation.
+
+The first is what the move *buys*: nothing. Displacement only touches a figure
+standing on its own column, and P2 was standing in **P3's** column at the time, so
+r1c1 was an empty cell — no raid, no push, no sabotage. The move is a card and
+nothing else.
+
+The second is the branch structure. A front in the seat's own column is
+information nobody else has: it is a gem or a dynamite, never a dragon. A card
+still face down may be a dragon — two per backside — and the seat that turns it is
+the dragon player. Take the gem and walk the branches of the alternative:
+
+| the face-down card turns out | against taking the known gem |
+| :-- | :-- |
+| a gem (~40%) | equal — one card either way |
+| dynamite (~35–40%) | worse: unscored, and worth only blast material (≈0.2 points, §5) |
+| a dragon (25% here) | far worse: −2 for the turner and the haul ends |
+
+Weak dominance in every branch, so it holds at every table: the rule needs **no
+threshold**, unlike everything else in this file. It fires only when the seat has
+a gem it can see in its own column, and only against face-down digs that displace
+nobody — a raid on a rival sitting on its own column stays legal, because pushing
+that rival is worth something the card is not (``strands_the_figure`` and the
+displacement section cover that). It is the same argument as
+"walking past a free card", with the one card whose price cannot go wrong:
+the card the seat can see the front of.
+
+The rule that resulted is ``digs_past_a_known_gem``. What it changes about the
+*policy* is nothing — the model already preferred the gem 59% to 4% — and that is
+the point: the six rules above exist because a sampler at temperature 0.7 turns a
+4% tail into a visible move several times a game, and a dominated action left in
+the mask is a dominated action the viewer will eventually watch.
+
+**What this costs on screen, honestly.** The seed-7 game reshuffles: 146 decisions
+against 106, scored 0–6–0–1, and haul 2 becomes a four-way escape at zero gems
+(a rival's blast puts three seats in cages, they park on their lorries, the haul
+ends as a standoff, and the four-way gem tie pays **+1 each**). Without the rule
+that haul is an instant dragon instead, and the same four-way tie is paid from a
+different table. Both versions squander the haul; the scoring that pays a
+zero-gem mass escape +1 apiece is a separate defect, listed here rather than
+patched quietly.
+
+#### A gem you can see beats a dynamite you can see
+
+Seed 7, haul 1, planning phase 2, four rows on the board. Three of the four seats
+opened the phase by walking onto a **dynamite** in their own column while a card
+they could see, one row deeper, was a gem:
+
+| seat | own column, top to bottom | first move | its own first choice |
+| :-- | :-- | :-- | :-- |
+| P1 | gem, gem, dynamite, **gem** | dynamite at r2 (44%) | gem at r3 (56%) |
+| P2 | —, gem, dynamite, **gem** | dynamite at r2 (70%) | dynamite at r2 |
+| P4 | dynamite, —, **gem**, dragon | gem at r2 (correct: its r3 is a dragon) | — |
+| P3 | —, dynamite, dynamite, dragon | face-down card in a rival's column | — |
+
+Two face-up cards in one column are the only choice in this game with no
+uncertainty in it, and they are not a trade. A gem is scored: the escapee with the
+most gems takes the haul bonus (3, or 4 on the last haul). A dynamite is not
+scored at all, and one on its own does nothing — a blast needs two, and the blast
+deals three cards off the deck of which the seat keeps two, ending the haul if one
+is a dragon (46% of blasts in §5 woke one). Leaving the dynamite costs nothing
+either: it is face up in the seat's own column and can be taken in a later round,
+whereas the gem below it becomes unreachable the moment a figure stands above it,
+because movement is one-way.
+
+The same one-wayness decides ties. Two cards of the **same front** are also not a
+trade: the deeper one is raidable by fewer seats (a rival can only reach a card it
+stands strictly above), it leaves more of the column reachable afterwards, and a
+raid on it strands the figure less far up. `strands_the_figure` therefore ranks by
+depth inside a front, and `takes_the_gem_over_the_dynamite` ranks gem above
+dynamite, with dragons excluded from both — a dragon the seat can see is decided by
+the bait rule.
+
+**What a first move looks like now, in the same phase:** P1 and P2 open on the
+deepest row, both on a gem they can see (100% and 99%); P3, whose column has
+dynamite at r1 and r2 and a dragon at r3, opens on a face-down card in a rival's
+column (it holds nothing, and 40% of face-down cards are gems against a certain
+dynamite); P4 banks a gem into the cage at a 22% hazard — the insurance rule of
+"A cage is insurance", not a card choice. Not one of them opens on a dynamite it
+could see while a gem sat in the same column.
+
+On this rule, "always go to the deepest row first" is *nearly* right, and the one
+place it was wrong is worth spelling out. Movement is one-way, so a deep position
+is the reversible one while a shallow one is the commitment; the deepest card is
+also the only one nobody can raid you out of. What looked like the exception —
+P3's and P4's bottom card is a dragon **they can see** — is not an exception at
+all, and the earlier version of this paragraph was wrong to call it one:
+
+#### A visible dragon is a waiting square you can step off
+
+A card is turned only when the round resolves with a figure still standing on it,
+so a visible dragon is not a trap by itself. Standing on it costs a decision and
+buys the safest square in the mine, and the seat walks off at its next decision.
+
+The question is whether a next decision is guaranteed, and the engine answers it
+exactly. A round resolves on ``n - 1`` consecutive passes, and a pass is legal
+only *after* the seat has planned in that round. So if anybody who acts after you
+is still unplanned, it cannot pass, the streak cannot complete, and your next
+decision arrives:
+
+- **first decision of the round, not last in the order** — everything behind you
+  is unplanned and must make a planning move, so the round cannot end before your
+  turn. Safe: ``can_wait_on_a_dragon``.
+- **any later decision** — every seat has planned, so the other ``n - 1`` can pass
+  in a row and the round ends with you still on the dragon: −2 to you, the haul
+  over, and everybody else in the mine dead.
+- **first decision, last in the order** — the other seats have already planned and
+  can pass in a row without ever coming back to you.
+
+The middle and last cases are why the sketch version of this argument ("somebody
+else still has to move, so I always get another turn") is not enough: three
+consecutive passes cover three of the four seats. Traced on seed 7's first round,
+where the order is P4, P1, P2, P3 — P4, P1 and P2 plan and then pass in a row, and
+**P3 gets one decision in that round, not two**. A seat in that position sitting
+down on a visible dragon never gets to stand up.
+
+So ``doomed_dragon_digs`` no longer masks every unpushed dragon dig; it masks the
+ones taken when the seat has no waiting square, which is the exact condition
+above. On seed 7 at the time nothing changed — it played the same 94 decisions and
+scored 0 / −1 / −1 / 5, before the cage bar was moved (below) — and the mask
+permits the waiting square at **258 of 1,598
+decisions** over seeds 0–11, and the network takes a dragon it can see in **136**
+of them (most are still the bait case, where a rival deep enough is invited to
+push the figure into a cage and eat the dragon itself).
+
+#### What the waiting square is worth, and why the blast cannot pay for it
+
+The rule above makes the deliberate step legal, so the natural next question is
+whether seats take it — and whether a cheap blast changes the price. The engine
+answers the second half mechanically, and `test_dragon_step.py` pins it:
+
+- the card under a figure is turned in phase 2, and `_prepare_blasts` runs only
+  when phase 2 woke nothing, so **a pending blast is never drawn against the card
+  its owner is standing on** (`test_a_pending_blast_is_never_drawn_against_the_card_you_stand_on`:
+  the seat dies, `used_blast_backsides` stays empty, the deck is untouched);
+- **any move other than PASS cancels the announcement**, so a seat cannot both
+  keep a blast alive and leave the card.
+
+The shield and the bluff are therefore mutually exclusive. There is no
+"announce, step on, cancel before the draw" line that is worth more than the plain
+step: the cancel is what any step already does, and the blast it killed was never
+going to draw against that card.
+
+The step itself is not hypothetical. `probe_dragon_step.py` replays real
+four-seat games and snapshots every dig of a face-up dragon *inside*
+`_execute_round`, i.e. before the reveal, because positions are reset the moment a
+round resolves. Over 200 games and all four seats (`--blind`, seed 0):
+
+| | |
+| :-- | --: |
+| digs of a face-up dragon | **6.21 per game** (1,243) |
+| followed by another decision in the same round | **100.0%** |
+| off the card when it was turned | **99.9%** (965 to a cage or lorry, 277 to a shallower card) |
+| still standing on it | 1 (0.08%) |
+| eaten by their own dragon | **0** |
+| had an announcement somewhere in that round | 26.8% |
+
+So the net already does what the proposal asks — it steps onto its own revealed
+dragons, it acts again, and it is gone before the card is turned — and it never
+needs a blast to survive it. What it is *worth* is the other half of the question,
+and `probe_bait_value.py` has that too — the same fork (an announced bait dig
+against the same policy with known-dragon digs removed), 120 games per field:
+
+| opponents | forks | worth | better / worse |
+| :-- | --: | --: | --: |
+| three `rule` bots | 88 | **+0.51 (se 0.29)** | 22% / 9% |
+| three `selfplay4` peers | 79 | **−0.53 (se 0.27)** | 23% / 33% |
+
+The rule bots take the bait and pay for it, which is the lever §4 describes. A
+peer does not: it keeps the square safe by not pushing, and then the step has
+spent a decision for nothing. So the square is not free — it is a bet on the
+table, worth about half a point either way depending on who is sitting across it.
+
+The answer to "should seats start stepping on dragons because blasting is cheap
+and cancellable" is therefore: they already step, on exactly the condition the
+mask computes (`can_wait_on_a_dragon`), the blast neither enables nor improves it,
+and the step is worth about half a point *against* them when the rivals are
+sensible. The interesting constraint was never the price of a cancel — it is
+whether a later decision is guaranteed, which is why that condition lives in the
+action mask rather than in a rule.
+
+#### The escape the hazard rightly authorises
+
+Seed 7, haul 1, planning phase 2, P4 (its first decision of the round): it has a
+gem in hand and takes the cage at 70%. The board shows no dragon anywhere — every
+front but P4's own column is face down — and the hazard reads **0.22**. Where it
+comes from, seat by seat:
+
+| figure | standing on | its own column? | risk |
+| :-- | :-- | :-- | --: |
+| P4 (self) | the front of the mine | — | 0.00 |
+| P1 | row 3, column 1 — its own, and it can read it | yes | 0.00 |
+| P2 | row 3, column 2 — its own, and it can read it | yes | 0.00 |
+| P3 | **row 2, column 1 — P1's column** | no | **0.22** |
+
+That is the one danger the rule is for, and it is the inverse of the mistake fixed
+in "the hazard was priced on the wrong cards": P1 and P2 stand on their own cards,
+so they can see them and will step away from a dragon rather than turn one — priced
+at zero. P3 **raided into P1's column**, so it is standing on a card nobody
+standing there can read, and the deck still leaves 22% of that backside a dragon.
+If it turns, every figure still in the mine dies.
+
+The card was, in this deal, a gem — 78% of the time it is — so no dragon turned in
+200 re-rolls of the rest of that round. That is a fact about the deal, not about
+the price: the seat's 22% is the honest number before the card is turned.
+
+What the numbers say about the move itself, 200 paired re-rolls from that
+position: cage **+1.84 ± 0.15**, the gem P4 can see in its own column **+1.88 ±
+0.16**, a face-down card in a rival's column **+1.98 ± 0.16**. The escape is the
+worst of the three, and inside the noise of all of them. There is no rule to write
+here, and the reason is worth stating: taking the certain gem first and escaping at
+the next decision is a real trade, not a free improvement, because P4's dig resets
+the pass count and the other three seats can then pass in a row and resolve the
+round with P4 still in the mine — the same mechanics that make a dragon a waiting
+square for a seat that acts early in the order.
+
+So this is the one configuration where a cage with no visible danger is not a
+modelling defect: the danger is a rival's raid on an unreadable card, it is priced
+from the seat's own information, and escaping at 22% with a gem in hand is worth
+what staying is worth.
+
+The viewer also stops being the only one who cannot see the danger: `action_reason`
+now spells out what an escape banks and what it is running from —
+`pit cage, banks 0g (the dragon under me)`, `pit cage, banks 1g (a rival's blast)`,
+`pit cage, banks 1g (25% the mine blows this round)` — so the move on screen
+explains itself instead of reading as an arbitrary walk out of a quiet mine.
+
+## 5. Is blasting too weak? No — but it is not a free win either
+
+The printed blast rule: draw three cards **face down**, choose two, *then* look
+at them. `MineEnv` handed the chooser all three fronts, turning a gamble into a
+card-selection engine. `--blind-blast-choice` restores the printed rule.
+
+`rule:always` = announce a blast whenever two dynamite are in hand. The blaster
+seat runs the *same* movement policy as its opponents and differs only in that
+decision, so the margin is the price of blasting and nothing else.
+
+**Three players** (200 games per row):
+
+| engine | leaderboard margin [95% CI] | always alone vs 2 × rule | rule alone vs 2 × always |
+| :-- | :-- | :-- | :-- |
+| peek (old default) | **+1.71 [+1.17, +2.20]** | +1.25 [+0.53, +1.95] | **-1.53 [-2.12, -0.95]** |
+| blind (printed) | +0.39 [-0.14, +0.90] | +0.10 [-0.57, +0.84] | -0.12 [-0.81, +0.57] |
+
+**Four players** (240 games per row, `analyze_blasts.py`):
+
+| engine | blaster win % | blaster margin vs 3 × rule [95% CI] | blasts / game | hauls ending on a dragon | points per blast haul | points otherwise |
+| :-- | --: | :-- | --: | --: | --: | --: |
+| peek | 37.5% | **+1.00 [+0.59, +1.43]** | 0.78 | 65% | +1.42 | +0.34 |
+| blind | 30.0% | +0.38 [-0.00, +0.76] | 0.77 | 71% | +0.41 | +0.40 |
+
+Against a field that collects and leaves instead of parking (4 players, same
+seats and seeds):
+
+| engine | blaster margin vs 3 × leaver [95% CI] | the same policy, never blasting |
+| :-- | :-- | :-- |
+| peek | -0.12 [-0.50, +0.23] | -0.26 [-0.61, +0.08] |
+| blind | **-0.52 [-0.88, -0.19]** | -0.26 [-0.61, +0.08] |
+
+Read the three tables together:
+
+1. **On the peeking engine blasting is one of the strongest things you can do.**
+   That engine was wrong, and the leak is worth +1.7 points at three players.
+2. **Under the printed rule it is a coin-flip against other miners** (+0.38,
+   interval touching zero, and `points per blast haul` +0.41 versus +0.40
+   otherwise — a blast haul is worth the same as a normal one), and a
+   **losing** move against a field that banks loot (-0.52).
+3. Its risk is real and measurable: across 443 hauls with a fired blast, **58%
+   ended on a dragon**, killing everyone still inside, and the blaster was
+   holding 2.14 gems when it happened.
+
+So "blasting is too weak" is **not supported**: under the printed rule it is
+roughly neutral in a passive field and negative in a competent one, which is a
+normal risk-reward trade rather than a dead rule. §6 is about what the learner
+leaves on the table by ignoring the *threat* of a blast.
+
+### Why the learner blasts 0.03 times a game
+
+The blast and threat numbers in this section and in §6 were measured on the
+60-generation 4-player checkpoint (`checkpoints/selfplay4_g060.npz`). The
+180-generation network in §4 blasts even less (0.02 fired per game) and has
+fewer chances to (0.22 decisions with a dynamite pair, against 0.32), so the
+conclusion is unchanged by the extra training.
+
+The obvious reading — "blasting is a coin-flip, so the learner declines it" —
+turns out to be only a small part of the story. `probe_blast_value.py` forks
+the game at every position where a seat holds two dynamite and can move to a
+card, announces the blast in one copy and not in the other, and plays both out:
+
+| engine | blast worth from that position | when behind on gems | level or ahead |
+| :-- | :-- | :-- | :-- |
+| peek (blaster sees the three fronts) | **+0.49** (se 0.27), 140 forks | +0.28 (se 0.29) | +1.33 (se 0.63) |
+| printed rule (choose blind) | +0.06 (se 0.28), 140 forks | -0.06 (se 0.30) | +0.59 (se 0.74) |
+
+Note first what a blast *is*: the rules give you the card under your figure as
+usual and then **additionally** three off the draw pile, of which you keep two.
+It is not a substitute for a dangerous dig — you still take the card you are
+standing on — so blasting cannot be used to dodge a dragon you know about, and
+two dynamite are pure cost only until the moment you cash them in.
+
+Does choosing the two keepers by backside knowledge reduce the risk? Not
+measurably. Same trigger, same movement, only the choice differs, 150 games
+each, under the printed rule:
+
+| who chooses | blasts / game | blasts that woke the dragon | seat margin [se] |
+| :-- | --: | --: | :-- |
+| informed (backside risk) | 0.69 | **47/103 (46%)** | +0.01 (0.22) |
+| at random | 0.67 | 40/100 (40%) | -0.12 (0.21) |
+| never blasts (control) | 0.00 | — | -0.43 (0.21) |
+
+That first cut was too blunt, and the sharper measurement below replaces it.
+Backsides *do* carry information — a backside whose dragon is already face up
+has fewer dragons left in it — but the effect is a few points rather than an
+order of magnitude, and the right keeper rule is the opposite of "avoid that
+backside". What is *not* in doubt: the ~40–50% risk of ending the haul is what
+the blast costs.
+
+#### Who does that reasoning? The keeper is not the network
+
+Everything above prices the *keeper* — which of the three drawn cards to keep.
+It is worth being exact about who runs that rule, because the answer changes
+what "the net learns" can mean:
+
+**`NeuralAgent` does not implement `blast_choice`.** It inherits
+`Agent.blast_choice`, which calls `preferred_blast_choice` — the hand-written
+"keep the lowest `backside_stats` risk" rule. So the trained agent never chooses
+the keeper at all; the only blast decision it makes is whether to *announce*.
+`test_blast_colour.py` pins that, so a future learned keeper has to be a
+deliberate change and not an accident of the base class.
+
+Two consequences, both measurable (`probe_blast_colour.py`, 300 four-seat neural
+games, seed 1310000):
+
+| engine | keeper took the safest card | zero-risk colour offered → taken | mean risk of the card kept |
+| :-- | --: | --: | --: |
+| printed rule (face down) | **100.0%** of 572 calls | 10 → 10 | 0.280 |
+| peek (the default) | 67.6% of 658 calls | 9 → 8 | 0.315 |
+
+Under the engine default the fronts are visible, so a known **gem** outranks the
+colour risk and the backside rule barely binds. It is the printed rule that makes
+the colour the only thing there is to reason with. The shipped checkpoints were
+trained with the peek engine, so the colour edge is being exercised for the first
+time only when `--blind-blast-choice` is passed.
+
+**The announcement does move with the colour, in the right direction and
+weakly.** Same position, one change: the single dragon the seat can see in its
+own column becomes a gem of the *same backside*, so that colour goes back from
+1-in-9 to 2-in-10 in the deck and nothing else on the board changes. Over 3,455
+such pairs:
+
+| world | mean P(announce) |
+| :-- | --: |
+| a dragon of that colour is known (safer) | **0.4118** |
+| the same card is a gem (riskier) | 0.4710 |
+
+Mean shift **−0.059**, falling in **69%** of the paired positions. So a blast is
+more attractive to the policy when a colour is diluted — the reasoning is present,
+not missing — but it is worth about six points of announcement probability for a
+change that moves the keeper's failure chance by roughly ten (`27.3%` vs `39.1%`
+above). And `preferred_blast_choice` already takes "maybe two" of that colour when
+the second pick is safest too, which is what the greedy rule does once the first
+kept card dilutes it further.
+
+**What is actually missing is the trigger, not the colour.** The colour edge is
+worth ~10 points of failure probability, and a forked blast is worth +0.06 (se
+0.28) under the printed rule and +0.49 (se 0.27) under the engine's default peek
+— so a perfect colour rule does not turn a blind blast into a winner, while a
+committed blast under peek is already good. The net fires **0.01** of them per
+game (§5, §6), and 86% of the blasts it announces are cancelled
+([THREAT_LEAGUE.md](THREAT_LEAGUE.md) §5). Three concrete gaps follow: the keeper
+cannot be improved because the net does not own it; the blast draw's backsides
+are still not part of the *decision* state at fire time; and the trigger is
+trained through returns on announcements that mostly never resolve, so the signal
+for a profitable committed blast is rare.
+
+#### The trigger is insensitive to the rule, which is why more self-play cannot fix it
+
+If the net were pricing blasts, changing the blast rule would change how often it
+fires them. It does not. `probe_blast_trigger.py`, 300 four-seat games per row
+(seed 4240000), announcements and cancellations per game *per seat*:
+
+| checkpoint | blast rule | announced | cancelled | **fired** | fired that woke a dragon |
+| :-- | :-- | --: | --: | --: | --: |
+| `selfplay4` | engine default (peek) | 2.21 | 1.92 | **0.269** | 32/323 (10%) |
+| `selfplay4` | printed (face down) | 2.16 | 1.88 | **0.262** | 105/314 (33%) |
+| `selfplay4_blindblast` | peek | 2.31 | 2.05 | 0.243 | 24/292 (8%) |
+| `selfplay4_blindblast` | printed | 2.27 | 2.02 | 0.239 | 101/287 (35%) |
+
+The disaster rate of a fired blast **triples** (10% → 33%) when the keeper stops
+peeking, and the fire rate moves by 0.007. The seat is not choosing a blast so
+much as drifting into one: the announcement is cheap, 86% of them are cancelled,
+and the survivor fires whether or not it is a good idea.
+
+That also disposes of the cheapest possible fix. `selfplay4_blindblast.npz` is
+`selfplay4` retrained for 60 generations *inside* the printed rule (same league,
+same seed, 64 four-seat games a generation). It fires slightly *less* (0.239 vs
+0.262 under the printed rule) and plays no better: paired head-to-head under that
+rule, one candidate seat against three `selfplay4` seats, candidate tops 28.8%
+against 28.6%, a paired change of **+0.20 pp [−3.60, +3.80]** over 500 games. The
+rule a net trains under does not create a trigger; only a signal attached to the
+decision itself can, which is what `train_tactical.py` and `train_row0_blast.py`
+do for other decisions and what this one still needs.
+
+#### What a committed blast is worth: zero, and the trainer that proves it
+
+The gap the last section names is attribution, not search. Self-play cannot learn
+the trigger because 86% of announcements are cancelled by the seat's own next
+move, so the return attached to "should I have blasted here?" mostly arrives for
+a decision that was never followed through. `train_blast_trigger.py` labels that
+decision directly:
+
+1. **harvest** real positions where a blast is legal (two dynamite, none pending,
+   a card to step onto), keyed off `player_action_context` so the live environment
+   is captured next to the context;
+2. **fork two branches from the same hidden world** — the seat's preferred card
+   move, and the identical move with the blast announced;
+3. **continue both with `BlastPlanTeacher`**, which passes while a blast is
+   pending. That is the whole point: without it the announcing branch is a bluff,
+   and the label would teach the announcement the net already over-uses;
+4. **label** each branch with final-score win share over resampled hidden worlds
+   and distil the pairwise preference with `fit_tactical`, mixed with the frozen
+   policy.
+
+96 training positions and 48 held-out ones, 24 resampled worlds each
+(`--blind`, seed 5100000/5200000; 4608 and 2304 paired continuations). The paired
+difference in win share, announced minus plain:
+
+| sample | n | plain | announced | Δ | better / worse |
+| :-- | --: | --: | --: | --: | --: |
+| training | 96 | 0.276 | 0.264 | **−0.012 (se 0.015)** | 51% / 47% |
+| held-out | 48 | 0.294 | 0.339 | **+0.046 (se 0.019)** | 56% / 31% |
+| all | 144 | — | — | **+0.007 (se 0.012)** | — |
+
+The two halves disagree, and the pooled answer is zero. The spread is real but
+symmetric: **26%** of positions prefer the blast by more than 0.10 (mean +0.184),
+**24%** prefer the plain move by more than 0.10 (mean −0.191), and the middle 50%
+sits at +0.007. That is heterogeneity with zero mean — a schedule to be learned,
+not a bias to be corrected — and 144 positions with a frozen feature extractor are
+not enough to learn a schedule of that shape.
+
+The candidate shows it. Trained on the pairwise targets and left at the printed
+rule, `selfplay4_blast_trigger.npz` fires **0.163** blasts per seat-game against
+`selfplay4`'s 0.259 (500 four-seat games, seed 4240000) while announcing the same
+2.17, i.e. it did not find a better trigger, it learned to commit less often.
+Probability mass on the two labelled actions went 0.60 → 0.91, and the price is
+the rest of the policy: paired head-to-head under the printed rule, one candidate
+seat against three `selfplay4` seats, the candidate tops **23.4%** against 28.6%,
+a paired change of **−5.20 pp [−9.80, −0.60]** over 500 games.
+
+So the trigger is not a training deficit. Under the printed rule a committed blast
+is worth nothing on average, which is why the hand-written keeper's "cancel almost
+always" is not a mistake to be trained away — and the trainer is kept as the
+negative control that says so rather than as a checkpoint to ship. If the fork had
+shown a bias, the same script would have found it; the labels are the ceiling, and
+the ceiling is zero.
+
+### Testing "blast while a dragon is waiting for me"
+
+The most natural reading of a blast — *two dynamite are dead cards, a known
+dragon in my own column makes staying put a losing move anyway, so cash them in*
+— was implemented and measured rather than argued about.
+`probe_blast_strategy.py` keeps the rule bot's movement in every seat and varies
+only the blast trigger (plus, in the second table, the keeper choice), 600 games
+per arm, paired seeds, printed rule, committed blasts so nothing is cancelled:
+
+| trigger | blasts / game | gems behind at the blast | woke the dragon | margin vs 3 × rule | paired vs never blasting |
+| :-- | --: | --: | --: | :-- | :-- |
+| never blasting | 0.00 | — | — | +0.21 (0.13) | — |
+| **known dragon ahead in my own column** | 0.64 | -0.8 (40% behind) | 164/385 (43%) | -0.08 (0.12) | **-0.29 (0.14)** |
+| behind on gems | 0.43 | -3.0 (100% behind) | 123/258 (48%) | +0.20 (0.13) | -0.02 (0.10) |
+| always (any dynamite pair) | 0.91 | -0.7 (39% behind) | 252/545 (46%) | +0.01 (0.13) | -0.21 (0.15) |
+
+The premise about the *cost* of holding dynamite is right, and it is in the
+table: a seat that is about to blast is on average **0.8 gems behind** the
+leader, and when the trigger is "somebody is ahead" it is 3.0 gems behind and
+behind in 100% of the cases. Two dynamite really are dead weight. What the
+numbers do not support is that a blast converts that deficit into points: from
+the same behind-on-gems positions it is worth **-0.02** in expectation.
+
+Waiting for a known dragon makes blasting **worse**, not better. A known dragon
+is a free move you were about to make anyway: you walk around it, and a blast
+does not spare you the card you are standing on, while the 43% chance of ending
+the haul is paid in full. Blasting *because you are behind* is a wash — an
+earlier 200-game sample put it at +0.36 and it collapsed to -0.02 at 600 games,
+which is why these arms are paired and re-run before anything is written down.
+
+The keeper choice is a real effect, and it runs the opposite way round to
+"avoid the backside whose dragon you can see". A backside with one dragon
+already face up is *diluted*: on these very states the engine's count puts a
+drawn card of that backside at **27.3%** dragon risk against **39.1%** for a
+backside where no dragon has been seen yet. So in an A/B/B draw with a known
+A-dragon, the A is the card to keep — which is exactly what `preferred_blast_choice`
+already does, and why the "informed" row below is the best of the four. Keeping
+two of a *different* backside than the known dragon, as first proposed, is the
+worst of them (trap trigger, 600 games, 376-385 blasts per row):
+
+| keepers | blasts / game | woke the dragon | margin vs 3 × rule |
+| :-- | --: | --: | :-- |
+| backside risk (default: keep the diluted one) | 0.64 | **164/385 (43%)** | -0.08 (0.12) |
+| *different* backside than the known dragon | 0.63 | 180/376 (48%) | -0.18 (0.12) |
+| same backside as the known dragon | 0.63 | 171/380 (45%) | -0.09 (0.12) |
+| at random | 0.63 | 174/380 (46%) | -0.16 (0.12) |
+
+How much is there to win at most? Over the 429 blasts this arm takes, keeping
+the two cards the count likes best fails **50.4%** of the time; keeping the two
+it likes least, **60.3%**. So a perfect backside rule is worth about ten points
+of failure probability — worth capturing (and captured), but not what decides
+whether to blast.
+
+And the premise underneath the whole idea — *if a dragon is waiting in my column
+I am losing anyway* — is not true at these tables. In **34,137** decisions where
+a seat could see a dragon still ahead of it in its own column (13,986 of them
+while holding a dynamite pair), the same player also had, on those very states:
+
+| a way out | share of those decisions |
+| :-- | --: |
+| leave on the lorry | 100.0% |
+| dig another column | 99.8% |
+| retreat to a pit cage | 81.5% |
+| pass | 53.8% |
+
+A known dragon is a card to walk around, not a wall. That is why paying a 43%
+chance of ending the haul to "use up" two dynamite is a loss rather than a
+rescue — and it is also the honest answer to *why does the AI not blast*: there
+is nothing there to rescue it from.
+
+So why 0.03? Two measured reasons, and neither is a judgement about that
+trade-off.
+
+1. **It rarely can.** Blasting needs two dynamite in hand and a card move, and
+   the learner leaves the mine early with thin loot (75% escapes, 0.21 gems per
+   escape): **0.17 blastable decisions per game** when sampling, 0.00 under
+   argmax, against **11.2** for a rule bot in the same seats. "Rarely blasts"
+   is mostly "rarely has two dynamite".
+2. **Its blasts are cancelled by its own next move.** The rules abort a blast
+   if the player later picks anything but "Pass" in that planning phase. Over
+   60 four-player games the learner announced **0.17 blasts per game and fired
+   0.02** — 10% survive. A `rule` bot told to blast whenever it can keeps 31%
+   (9.23 announced, 2.85 fired). The network can see `own_blast_pending` in its
+   features, but it has not learned the commitment, so most of its blast
+   announcements are silently thrown away.
+
+And the sharpest evidence that this is under-learning rather than strategy: the
+nets were trained on the **peeking** engine, where the same blast was worth
+**+0.49** per decision and the always-blasting seat beat the field by +1.00 —
+and they still learned to blast essentially never. A rare branch with a
+33%-of-the-action-space twin is hard for a 60-generation REINFORCE run to find.
+Two things would change it, neither of them a rules change: train under the
+printed rule (`--blind-blast-choice`), which is the game we actually play, and
+make the commitment visible to the learner by masking everything but "Pass"
+while its blast is pending.
+
+## 6. The threat of a blast: real, worth ~0.4 points, and never learned
+
+A pending blast is a *public* threat. The blaster keeps two of three drawn cards,
+and if either is a dragon the haul ends and every player still inside the mine
+dies. That is a promise to end the haul with a 58% chance of a dragon — so
+blasting should also work as a way to scare rivals out of the mine, and a strong
+player should react to it.
+
+The trained agents do not, and asking the network directly shows it is not a
+measurement artefact. Each real decision is scored twice — once with a credible
+opponent blast pending, once without, every other feature identical — and the
+action distributions are compared by total variation distance over the 53
+primitive actions:
+
+| checkpoint | blasts fired / game | paired decisions | TV distance [95% CI] | shift towards leaving | shift towards the cage |
+| :-- | --: | --: | :-- | --: | --: |
+| `selfplay4.npz` (vs rule league) | 0.03 | 309 | **0.0065 [0.0061, 0.0068]** | -0.0015 | -0.0024 |
+| `selfplay4_blast.npz` (60% of the league blasts) | 0.05 | 296 | **0.0062 [0.0060, 0.0065]** | -0.0024 | -0.0026 |
+
+A 0.65% probability shift is nothing. Training the learner for 60 generations
+against a league in which 60% of the scripted opponents blast *on sight* does
+not make it threaten (0.05 blasts/game) or flinch (same 0.6% shift). Facing
+blasters costs it margin — **-0.34 [-0.73, +0.06]** paired, `selfplay4.npz`, and
+**-0.66 [-1.03, -0.31]**, `selfplay4_blast.npz` — and it never adapts.
+
+That on its own does not prove the threat is *worth* reacting to, so the threat
+was measured directly with scripted players. Four conditions, all on the same
+seeds (so the intervals are on paired per-game differences):
+
+* `calm` — a plain `rule` seat, nobody blasts.
+* `threat` — the same `rule` seat, one opponent blasts on sight.
+* `reacting` — the same seat plays `threat`: rule movement, except it walks to
+  the pit cage whenever an opponent's blast is pending, then waits out the haul.
+* `react_calm` — `threat` against a field that never blasts (the control that
+  proves the reaction only fires on threats).
+
+| seat | win % | margin | points | threatened decisions / game | answered with a cage move |
+| :-- | --: | --: | --: | --: | --: |
+| rule, calm field | 25.8% | -0.15 | +1.11 | 0.0 | 0% |
+| **rule, blasting field** | **15.0%** | **-0.58** | **+0.69** | 0.0 | 0% |
+| **threat, blasting field** | **21.2%** | **-0.22** | **+0.95** | 3.3 | 77% |
+| threat, calm field | 25.8% | -0.15 | +1.11 | 0.0 | 0% |
+
+* Cost of the threat to a non-blaster: **-0.43 points [-0.81, -0.06]** and 10.8
+  points of win rate. The threat is real, and it is not small.
+* Value of reacting: **+0.37 points [+0.12, +0.63]**, 6.2 points of win rate.
+* What is left once you react: **-0.06 [-0.51, +0.37]** — statistically
+  indistinguishable from a calm field. The one-line reaction neutralises the
+  threat.
+* Control: the threat agent against a calm field is **+0.00** different from
+  plain `rule` on identical seeds, so the gain comes from the reaction and not
+  from a different movement policy.
+
+So the design question has a clean answer: **a pending blast is worth about 0.4
+points/game to the blaster's rivals, and roughly that much is recoverable by the
+cheapest possible counter.** The trained agent captures none of it — the
+reaction is 0.65%, and the cost it pays for ignoring the threat (-0.34) is the
+same order as the value on the table (+0.37). The threat is a genuine part of
+the game that self-play at this budget simply does not discover, because it is
+rare (0.8 blasts/game), announced early, and punishes the blaster's own haul 58%
+of the time — so it never earns enough games to show up in the gradient.
+
+### Correction: the 0.65% is stale, and the flinch is in the mask
+
+The reaction table above was generated at `bd7d0ad`. The next commit, `91810d0`
+("Give the escape its hazard"), added `round_dragon_hazard`, which returns
+**1.0 for any pending blast** — and `cage_banks_nothing` reads it. Since then a
+pending blast makes an *empty-handed* pit-cage move legal, so the counterfactual
+no longer only changes the state: it changes the **legal set**, and a
+masked-softmax policy can only move probability inside it.
+
+Re-running the identical probe (`analyze_blasts.py --players 4 --games 200
+--seed 424242`) on the shipped checkpoint:
+
+| checkpoint | paired decisions | mean TV [95% CI] | shift onto the cage |
+| :-- | --: | :-- | --: |
+| `selfplay4.npz` | 268 | **0.7766 [0.7310, 0.8189]** | +0.7467 |
+
+`probe_threat_mask.py` splits the pairs by whether the toggle moved the mask:
+
+| pair type | pairs | share | mean TV | mass on newly legal actions |
+| :-- | --: | --: | --: | --: |
+| mask moved (the toggle opens the cage) | 994 | 78% | 0.9406 | 94% |
+| mask identical (a pure state change) | 283 | 22% | **0.0006** | n/a |
+
+And in played games, against three `rule` seats that blast on sight
+(`probe_threat_reaction.py`, 300 games), the same checkpoint answers **69%** of
+its threatened decisions with a pit cage, against **17%** on decisions where a
+cage was legal and no blast was pending.
+
+So the accurate statement is narrower than the one above, and it matters for
+what to do next:
+
+* the **mask** already encodes "a pending blast is a reason to leave", and the
+  seat takes the escape it is offered;
+* the **policy** still reads a pending blast as nothing when the legal set does
+  not change (0.0006), which is the real residue — a threatened seat that already
+  has the cage legal still passes 25% of the time;
+* the **ledger** still says the shipped net gives up margin to a blasting field
+  (-0.68 [−1.22, −0.15] in `analyze_blasts.py`), which is the part of §6 that
+  survives unchanged.
+
+Section 10.6 therefore has a result rather than a recommendation:
+[THREAT_LEAGUE.md](THREAT_LEAGUE.md) executes it — `--league-threat-prob`
+replaces a share of the scripted league with `threat` — and finds no gain
+(−0.38 ± 1.19 pp paired against the same league without the threat seats). A
+league cannot teach a policy the mask never asks to choose.
+
+## 7. Three engine bugs — and one bug I had to withdraw
+
+Asking the AI to blast surfaced a real engine bug. It produced a silent failure:
+the game could not finish, so `play_game` returned `aborted=True` with **every
+score at zero**, and a benchmark that quietly averages zeros looks exactly like
+a hard game.
+
+**The bug: a dead player holding the round open.** A dragon that kills the
+players still inside left `blast_pending` set on the corpse. The round-finish
+guard waited for that player's blast to resolve, no player could act, and the
+haul was abandoned. With four always-blasting `rule` players this hit **36 of
+60 games**; every one of them was being scored 0-0-0-0 and averaged in as a
+draw. Fixed twice over: the dragon cancels a dead player's blast, and only a
+player who can still act is allowed to defer the end of the round.
+
+**The bug found while pricing the lure: a table with nothing to reach cannot
+close its round.** A round closes when `n−1` consecutive seats pass, and a seat may
+only pass after it has planned. Neither the pit cage nor the lorry is a pass, so
+two seats caged at index 0 (cage index 0 leaves no dig legal) and two parked on
+their lorries (no dig legal either) bounce cage-to-lorry forever: every choice is
+a legal no-op, `consecutive_passes` never reaches the threshold, the round never
+executes, and the haul neither progresses nor ends. Seen live in a four-net game,
+where the runaway `planning_turns` reached 128 and the `int8` observation raised
+`OverflowError` mid-game.
+
+The breaker is a last resort, not a rule: at `HANG_BREAKER_TURNS = 64` decisions
+with no card reachable, the round is closed. No round in 40 four-net games needs
+more than **45** decisions (busiest legitimately-seen round: 28), so it cannot
+change a game that was able to close its rounds — verified at the time against the
+then-current mask, where seed 7 was byte-identical (94 decisions, 0 / −1 / −1 / 5).
+
+What I deliberately did **not** do is the honest fix, because it is a rules
+decision and it moves the balance: "a figure is placed once per round, so a second
+cage/lorry choice is that seat's pass" — or its equivalent, closing the round as
+soon as nothing is reachable. Both make the bounce end at the moment it starts,
+and both change finished games: seed 7 becomes **101 decisions, 0 / +1 / −1 / 3**,
+and the empty-handed escape starts paying again (**rusher +1.19** against its
+`< 1.0` guard). That is the same defect as the haul-scoring parasite, dressed as a
+tie-break: *who escapes this round* would be decided by a no-op loop. Worth fixing,
+but as a rule, with the scoring change that goes with it.
+
+**The bug in the action grid: a five-row mine that keeps growing.** The rules
+deal a new row at the bottom of the mine every round, so a haul can reach ten
+rows at three players, seven at four and six at five. `MAX_ROWS` was pinned at
+5 — the three-row opening board plus two — and a card action is
+`row * MAX_COLUMNS + column`, so every card in row 5 or deeper simply had no
+action of its own. Worse, `PIT_CAGE` sat exactly where row 5 would have
+started, so the deepest row an agent could *name* was row 4. The observations
+had the same ceiling (`rows[:MAX_ROWS]`), so those rows were not even visible.
+
+Measured over 60 rule-bot games: **23% of three-player hauls and 19% of
+four-player hauls grew past five rows**, and **13% / 10% of all dealt cards**
+ended up in rows that could not be played. The visible symptom was an agent
+that walked *backwards*: standing at the front of a six-row mine, its only
+legal card actions pointed at rows 0-4. That is the report that started this
+fix — a reviewer watching the GUI saw the AI "give up space" and refuse to dig
+in row 5. It was not a policy failure; the action space could not express it.
+
+Fixed by sizing the grid to the deck instead of the opening board:
+`MAX_ROWS = DECK_SIZE // MIN_PLAYERS = 10`, giving 50 card actions plus pit
+cage, lorry and pass. Tests assert that every row of a grown mine has a
+reachable card action, that the front row is visible through both the
+observation and `player_view`, and that no card action can collide with the
+pit cage. Every checkpoint was retrained and every number in this document
+regenerated. The front row is now chosen in **27%** of the decisions where a
+free card sits there, against **64%** for the scripted `rule` seat — the
+learner is more reluctant to be deepest in the mine, but it is no longer
+impossible.
+
+**The bug I withdrew: an "unwinnable tie-breaker".** An earlier draft of this
+document claimed the tie-break could run out of dragons — that after three hauls
+every dragon might be held by a player, leaving contenders drawing safe cards
+forever. That is wrong, and the reviewer was right twice over: a haul spends
+**one** dragon, not several, because drawing a dragon ends the haul; and the
+deck is rebuilt to all 30 cards at the start of every haul, so the final
+tie-break sees **five** dragons (six, if the last haul ended on a lorry or a
+full board) regardless of what the first two hauls did. Four is the most a
+tie-break can ever need, for five contenders.
+
+Measured over 1260 games at 4 and 5 players, 249 tie-breaks: five dragons
+available in 219 of them, six in 26, and four in just 4 — those four being games
+where the short-deck branch of `_prepare_blasts` had pushed leftover blast
+cards, a dragon included, into a player's hand. The tightest state observed was
+five dragons for five contenders. Availability never fell below four, and never
+below `contenders - 1`.
+
+My first correction of this passage was also wrong: it said "at most three
+dragons are consumed", which is the arithmetic that made the guard look
+necessary in the first place. What I had actually observed was the dead-blast
+abort above, with the state printed at the wrong moment; I wrote it up as a
+second bug before finding the first one's cause.
+
+The engine keeps a top-up anyway — if fewer dragons remain than `contenders - 1`
+it rebuilds the deck — but it is a guard, not a fix for an observed failure: it
+has never fired, the flag it sets is called `tie_breaker_shortage`, and a test
+asserts the invariant on real games so that a future rules change (more players,
+fewer dragons per backside, a new way to lose cards) fails loudly instead of
+silently.
+
+What both fixes did change is the reporting: every report now prints `games
+the engine abandoned` in its header and every measurement counts it, so an
+aborted game can never be invisible again. Every number in this document was
+regenerated afterwards, and the ones that moved most were the scripted
+blast rows: the 3-player `rule:always` seat reads **+1.71** on the peeking
+engine and **+0.39** under the printed rule, where the version of this document
+written before the fixes had +1.43 and +0.38. An earlier draft also claimed
+that a blasting field compressed the 4-player field into 22% tied top scores;
+that was aborted games being scored as ties. The real effect is 9% either way.
+Withdrawn.
+
+## 8. n-1 passes or n passes?
+
+The printed rule is "as many players pass in a row as there are players in the
+mine, minus one". `--pass-rule n` plays the alternative.
+
+| players | rule | rusher win % | rusher margin [95% CI] | lorry endings | decisions / game | mirror spread |
+| --: | :-- | --: | :-- | --: | --: | --: |
+| 3 | **n-1 (printed)** | 29.0% | -0.39 [-1.05, +0.26] | 20.5% | **64.9** | 5.01 |
+| 3 | n | 4.0% | **-3.15 [-3.36, -2.92]** | 44.1% | 79.0 | 4.83 |
+| 4 | **n-1 (printed)** | 34.0% | +0.33 [-0.12, +0.82] | 24.4% | **102.8** | 4.63 |
+| 4 | n | 4.0% | **-2.15 [-2.35, -1.94]** | 41.6% | 115.9 | 4.53 |
+
+`n-1` is the better rule at both counts: fewer decisions per game, roughly half
+as many lorry stand-offs, and a dragon ending rather than a stalemate. It is
+also gentler — under `n` the early leaver is punished far harder, because the
+extra pass gives the miners time to fill their lorries with loot before the haul
+is closed.
+
+While measuring this, a bug surfaced: `step_one_player()` — the API the
+self-play driver uses — compared the pass count against `len(active_players)`
+instead of `self._pass_threshold()`, so `--pass-rule` was silently ignored
+everywhere except the single-learner `step()` API. Fixed, with a test.
+
+### The lorry stand-off
+
+There is no stall valve any more. In rule-only games a haul ends in a lorry
+stand-off **12.1% of the time** at three players and 14.8% at four; across the
+mixed benchmark it is 19.2% and 25.8%, because several of the scripted
+baselines genuinely park. Raising a round limit never changed those rates, which is why
+the limit was the wrong instrument: the state was absorbing, and the fix is to
+end the haul, not to wait longer.
+
+## 9. Skill vs luck
+
+Mirror matches: every seat runs the *same* policy, so the spread is luck plus
+seat position only.
+
+| rules | players | mean within-game spread | games with a tied top score |
+| :-- | --: | --: | --: |
+| printed | 3 | **5.01 points** | 13% |
+| printed | 4 | 4.63 points | 15% |
+| fixed | 3 | 4.59 points | 15% |
+| `n` passes | 3 | 4.83 points | 18% |
+| `n` passes | 4 | 4.53 points | 20% |
+
+The largest skill margin measured here is the leaver's +8.37 head-to-head, which
+dwarfs the luck band. But the leaderboard margins (+1.30 down to -1.00) are the
+same order as pure luck between identical agents, so `win %` alone is not
+evidence of anything. Seat position is not a big factor (3-player seats score
++1.78 / +1.81 / +1.69; 4-player +0.91 / +1.01 / +0.99 / +0.98).
+
+Which leaderboard margins are actually distinguishable from noise? At three
+players: the **leaver** (+1.19), and the two worst seats, `cautious` (-0.56) and
+`greedy` (-1.00). At four: the **leaver** (+1.30), the **4-player learner**
+(+1.11), `cautious` (-0.30) and `greedy` (-0.63). Everything else — `random`,
+`rule`, `rusher`, and the 3-player learner — is inside the noise, which is the
+honest way to read a table like this.
+
+## 10. What is actually worth changing
+
+1. **Ship the controls, not just the leaderboard.** `rusher` and `leaver` are
+   now first-class policies (`--agents ...,rusher,leaver`) and the report always
+   prints the "where the points come from" split. Without them, any future
+   tuning can be gamed the same way this report was.
+2. **Adopt the lorry stand-off rule** (already implemented here): if everyone
+   left in the mine is on a lorry at the end of a planning phase, the haul is
+   over and those players leave automatically and are scored. Ending the haul
+   *without* scoring them (the first version of this patch) is just the old
+   subsidy in a new coat: it took the rusher from +2.69 to +0.26 only once the
+   campers' loot counted too.
+3. **Then reconsider the empty-escape bonus.** It is a free-ride payoff in weak
+   fields, and removing it costs the game little — but it is no longer the
+   headline problem it looked like.
+4. **Only then tune points.** The 3/4-point haul bonus is ~60% of a typical
+   10-point game, so it dominates any tuning of the -1/-2 penalties.
+5. **Retrain against a pool that includes leavers.** Self-play found a
+   best response to a weak population, which is exactly what it is supposed to
+   do — the population, not the learner, was the problem. The 4-player run
+   (+1.11 instead of -0.31) is the same lesson again: the league decides what
+   the learner becomes.
+6. **Do not nerf or buff the blast.** Under the printed rule a blast is worth
+   about the same as a normal haul (+0.41 vs +0.40 points) and costs the
+   blaster's rivals ~0.4 points when it is pending. If anything is worth
+   touching it is *visibility*: the engine already exposes a pending blast in
+   the feature vector and the network ignores it (§6), which is a training
+   problem, not a rules problem. ~~A cheap fix is to seed the league with
+   `threat` agents — the reaction policy measured above — so that the value of
+   respecting a pending blast shows up in the games the learner plays.~~
+   **Tried: it does not pay.** `--league-threat-prob` seeds that league and the
+   paired result is −0.38 ± 1.19 pp, because the flinch is already in the action
+   mask rather than in the policy (§6 correction, [THREAT_LEAGUE.md](THREAT_LEAGUE.md)).
+   What is left is the mask-identical residue: a seat that already has the cage
+   would have to be taught to prefer it, which is a distillation job on
+   `train_tactical.py`'s machinery, not a league change.
+7. **Do not chase displacement.** It reads like the sharpest move in the game —
+   eject a rival off its own card and take it — and it is worth nothing: eight
+   times the pushes (1.62 vs 0.20 a game) move the win rate by +0.2pp, and
+   refusing to stand where you can be pushed costs 2.4–3.9pp (see "Displacement
+   is a tax on the seat that parks").
+8. **Fix silent aborts before trusting any benchmark.** An engine bug scored
+   whole games as all-zero (§7). Any head-to-head table produced before it is
+   suspect, and the reports now print the abandoned-game count for exactly this
+   reason.
+9. **Price the escape with the table's hazard, and put the hazard in the
+   input.** A cage is insurance against a dragon and nothing else, so the only
+   reason to spend the round is a round that can blow: one gem in hand is not a
+   reason (the seat can leave later, in the same phase or later in the haul).
+   Measured, the danger-free escapes are worth −0.35 points and the dangerous
+   ones +0.53 (§4.5). The deeper defect was informational — the encoding could
+   not represent "somebody is standing on a card that can be a dragon" — and
+   fixing that is worth +0.45 points against the previous checkpoint, a fifth of
+   which is the escape rule itself.
+
+## 11. Reproduce
+
+```powershell
+python -m pip install -r requirements.txt
+
+# what a single blast is worth, and whether backside knowledge helps the choice
+python probe_blast_value.py --games 150
+
+# is "blast while a dragon is waiting for me" a good rule? (triggers, paired seeds)
+python probe_blast_strategy.py --games 600
+
+# the two controls that make the leaderboard honest
+python evaluate_balance.py --agents rule,greedy,random,cautious,rusher,leaver,checkpoints/selfplay.npz --games 300 --out reports/balance_default_rules.md
+python evaluate_balance.py --agents rule,greedy,random,cautious,rusher,leaver,checkpoints/selfplay_no_bonus.npz --no-solo-escape-bonus --games 300 --out reports/balance_fixed_rules.md
+
+# blast: peek vs the printed face-down rule
+python evaluate_balance.py --agents rule,rule:rich,rule:always --games 200 --skip-mirror --out reports/balance_blast.md
+python evaluate_balance.py --agents rule,rule:rich,rule:always --games 200 --skip-mirror --blind-blast-choice --out reports/balance_blast_blind.md
+
+# pass rule, both player counts, both variants
+python evaluate_balance.py --agents rule,greedy,random,rusher --games 200 --out reports/pass_n-1.md
+python evaluate_balance.py --agents rule,greedy,random,rusher --games 200 --pass-rule n --out reports/pass_n.md
+python evaluate_balance.py --players 4 --agents rule,greedy,random,rusher --games 200 --out reports/pass4_n-1.md
+python evaluate_balance.py --players 4 --agents rule,greedy,random,rusher --games 200 --pass-rule n --out reports/pass4_n.md
+
+# four players: the leaderboard, and the learner trained on four players
+python evaluate_balance.py --players 4 --agents rule,greedy,random,cautious,rusher,leaver,checkpoints/selfplay4.npz --games 300 --out reports/balance4_default_rules.md
+
+# how often a seat parks on its lorry, and how often a haul is lost to that
+python probe_lorry.py --games 200
+
+# escape rules: how often a haul is thrown away by a herd of empty escapes,
+# and what each variant is worth against scripted fields
+python probe_escape.py --games 150
+python probe_escape.py --field rule --strength-games 1600
+
+# what a bluff onto a dragon you can see is worth, per field (forked rollouts)
+python probe_bait_value.py --games 300 --fields rule,reader,selfplay4
+
+# does a seat step onto a dragon it can see and get off before the reveal?
+python probe_dragon_step.py --games 200 --blind --json reports/dragon_step_blind.json
+
+# the trigger, labelled straight from committed-blast continuations (negative control)
+python train_blast_trigger.py --positions 96 --held-out 48 --samples 24 --epochs 25 \
+    --blind --seed 5100000 --held-seed 5200000 --out checkpoints/selfplay4_blast_trigger.npz
+python probe_blast_trigger.py --checkpoints checkpoints/selfplay4.npz,checkpoints/selfplay4_blast_trigger.npz \
+    --games 300 --seed 4240000 --blind
+python probe_blast_trigger.py --candidate checkpoints/selfplay4_blast_trigger.npz \
+    --baseline checkpoints/selfplay4.npz --games 500 --seed 4240000 --blind
+
+# does the learner read a backside when it picks among unknown cards?
+python probe_backside_reading.py checkpoints/selfplay4.npz --games 600
+
+# widen a checkpoint saved before the per-opponent displacement feature
+python migrate_checkpoint.py checkpoints/selfplay4_reader.npz
+
+# widen one saved before the table-hazard feature (the append case)
+python migrate_checkpoint.py old.npz new.npz --append-hazard
+
+# what one move was worth, from the identical position, and why it looked right
+python analyze_game.py --seed 7
+python analyze_game.py --seed 7 --forks --fork-samples 60 --forks-max 40
+
+# the hazard fix: 30 generations with the feature, then 20 under the escape rule
+python train_selfplay.py --players 4 --resume checkpoints/selfplay4_prehazard.npz --generations 30 --games-per-generation 80 --seed 6161 --name selfplay4_hazard --out checkpoints/selfplay4_hazard.npz
+python train_selfplay.py --players 4 --resume checkpoints/selfplay4_hazard.npz --generations 20 --games-per-generation 80 --seed 6162 --out checkpoints/selfplay4.npz
+
+# is blasting worth it, does the AI threaten, does it react, is the threat real
+python analyze_blasts.py --checkpoint checkpoints/selfplay4.npz --players 4 --games 240 --out reports/blasts4_noblastleague.md
+python analyze_blasts.py --checkpoint checkpoints/selfplay4_blast.npz --players 4 --games 240 --out reports/blasts4_blastleague.md
+
+# train from scratch (3 minutes on a laptop CPU, ~4 for four players)
+python train_selfplay.py --generations 60 --games-per-generation 64
+python train_selfplay.py --players 4 --generations 60 --games-per-generation 64 --out checkpoints/selfplay4.npz
+# the extra 120 generations in section 4 (resume, then compare the habits)
+python train_selfplay.py --players 4 --resume checkpoints/selfplay4.npz --generations 120 --games-per-generation 64 --seed 7001 --out checkpoints/selfplay4_long.npz
+python profile_agent.py --checkpoints checkpoints/selfplay4_g060.npz,checkpoints/selfplay4_long.npz --games 600
+# ... and the same, but with 60% of the league blasting on sight
+python train_selfplay.py --players 4 --generations 60 --games-per-generation 64 --league-blast-mode always --league-blast-prob 0.6 --out checkpoints/selfplay4_blast.npz
+```
+
+**Which network is in the repository.** `checkpoints/selfplay4.npz` is tracked
+(everything else under `checkpoints/` is ignored, apart from its predecessor) so
+the viewer has something to play out of the box. It is the checkpoint from the escape work in §4.5 — the
+table-hazard input, the escape rule, and 50 resumed generations on top of the
+previous run — and it wins 51.8% against three `rule` bots and 41.0% against
+three `reader` bots (500 games each, seat 0, 0.7 temperature). The checkpoint it
+replaced, which is the one every table before §4.5 was measured on, is kept as
+`checkpoints/selfplay4_prehazard.npz` and tracked for the same reason.
+
+**A checkpoint is only valid for the feature layout it was trained on.** The row
+features are normalised by `MAX_ROWS` and the observation carries one cell per
+row, so any change to the board geometry means retraining every checkpoint; a
+change to the *encoding* (as with the per-opponent displacement count) can be
+bridged once with `migrate_checkpoint.py`, which zero-pads the added inputs and
+leaves the behaviour bit-identical until the net is trained again —
+`PolicyNet.load` names that tool in its error rather than failing on a shape
+mismatch. The numbers above were all produced after
+the §7 grid fix, on nets retrained from scratch. `reports/` is git-ignored and
+holds the generated leaderboards plus the JSON behind every table.
+
+## 12. Caveats
+
+* Three and four players are measured; five are not, though the code supports
+  it (`--players 5`). The haul bonus goes to the escapee with the most gems, so
+  a fifth seat is another rival to out-collect and another body in the mine —
+  extrapolate with care, do not assume.
+* The blast/threat measurements use `rule` seats as the field, because they are
+  the only scripted policy that collects dynamite reliably. A league of strong
+  human-like players could make threats more valuable than the ~0.4 points
+  measured here.
+* `leaver` and `rusher` are crude scripted controls, not strong players. They
+  are strong enough to separate "wins by playing" from "wins by being left
+  alone", which is the job. A human who counts card backs should beat all of
+  them.
+* The learner is small (48-64 hidden units, REINFORCE). "Self-play did not find
+  a better policy" only means "at this budget".
+* Bootstrap intervals assume independent games. They are (fresh seeds), but 300
+  games still leaves about ±0.25 points of uncertainty on a margin.
+* The action grid is sized for the deepest board any deck can build at the
+  smallest supported table (10 rows at three players). At four or five players
+  the bottom rows of that grid are simply never legal; the mask costs a little
+  compute and nothing else. Anything that changes the deck (card count, dragons
+  per backside) or the minimum table size must change `MAX_ROWS` with it, and a
+  test (`test_action_grid_covers_the_deepest_board_any_deck_can_produce`) fails
+  if it does not.
+
+### Seed 7, haul 1: refusing an unrescued known dragon
+
+The four-net viewer replay exposed a concrete action-safeguard bug. P3 stepped
+from its cage onto its own visible dragon at r3c2 late in planning round 4.
+P4, P1 and P2 then passed, closing the phase before P3 could choose shelter.
+The old safeguard allowed this because a deeper rival *could* push P3 off the
+dragon. That was a possible rescue, not a guaranteed next decision. No rival
+was obliged to push. The original haul ended with all four dead.
+
+`doomed_dragon_digs` now rejects a known-dragon dig unless
+`can_wait_on_a_dragon` guarantees another decision, regardless of whether a
+rival could push. Both the ordinary action and its blast twin are filtered when
+a non-doomed alternative is available. Reversible early-phase bait is still
+allowed; charged blasts are still legal. No engine rule or checkpoint weights
+changed. This is a policy safeguard correction, not retraining.
+
+Replaying `python analyze_game.py --seed 7` after the fix: haul 1 has no dead
+figures, all four bank, and banked gems are [4, 3, 1, 3]. That does not certify
+the rest of the policy as rational: the announce/cancel/cage cycling still
+needs separate investigation. Regression coverage includes a reachable rival,
+a legal pass indicating a late decision, the blast twin, and seed-7 actions.
+Historical pusher and training tables above predate this safeguard change and
+should not be treated as measurements of the current policy.
+
+### Seed 7, haul 2: exact P2 forks
+
+See [SEED7_P2.md](SEED7_P2.md) for 400-continuation paired comparisons of P2's
+push, gem, blast announcement, cancellation, and subsequent lorry move. The
+recorded blast announcement shows no clear final-win gain over the gem without
+a blast (8.25% vs 9.50% outright wins). The no-blast push wins 4.25% on the
+**actual hidden dragon board**, not an average over P2's uncertainty. Keeping
+the blast on P2's next turn and cancelling it both win 9.25%. After cancellation,
+the empty-departure filter forces reconsideration of the cage and permits the
+lorry; that is not evidence of a coherent learned feint. No rules or weights
+changed in this diagnostic. Rerun `python probe_seed7_p2.py --samples 400`.
+
+### Branch-based tactical training: first experiment
+
+Implemented in `train_tactical.py` and `PolicyNet.fit_tactical`. See
+[TACTICAL_TRAINING.md](TACTICAL_TRAINING.md) for the sampling method, limitations
+and full results. The optional `selfplay4_tactical.npz` learned from 64 generated
+positions / 6,480 branch continuations, with 32 disjoint held-out positions /
+2,688 continuations. No seed-7 training and no new masks or game-rule changes.
+Labels use final-score win share, with equal shares for ties, and hidden fronts
+are resampled rather than teaching from the watched hidden dragon.
+
+This run did **not** improve reliably: held-out conditional estimated win share
+22.59% -> 22.11%; fresh-game outright wins against three unchanged nets
+20.5% -> 19.5% (200 games per arm; paired difference −1.0 percentage point,
+give or take 3.47). All fresh games finished. Announcements/cancellations fell
+420/361 -> 270/212, but fired-blast hauls stayed 56 -> 55. The candidate remains
+optional; `selfplay4.npz` is unchanged. The local seed-7 row-0 blast probability
+fell 60.3% -> 41.7%, which is not enough to call the training successful.
+
+### Last-haul branch curriculum
+
+[LAST_HAUL_TRAINING.md](LAST_HAUL_TRAINING.md) records a second tactical run:
+96 score/hand-varied final-haul positions, 13,824 training continuations, plus
+48 held-out positions / 7,632 continuations. Half the generated boards target
+round 3 after actual safe execution rounds. A completion-plan teacher explores
+keeping blasts; the saved policy and evaluation have no forced-pass override.
+Held-out trailing pending-blast keep probability rose 0.14% -> 8.72%.
+Ordinary-policy trailing wins rose 22.50% -> 24.64%, all-position wins
+35.94% -> 38.54% and round-3 wins 26.00% -> 28.50% (384 independently sampled
+continuations per policy, seed 2800000 onwards, repeated positions clustered by
+source; overall paired +2.60 percentage points, give or take 1.08). A 200-game
+general check showed 23.5% -> 20.0% outright wins. The targeted scenario result
+is promising but not a demonstrated general improvement, so the candidate
+`selfplay4_last_haul.npz` stays optional and the default net is unchanged.
+The fixed seed-7 third-planning-phase P2 keep probability rose 0.12% -> 6.57%,
+but P2 still cancels in the actual boundary-switched replay. Behaviour changed;
+the problem is not solved.
