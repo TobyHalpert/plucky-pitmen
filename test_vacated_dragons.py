@@ -122,3 +122,70 @@ def test_the_record_resets_with_the_deck_between_hauls():
     env._start_next_haul()
     assert env.vacated_events == []
     assert env.player_action_context(0).vacated_backsides == ()
+
+
+def test_opponent_repeated_hopping_records_public_tells_and_lowers_blast_risk():
+    """Repeatedly hopping over an own-column card marks that cell risky and the pile safer."""
+    from agents import preferred_blast_choice
+    from features import (
+        action_features,
+        backside_stats,
+        blast_dragon_risk,
+        cell_suspicion_weights,
+        suspected_dragon_counts,
+    )
+    from game_env import DYNAMITE, FRONT_UNKNOWN
+
+    env = MineEnv(opponents=3)
+    env.reset(seed=21)
+    # Place a backside-0 dragon at (2, 1) and gems at (0, 1) in P2's column.
+    env.rows[2][1] = (DRAGON, 0)
+    env.rows[1][1] = (GEM, 2)
+    env.rows[0][1] = (GEM, 2)
+    env.players[0].collected_cards = [(DYNAMITE, 1), (DYNAMITE, 2)]
+
+    ctx_before = env.player_action_context(0)
+    blast_before = blast_dragon_risk(ctx_before)
+    risk0_before = float(backside_stats(ctx_before, trust_suspected=1.0)[3][0])
+
+    # Round 0: P2 hops from front of mine (depth 3) past (2, 1) and (1, 1) to (0, 1).
+    env.planning_player = 1
+    env._apply_action(1, 0 * MAX_COLUMNS + 1)
+    ctx_r0 = env.player_action_context(0)
+    assert any(col == 1 and row == 2 and back == 0 for _rnd, col, row, back, _ff in ctx_r0.hopped_cells)
+    # Ground-truth card front is never leaked into hopped_cells (5-tuples only).
+    assert all(len(ev) == 5 for ev in ctx_r0.hopped_cells)
+    assert cell_suspicion_weights(ctx_r0)[(2, 1)] == 0.35
+
+    # Round 1: another row dealt, P2 again starts at front and hops past (2, 1).
+    env.round = 1
+    env.players[1].position = 3
+    env.players[1].column = None
+    env._apply_action(1, 1 * MAX_COLUMNS + 1)
+    ctx_r1 = env.player_action_context(0)
+    assert cell_suspicion_weights(ctx_r1)[(2, 1)] == 0.65
+    assert suspected_dragon_counts(ctx_r1)[0] >= 0.65 - 1e-6
+
+    risk0_after = float(backside_stats(ctx_r1, trust_suspected=1.0)[3][0])
+    blast_after = blast_dragon_risk(ctx_r1)
+    assert risk0_after < risk0_before
+    assert blast_after < blast_before
+    # Action feature 21 flags cell (2, 1) itself as suspected dragon.
+    af = action_features(ctx_r1, 2 * MAX_COLUMNS + 1)
+    assert af[21] >= 0.65 - 1e-6
+
+    # Blind blast keeper prefers backside 0 over untouched backside 1 or 2 when equal otherwise.
+    env_clean = MineEnv(opponents=3)
+    env_clean.reset(seed=22)
+    # Make all board backsides balanced and add two hops on backside 0 in P2's column.
+    for r in range(3):
+        for c in range(4):
+            env_clean.rows[r][c] = (GEM, (r + c) % 3)
+    env_clean.rows[2][1] = (DRAGON, 0)
+    env_clean.hopped_events = [(0, 1, 2, 0, False, DRAGON), (1, 1, 2, 0, False, DRAGON)]
+    choice = preferred_blast_choice(
+        ((FRONT_UNKNOWN, 1), (FRONT_UNKNOWN, 0), (FRONT_UNKNOWN, 2)),
+        env_clean.player_action_context(0),
+    )
+    assert choice == 1
+

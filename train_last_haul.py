@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 
 from agents import NeuralAgent, ActionChoice
-from features import action_mask, split_action, state_action_matrix
+from features import action_mask, own_card_is_known_dragon, split_action, state_action_matrix
 from game_env import MineEnv, DRAGON, DYNAMITE, GEM, PASS, PIT_CAGE, MAX_COLUMNS
 from learning import PolicyNet
 from selfplay import play_game, _choice_for
@@ -31,6 +31,9 @@ def scenario(seed: int, late_round: int):
         # Retained dynamite is additional to the fresh haul deck, as in engine.
         player.collected_cards = [(DYNAMITE, int(rng.integers(3))) for _ in range(count)]
     env.tactical_retained_counts = [p.dynamite for p in env.players]
+    env.haul_retained_backsides = [
+        card[1] for player in env.players for card in player.collected_cards
+    ]
     for _ in range(late_round):
         start_round = env.round
         while env.round == start_round and not env.game_finished:
@@ -128,7 +131,11 @@ class BlastPlanTeacher(NeuralAgent):
     rewarded directly: a completed plan must actually win its continuation.
     """
     def decide(self, ctx):
-        if ctx.own_blast_pending and action_mask(ctx)[PASS]:
+        if (
+            ctx.own_blast_pending
+            and not own_card_is_known_dragon(ctx)
+            and action_mask(ctx)[PASS]
+        ):
             return ActionChoice(PASS)
         return super().decide(ctx)
 

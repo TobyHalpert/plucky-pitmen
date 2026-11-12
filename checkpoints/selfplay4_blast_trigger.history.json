@@ -2,30 +2,30 @@
   "checkpoint": "checkpoints/selfplay4_blast_trigger.npz",
   "resume": "checkpoints/selfplay4.npz",
   "blind": true,
-  "positions": 96,
-  "held_out": 48,
-  "samples": 24,
-  "continuations": 4608,
-  "held_continuations": 2304,
+  "positions": 48,
+  "held_out": 24,
+  "samples": 12,
+  "continuations": 1152,
+  "held_continuations": 576,
   "before_train": {
-    "conditional_estimated_win_share": 0.2676228836730974,
-    "mean_candidate_probability_mass": 0.5992241592041125,
-    "teacher_best": 0.32906539351851855
+    "conditional_estimated_win_share": 0.36177859812930774,
+    "mean_candidate_probability_mass": 0.6579056185872846,
+    "teacher_best": 0.4269386574074074
   },
   "after_train": {
-    "conditional_estimated_win_share": 0.2710175374399716,
-    "mean_candidate_probability_mass": 0.912278426811099,
-    "teacher_best": 0.32906539351851855
+    "conditional_estimated_win_share": 0.35738249562289487,
+    "mean_candidate_probability_mass": 0.8219516875299936,
+    "teacher_best": 0.4269386574074074
   },
   "before_held": {
-    "conditional_estimated_win_share": 0.32572621516053785,
-    "mean_candidate_probability_mass": 0.7213342724086639,
-    "teacher_best": 0.36935763888888884
+    "conditional_estimated_win_share": 0.3768422679358328,
+    "mean_candidate_probability_mass": 0.7207962756035116,
+    "teacher_best": 0.4571759259259259
   },
   "after_held": {
-    "conditional_estimated_win_share": 0.3221122518736916,
-    "mean_candidate_probability_mass": 0.9048525982846817,
-    "teacher_best": 0.36935763888888884
+    "conditional_estimated_win_share": 0.3673989933145898,
+    "mean_candidate_probability_mass": 0.8912216861111423,
+    "teacher_best": 0.4571759259259259
   },
-  "final_loss": 0.8274250533431768
+  "final_loss": 1.086259365702669
 }

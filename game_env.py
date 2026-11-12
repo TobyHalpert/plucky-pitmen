@@ -159,6 +159,14 @@ class PlayerActionContext:
     #: True when this player was displaced on their card and has not yet moved:
     #: they remain at that card's row/column until their turn and cannot pass.
     own_displaced: bool = False
+    #: Public ``(row, column, backside)`` of cards a seat walked off in its own column.
+    vacated_cells: tuple[tuple[int, int, int], ...] = ()
+    #: Public ``(round, column, row, backside, to_foreign_free)`` of unoccupied
+    #: own-column cards a seat voluntarily hopped over during planning.
+    hopped_cells: tuple[tuple[int, int, int, int, bool], ...] = ()
+    #: Public backsides of dynamite cards retained in players' hands from the
+    #: previous haul (additional to the current haul's 30-card deck).
+    haul_retained_backsides: tuple[int, ...] = ()
 
 
 @dataclass
@@ -254,6 +262,9 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.tie_breaker_turn = 0
         self.used_blast_backsides: list[int] = []
         self.displacement_events: list[tuple[int, int]] = []
+        self.vacated_events: list[tuple[int, int, int, int, int]] = []
+        self.hopped_events: list[tuple[int, int, int, int, bool, int]] = []
+        self.haul_retained_backsides: list[int] = []
         self.game_finished = False
         # Optional external agents, one per seat. A seat may be None, in which
         # case the built-in opponent policy plays that seat. Agents only ever
@@ -287,6 +298,8 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         # ``(player, row, column, backside, front)``: the front is ground truth
         # for probes only and is never placed in a PlayerActionContext.
         self.vacated_events: list[tuple[int, int, int, int, int]] = []
+        self.hopped_events: list[tuple[int, int, int, int, bool, int]] = []
+        self.haul_retained_backsides: list[int] = []
         self.planning_player = self.starting_player
         self.planned_players = [False] * self.n_players
         self.lorry_touched = [False] * self.n_players
@@ -581,6 +594,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         if action < PIT_CAGE:
             row, column = divmod(action, MAX_COLUMNS)
             self._record_vacated(player_index, row, column)
+            self._record_hops(player_index, row, column)
             player.displaced = False
             self._displace(row, column, player_index)
             player.position = row
@@ -636,6 +650,50 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.vacated_events.append(
             (player_index, player.position, player.column, card[1], card[0])
         )
+
+    def _record_hops(
+        self, player_index: int, dest_row: int, dest_column: int
+    ) -> None:
+        """Record unoccupied own-column cards a seat voluntarily hops past.
+
+        When a seat moves from ``prev_depth`` onto ``(dest_row, dest_column)``,
+        every unoccupied card ``(r, player_index)`` with ``dest_row < r < prev_depth``
+        in its own column was visible to it and skipped. Skipping the same card
+        across rounds (or skipping it to gamble on an unoccupied foreign card) is
+        public evidence that the skipped card is a dragon.
+        """
+        player = self.players[player_index]
+        if player.displaced:
+            return
+        prev_depth = min(self._movement_depth(player), len(self.rows))
+        if dest_row + 1 >= prev_depth:
+            return
+        raiding = self._can_displace(dest_row, dest_column, player_index)
+        to_foreign_free = dest_column != player_index and not raiding
+        for r in range(dest_row + 1, prev_depth):
+            if player_index >= len(self.rows[r]):
+                continue
+            card = self.rows[r][player_index]
+            if card is None:
+                continue
+            if self._card_occupied(r, player_index, ignore_player=player_index):
+                continue
+            existing = next(
+                (
+                    i for i, ev in enumerate(self.hopped_events)
+                    if ev[0] == self.round and ev[1] == player_index and ev[2] == r
+                ),
+                None,
+            )
+            if existing is None:
+                self.hopped_events.append(
+                    (self.round, player_index, r, card[1], to_foreign_free, card[0])
+                )
+            elif to_foreign_free and not self.hopped_events[existing][4]:
+                ev = self.hopped_events[existing]
+                self.hopped_events[existing] = (
+                    ev[0], ev[1], ev[2], ev[3], True, ev[5]
+                )
 
     def _advance_starting_player(self) -> None:
         self.starting_player = (self.starting_player + 1) % self.n_players
@@ -772,6 +830,12 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         # ``(player, row, column, backside, front)``: the front is ground truth
         # for probes only and is never placed in a PlayerActionContext.
         self.vacated_events: list[tuple[int, int, int, int, int]] = []
+        self.hopped_events = []
+        self.haul_retained_backsides = [
+            card[1]
+            for dynamite_cards in retained_dynamite_cards
+            for card in dynamite_cards
+        ]
 
     # ------------------------------------------------------------------
     # Deck & mine
@@ -1549,6 +1613,13 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             passes_to_close=max(0, self._pass_threshold() - self.consecutive_passes),
             own_planned=bool(self.planned_players[player_index]),
             own_displaced=bool(me.displaced),
+            vacated_cells=tuple(
+                (ev[1], ev[2], ev[3]) for ev in self.vacated_events
+            ),
+            hopped_cells=tuple(
+                (ev[0], ev[1], ev[2], ev[3], ev[4]) for ev in self.hopped_events
+            ),
+            haul_retained_backsides=tuple(self.haul_retained_backsides),
         )
 
     def _observation(self) -> np.ndarray:

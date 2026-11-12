@@ -2,106 +2,88 @@
   "config": {
     "resume": "checkpoints/selfplay4.npz",
     "out": "checkpoints/selfplay4_last_haul.npz",
-    "positions": 96,
-    "held_out": 48,
-    "samples": 48,
-    "epochs": 30,
+    "positions": 48,
+    "held_out": 24,
+    "samples": 12,
+    "epochs": 12,
     "seed": 2300000,
     "diagnose_seed7": false
   },
   "loss": [
-    1.4141431019403778,
-    1.172312130065014,
-    1.0039240057036902,
-    0.9385957478079945,
-    0.9179410745079318,
-    0.9092699174458782,
-    0.9031265799421817,
-    0.8993407497958591,
-    0.8963098512031138,
-    0.8939426188978056,
-    0.8915230156853795,
-    0.8900279926601797,
-    0.8883139277653148,
-    0.8865870090667158,
-    0.8851458908369144,
-    0.884018343485271,
-    0.8824753026322772,
-    0.8809217677141229,
-    0.8798031023082634,
-    0.8790739492978901,
-    0.8774856689851731,
-    0.8765395948818574,
-    0.8753850201610476,
-    0.8743217104735473,
-    0.8734433133310328,
-    0.8719731805225214,
-    0.8708057317417115,
-    0.8701796698539207,
-    0.8691625413484871,
-    0.8677319895941764
+    1.301097904855851,
+    1.2164768901469263,
+    1.1188312274462078,
+    1.0331437011676219,
+    0.9662134781635056,
+    0.9268884911822776,
+    0.9000327481577793,
+    0.8864229267152647,
+    0.8779670909668008,
+    0.8727354511308173,
+    0.8688867955158154,
+    0.8656962184856335
   ],
   "train_before": {
-    "conditional_estimated_win_share": 0.2584463416408464,
-    "mean_candidate_probability_mass": 0.994341000293692,
-    "teacher_best": 0.40847439236111116
+    "conditional_estimated_win_share": 0.30562450974117544,
+    "mean_candidate_probability_mass": 0.9931277384360632,
+    "teacher_best": 0.4252025462962963
   },
   "train_after": {
-    "conditional_estimated_win_share": 0.27661428332720384,
-    "mean_candidate_probability_mass": 0.9776848194499811,
-    "teacher_best": 0.40847439236111116
+    "conditional_estimated_win_share": 0.3086861701435808,
+    "mean_candidate_probability_mass": 0.9768294207751751,
+    "teacher_best": 0.4252025462962963
   },
   "held_before": {
-    "conditional_estimated_win_share": 0.29667967218295094,
-    "mean_candidate_probability_mass": 0.9895206553240617,
-    "teacher_best": 0.4480975115740741
+    "conditional_estimated_win_share": 0.3232879744044565,
+    "mean_candidate_probability_mass": 0.9782113110025724,
+    "teacher_best": 0.449074074074074
   },
   "held_after": {
-    "conditional_estimated_win_share": 0.3096494757081119,
-    "mean_candidate_probability_mass": 0.964979100972414,
-    "teacher_best": 0.4480975115740741
+    "conditional_estimated_win_share": 0.33106608248092634,
+    "mean_candidate_probability_mass": 0.9499879777431488,
+    "teacher_best": 0.449074074074074
   },
   "held_behaviour_before": {
     "trailing_initial": {
-      "count": 21,
-      "blast_probability": 0.5510221413008823,
+      "count": 12,
+      "blast_probability": 0.5005552406828189,
       "pass_probability": 0.0
     },
     "leading_initial": {
-      "count": 7,
-      "blast_probability": 0.7074255315424657,
+      "count": 3,
+      "blast_probability": 0.7454638371352628,
       "pass_probability": 0.0
     },
     "trailing_pending": {
-      "count": 14,
+      "count": 7,
       "blast_probability": 0.0,
-      "pass_probability": 1.7161548839794705e-05
+      "pass_probability": 7.884344605762246e-05
     },
     "round3_initial": {
-      "count": 15,
-      "blast_probability": 0.5494721789347309,
+      "count": 8,
+      "blast_probability": 0.48053082610973474,
       "pass_probability": 0.0
     }
   },
   "held_behaviour_after": {
     "trailing_initial": {
-      "count": 21,
-      "blast_probability": 0.4966597003429862,
+      "count": 12,
+      "blast_probability": 0.461203376064077,
       "pass_probability": 0.0
     },
     "leading_initial": {
-      "count": 7,
-      "blast_probability": 0.639681462531111,
+      "count": 3,
+      "blast_probability": 0.7037229960551485,
       "pass_probability": 0.0
     },
     "trailing_pending": {
-      "count": 14,
+      "count": 7,
       "blast_probability": 0.0,
-      "pass_probability": 0.06917600865874972
+      "pass_probability": 0.08184396901300975
     },
     "round3_initial": {
-      "count": 15,
-      "blast_probability": 0.4832330645605301,
+      "count": 8,
+      "blast_probability": 0.4313360912492499,
       "pass_probability": 0.0
     }
   },
@@ -110,21 +92,21 @@
       "policy": "baseline",
       "groups": {
         "trailing": {
-          "continuations": 280,
-          "outright_win_rate": 0.16071428571428573
+          "continuations": 152,
+          "outright_win_rate": 0.1513157894736842
         },
         "round3": {
-          "continuations": 200,
-          "outright_win_rate": 0.19
+          "continuations": 96,
+          "outright_win_rate": 0.17708333333333334
         }
       },
-      "continuations": 384,
-      "outright_win_rate": 0.296875,
-      "tied_top_rate": 0.0390625,
-      "score": 4.8828125,
-      "announcements": 280,
-      "cancellations": 358,
-      "fired_blast_hauls": 75,
+      "continuations": 192,
+      "outright_win_rate": 0.328125,
+      "tied_top_rate": 0.020833333333333332,
+      "score": 5.807291666666667,
+      "announcements": 74,
+      "cancellations": 124,
+      "fired_blast_hauls": 19,
       "unfinished": 0,
       "paired_win_change": 0.0,
       "source_cluster_give_or_take": 0.0
@@ -133,28 +115,28 @@
       "policy": "last_haul",
       "groups": {
         "trailing": {
-          "continuations": 280,
-          "outright_win_rate": 0.16785714285714284
+          "continuations": 152,
+          "outright_win_rate": 0.16447368421052633
         },
         "round3": {
-          "continuations": 200,
-          "outright_win_rate": 0.225
+          "continuations": 96,
+          "outright_win_rate": 0.19791666666666666
         }
       },
-      "continuations": 384,
-      "outright_win_rate": 0.3072916666666667,
-      "tied_top_rate": 0.044270833333333336,
-      "score": 4.869791666666667,
-      "announcements": 250,
-      "cancellations": 347,
-      "fired_blast_hauls": 61,
+      "continuations": 192,
+      "outright_win_rate": 0.3385416666666667,
+      "tied_top_rate": 0.020833333333333332,
+      "score": 5.864583333333333,
+      "announcements": 74,
+      "cancellations": 121,
+      "fired_blast_hauls": 24,
       "unfinished": 0,
       "paired_win_change": 0.010416666666666666,
-      "source_cluster_give_or_take": 0.014979830228711806
+      "source_cluster_give_or_take": 0.008333333333333333
     }
   ],
-  "training_continuations": 14064,
-  "held_continuations": 7776,
+  "training_continuations": 1668,
+  "held_continuations": 1104,
   "training_labels": [
     {
       "position": 1,
@@ -164,10 +146,10 @@
         64
       ],
       "win_shares": [
-        0.006944444444444444,
+        0.0,
         0.0
       ],
-      "continuations": 96
+      "continuations": 24
     },
     {
       "position": 2,
@@ -180,22 +162,22 @@
         0.0,
         0.0
       ],
-      "continuations": 96
+      "continuations": 24
     },
     {
       "position": 3,
       "game_seed": 2300001,
       "actions": [
         13,
-        25,
+        27,
         28
       ],
       "win_shares": [
-        0.2621527777777778,
-        0.2638888888888889,
-        0.2829861111111111
+        0.08333333333333333,
+        0.16666666666666666,
+        0.08333333333333333
       ],
-      "continuations": 144
+      "continuations": 36
     },
     {
       "position": 4,
@@ -208,11 +190,11 @@
       ],
       "win_shares": [
         0.0,
-        0.1875,
-        0.5833333333333334,
+        0.3333333333333333,
+        0.6666666666666666,
         0.0
       ],
-      "continuations": 192
+      "continuations": 48
     },
     {
       "position": 5,
@@ -222,17 +204,19 @@
         52
       ],
       "win_shares": [
-        0.020833333333333332,
-        0.6041666666666666
+        0.0,
+        0.5
       ],
-      "continuations": 96
+      "continuations": 24
     },
     {
       "position": 6,
       "game_seed": 2300003,
       "actions": [
+        3,
         10,
         28,
+        56,
         63,
         78,
         81
@@ -242,9 +226,11 @@
         0.0,
         0.0,
         0.0,
+        0.0,
+        0.0,
         0.0
       ],
-      "continuations": 240
+      "continuations": 84
     },
     {
       "position": 7,
@@ -257,7 +243,7 @@
         0.0,
         0.0
       ],
-      "continuations": 96
+      "continuations": 24
     },
     {
       "position": 8,
@@ -268,11 +254,11 @@
         10
       ],
       "win_shares": [
-        0.4166666666666667,
-        0.4166666666666667,
-        0.5
+        0.08333333333333333,
+        0.16666666666666666,
+        0.16666666666666666
       ],
-      "continuations": 144
+      "continuations": 36
     },
     {
       "position": 9,
@@ -289,23 +275,10 @@
         0.0,
         0.0
       ],
-      "continuations": 192
+      "continuations": 48
     },
     {
       "position": 10,
-      "game_seed": 2300005,
-      "actions": [
-        50,
-        52
-      ],
-      "win_shares": [
-        0.0,
-        0.0
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 11,
       "game_seed": 2300007,
       "actions": [
         20,
@@ -314,41 +287,41 @@
         78
       ],
       "win_shares": [
-        0.6041666666666666,
-        0.6041666666666666,
-        0.0,
-        0.3541666666666667
+        0.5,
+        0.5,
+        0.5833333333333334,
+        1.0
       ],
-      "continuations": 192
+      "continuations": 48
     },
     {
-      "position": 12,
+      "position": 11,
       "game_seed": 2300007,
       "actions": [
         50,
         52
       ],
       "win_shares": [
-        0.5416666666666666,
-        0.3125
+        0.6666666666666666,
+        0.5833333333333334
       ],
-      "continuations": 96
+      "continuations": 24
     },
     {
-      "position": 13,
+      "position": 12,
       "game_seed": 2300008,
       "actions": [
         7,
         12
       ],
       "win_shares": [
-        0.17361111111111108,
-        0.17361111111111108
+        0.0625,
+        0.041666666666666664
       ],
-      "continuations": 96
+      "continuations": 24
     },
     {
-      "position": 14,
+      "position": 13,
       "game_seed": 2300009,
       "actions": [
         5,
@@ -362,25 +335,12 @@
         0.0,
         0.0,
         0.0,
-        0.25
+        0.4166666666666667
       ],
-      "continuations": 240
+      "continuations": 60
     },
     {
-      "position": 15,
-      "game_seed": 2300009,
-      "actions": [
-        50,
-        52
-      ],
-      "win_shares": [
-        0.024305555555555552,
-        0.22916666666666666
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 16,
+      "position": 14,
       "game_seed": 2300010,
       "actions": [
         6,
@@ -390,10 +350,10 @@
         0.0,
         0.0
       ],
-      "continuations": 96
+      "continuations": 24
     },
     {
-      "position": 17,
+      "position": 15,
       "game_seed": 2300010,
       "actions": [
         50,
@@ -403,68 +363,66 @@
         0.0,
         0.0
       ],
-      "continuations": 96
+      "continuations": 24
     },
     {
-      "position": 18,
+      "position": 16,
       "game_seed": 2300011,
       "actions": [
         28,
         81
       ],
       "win_shares": [
-        0.7291666666666666,
-        0.6354166666666666
+        0.9166666666666666,
+        0.625
       ],
-      "continuations": 96
+      "continuations": 24
     },
     {
-      "position": 19,
+      "position": 17,
       "game_seed": 2300011,
       "actions": [
         50,
         52
       ],
       "win_shares": [
-        0.75,
-        0.6979166666666666
+        1.0,
+        0.8333333333333334
       ],
-      "continuations": 96
+      "continuations": 24
     },
     {
-      "position": 20,
+      "position": 18,
       "game_seed": 2300012,
       "actions": [
         0,
         10,
         53,
-        58,
         63
       ],
       "win_shares": [
-        0.704861111111111,
-        0.704861111111111,
-        0.34027777777777796,
-        0.34027777777777796,
-        0.8090277777777777
+        0.9166666666666666,
+        0.8333333333333334,
+        0.9166666666666666,
+        1.0
       ],
-      "continuations": 240
+      "continuations": 48
     },
     {
-      "position": 21,
+      "position": 19,
       "game_seed": 2300012,
       "actions": [
         50,
         52
       ],
       "win_shares": [
-        0.8020833333333334,
-        0.8472222222222224
+        0.9166666666666666,
+        0.8888888888888888
       ],
-      "continuations": 96
+      "continuations": 24
     },
     {
-      "position": 22,
+      "position": 20,
       "game_seed": 2300014,
       "actions": [
         0,
@@ -473,15 +431,15 @@
         58
       ],
       "win_shares": [
-        0.10416666666666667,
-        0.125,
-        0.0,
-        0.7708333333333334
+        0.08333333333333333,
+        0.08333333333333333,
+        0.041666666666666664,
+        0.6666666666666666
       ],
-      "continuations": 192
+      "continuations": 48
     },
     {
-      "position": 23,
+      "position": 21,
       "game_seed": 2300014,
       "actions": [
         50,
@@ -489,14 +447,14 @@
         52
       ],
       "win_shares": [
-        0.08333333333333333,
-        0.08333333333333333,
-        0.0
+        0.0,
+        0.0,
+        0.08333333333333333
       ],
-      "continuations": 144
+      "continuations": 36
     },
     {
-      "position": 24,
+      "position": 22,
       "game_seed": 2300015,
       "actions": [
         11,
@@ -504,46 +462,44 @@
         28
       ],
       "win_shares": [
-        0.10416666666666667,
-        0.14583333333333334,
-        0.14583333333333334
+        0.16666666666666666,
+        0.16666666666666666,
+        0.25
       ],
-      "continuations": 144
+      "continuations": 36
     },
     {
-      "position": 25,
+      "position": 23,
       "game_seed": 2300016,
       "actions": [
         2,
         12,
         55,
-        60,
         65
       ],
       "win_shares": [
-        0.5625,
+        0.16666666666666666,
         0.75,
-        0.7916666666666666,
-        0.0,
-        0.0
+        0.8333333333333334,
+        0.3333333333333333
       ],
-      "continuations": 240
+      "continuations": 48
     },
     {
-      "position": 26,
+      "position": 24,
       "game_seed": 2300016,
       "actions": [
         50,
         52
       ],
       "win_shares": [
-        0.6458333333333334,
-        0.7083333333333334
+        0.0,
+        1.0
       ],
-      "continuations": 96
+      "continuations": 24
     },
     {
-      "position": 27,
+      "position": 25,
       "game_seed": 2300017,
       "actions": [
         7,
@@ -554,17 +510,17 @@
         80
       ],
       "win_shares": [
-        0.22916666666666666,
-        0.22916666666666666,
-        0.22916666666666666,
-        0.0,
-        0.0,
+        0.16666666666666666,
+        0.16666666666666666,
+        0.16666666666666666,
+        0.08333333333333333,
+        0.08333333333333333,
         0.5
       ],
-      "continuations": 288
+      "continuations": 72
     },
     {
-      "position": 28,
+      "position": 26,
       "game_seed": 2300017,
       "actions": [
         50,
@@ -573,99 +529,99 @@
       ],
       "win_shares": [
         0.16666666666666666,
-        0.14583333333333334,
+        0.16666666666666666,
         0.0
       ],
-      "continuations": 144
+      "continuations": 36
     },
     {
-      "position": 29,
+      "position": 27,
       "game_seed": 2300018,
       "actions": [
         2,
         12
       ],
       "win_shares": [
-        0.7083333333333334,
-        0.7291666666666666
+        0.5833333333333334,
+        0.5833333333333334
       ],
-      "continuations": 96
+      "continuations": 24
     },
     {
-      "position": 30,
+      "position": 28,
       "game_seed": 2300021,
       "actions": [
         25,
+        27,
         28,
         78,
-        80,
         81
       ],
       "win_shares": [
-        0.5,
-        0.3958333333333333,
-        0.2708333333333333,
-        0.08333333333333333,
-        0.25
+        0.3333333333333333,
+        0.25,
+        0.3333333333333333,
+        0.3333333333333333,
+        0.16666666666666666
       ],
-      "continuations": 240
+      "continuations": 60
     },
     {
-      "position": 31,
+      "position": 29,
       "game_seed": 2300021,
       "actions": [
         50,
         52
       ],
       "win_shares": [
-        0.5,
-        0.14583333333333334
+        0.3333333333333333,
+        0.3333333333333333
       ],
-      "continuations": 96
+      "continuations": 24
     },
     {
-      "position": 32,
+      "position": 30,
       "game_seed": 2300022,
       "actions": [
         6,
         59
       ],
       "win_shares": [
-        0.16666666666666666,
-        0.7083333333333334
+        0.020833333333333332,
+        0.5
       ],
-      "continuations": 96
+      "continuations": 24
     },
     {
-      "position": 33,
+      "position": 31,
       "game_seed": 2300022,
       "actions": [
         50,
         52
       ],
       "win_shares": [
-        0.08854166666666667,
-        0.6875
+        0.020833333333333332,
+        0.9166666666666666
       ],
-      "continuations": 96
+      "continuations": 24
     },
     {
-      "position": 34,
+      "position": 32,
       "game_seed": 2300023,
       "actions": [
-        6,
         25,
-        26
+        26,
+        28
       ],
       "win_shares": [
-        0.6319444444444444,
-        0.6909722222222222,
-        0.6493055555555555
+        0.4444444444444445,
+        0.5277777777777778,
+        0.5
       ],
-      "continuations": 144
+      "continuations": 36
     },
     {
-      "position": 35,
+      "position": 33,
       "game_seed": 2300024,
       "actions": [
         2,
@@ -675,23 +631,10 @@
         0.0,
         0.0
       ],
-      "continuations": 96
+      "continuations": 24
     },
     {
-      "position": 36,
-      "game_seed": 2300024,
-      "actions": [
-        50,
-        52
-      ],
-      "win_shares": [
-        0.0,
-        0.0
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 37,
+      "position": 34,
       "game_seed": 2300025,
       "actions": [
         25,
@@ -699,40 +642,27 @@
         28
       ],
       "win_shares": [
-        0.5625,
         0.5833333333333334,
-        0.5833333333333334
+        0.5833333333333334,
+        0.5
       ],
-      "continuations": 144
+      "continuations": 36
     },
     {
-      "position": 38,
+      "position": 35,
       "game_seed": 2300026,
       "actions": [
         13,
         66
       ],
       "win_shares": [
-        0.6041666666666666,
-        0.625
+        0.16666666666666666,
+        0.4166666666666667
       ],
-      "continuations": 96
+      "continuations": 24
     },
     {
-      "position": 39,
-      "game_seed": 2300026,
-      "actions": [
-        50,
-        52
-      ],
-      "win_shares": [
-        0.5416666666666666,
-        0.5625
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 40,
+      "position": 36,
       "game_seed": 2300027,
       "actions": [
         17,
@@ -746,10 +676,10 @@
         0.0,
         0.0
       ],
-      "continuations": 192
+      "continuations": 48
     },
     {
-      "position": 41,
+      "position": 37,
       "game_seed": 2300027,
       "actions": [
         50,
@@ -759,10 +689,10 @@
         0.0,
         0.0
       ],
-      "continuations": 96
+      "continuations": 24
     },
     {
-      "position": 42,
+      "position": 38,
       "game_seed": 2300028,
       "actions": [
         5,
@@ -771,54 +701,54 @@
         63
       ],
       "win_shares": [
-        0.5416666666666666,
-        0.5625,
-        0.7083333333333334,
-        0.0
+        0.5,
+        0.75,
+        0.6666666666666666,
+        0.5833333333333334
       ],
-      "continuations": 192
+      "continuations": 48
     },
     {
-      "position": 43,
+      "position": 39,
       "game_seed": 2300028,
       "actions": [
         50,
         52
       ],
       "win_shares": [
-        0.4583333333333333,
-        0.7291666666666666
+        0.75,
+        0.5
       ],
-      "continuations": 96
+      "continuations": 24
     },
     {
-      "position": 44,
+      "position": 40,
       "game_seed": 2300029,
       "actions": [
         26,
         79
       ],
       "win_shares": [
-        0.5937499999999999,
-        0.45833333333333326
+        0.8333333333333334,
+        0.6319444444444445
       ],
-      "continuations": 96
+      "continuations": 24
     },
     {
-      "position": 45,
+      "position": 41,
       "game_seed": 2300029,
       "actions": [
         50,
         52
       ],
       "win_shares": [
-        0.5868055555555556,
-        0.4895833333333333
+        0.9166666666666666,
+        0.7222222222222222
       ],
-      "continuations": 96
+      "continuations": 24
     },
     {
-      "position": 46,
+      "position": 42,
       "game_seed": 2300030,
       "actions": [
         0,
@@ -826,14 +756,14 @@
         10
       ],
       "win_shares": [
+        0.25,
         0.16666666666666666,
-        0.16666666666666666,
-        0.14583333333333334
+        0.16666666666666666
       ],
-      "continuations": 144
+      "continuations": 36
     },
     {
-      "position": 47,
+      "position": 43,
       "game_seed": 2300031,
       "actions": [
         25,
@@ -841,14 +771,14 @@
         27
       ],
       "win_shares": [
-        0.14583333333333334,
-        0.16666666666666666,
-        0.14583333333333334
+        0.0,
+        0.0,
+        0.0
       ],
-      "continuations": 144
+      "continuations": 36
     },
     {
-      "position": 48,
+      "position": 44,
       "game_seed": 2300033,
       "actions": [
         2,
@@ -858,753 +788,65 @@
         81
       ],
       "win_shares": [
-        0.020833333333333332,
-        0.041666666666666664,
+        0.0,
+        0.08333333333333333,
         0.0,
         0.0,
-        0.10416666666666667
+        0.16666666666666666
       ],
-      "continuations": 240
+      "continuations": 60
     },
     {
-      "position": 49,
+      "position": 45,
       "game_seed": 2300033,
       "actions": [
         50,
         52
       ],
       "win_shares": [
-        0.022569444444444444,
-        0.125
+        0.0,
+        0.16666666666666666
       ],
-      "continuations": 96
+      "continuations": 24
     },
     {
-      "position": 50,
+      "position": 46,
       "game_seed": 2300034,
       "actions": [
         6,
         11
       ],
       "win_shares": [
-        0.25,
-        0.1875
+        0.16666666666666666,
+        0.16666666666666666
       ],
-      "continuations": 96
+      "continuations": 24
     },
     {
-      "position": 51,
+      "position": 47,
       "game_seed": 2300035,
       "actions": [
         0,
         53
       ],
       "win_shares": [
-        0.7291666666666666,
-        0.4375
+        0.5138888888888888,
+        0.5
       ],
-      "continuations": 96
+      "continuations": 24
     },
     {
-      "position": 52,
+      "position": 48,
       "game_seed": 2300035,
       "actions": [
         50,
         52
       ],
       "win_shares": [
-        0.8229166666666666,
-        0.25
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 53,
-      "game_seed": 2300036,
-      "actions": [
-        0,
-        5,
-        13,
-        53,
-        58,
-        63,
-        66
-      ],
-      "win_shares": [
-        0.9583333333333334,
-        0.9375,
-        0.9375,
-        0.7291666666666666,
-        0.0,
-        0.0,
+        0.7222222222222223,
         0.6666666666666666
       ],
-      "continuations": 336
-    },
-    {
-      "position": 54,
-      "game_seed": 2300036,
-      "actions": [
-        0,
-        50,
-        51,
-        52
-      ],
-      "win_shares": [
-        0.9583333333333334,
-        0.3333333333333333,
-        0.9583333333333334,
-        0.0
-      ],
-      "continuations": 192
-    },
-    {
-      "position": 55,
-      "game_seed": 2300037,
-      "actions": [
-        0,
-        28,
-        53,
-        78,
-        81
-      ],
-      "win_shares": [
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0
-      ],
-      "continuations": 240
-    },
-    {
-      "position": 56,
-      "game_seed": 2300037,
-      "actions": [
-        50,
-        52
-      ],
-      "win_shares": [
-        0.0,
-        0.0
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 57,
-      "game_seed": 2300038,
-      "actions": [
-        7,
-        12,
-        60,
-        65
-      ],
-      "win_shares": [
-        0.3333333333333333,
-        0.4375,
-        0.6666666666666666,
-        0.0
-      ],
-      "continuations": 192
-    },
-    {
-      "position": 58,
-      "game_seed": 2300038,
-      "actions": [
-        50,
-        52
-      ],
-      "win_shares": [
-        0.4583333333333333,
-        0.75
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 59,
-      "game_seed": 2300039,
-      "actions": [
-        1,
-        26,
-        54,
-        74,
-        79
-      ],
-      "win_shares": [
-        0.2708333333333333,
-        0.2708333333333333,
-        0.0,
-        0.0,
-        0.28125
-      ],
-      "continuations": 240
-    },
-    {
-      "position": 60,
-      "game_seed": 2300039,
-      "actions": [
-        50,
-        52
-      ],
-      "win_shares": [
-        0.11458333333333333,
-        0.3958333333333333
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 61,
-      "game_seed": 2300041,
-      "actions": [
-        0,
-        28,
-        53,
-        78,
-        81
-      ],
-      "win_shares": [
-        0.19791666666666666,
-        0.2604166666666667,
-        0.0,
-        0.25,
-        0.28125
-      ],
-      "continuations": 240
-    },
-    {
-      "position": 62,
-      "game_seed": 2300041,
-      "actions": [
-        50,
-        52
-      ],
-      "win_shares": [
-        0.4791666666666667,
-        0.34375
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 63,
-      "game_seed": 2300043,
-      "actions": [
-        20,
-        25,
-        73,
-        78
-      ],
-      "win_shares": [
-        0.0,
-        0.0,
-        0.0,
-        0.0
-      ],
-      "continuations": 192
-    },
-    {
-      "position": 64,
-      "game_seed": 2300043,
-      "actions": [
-        50,
-        52
-      ],
-      "win_shares": [
-        0.0,
-        0.0
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 65,
-      "game_seed": 2300045,
-      "actions": [
-        8,
-        13,
-        28,
-        61,
-        66,
-        81
-      ],
-      "win_shares": [
-        0.24305555555555555,
-        0.24305555555555555,
-        0.24305555555555555,
-        0.0,
-        0.0,
-        0.4791666666666667
-      ],
-      "continuations": 288
-    },
-    {
-      "position": 66,
-      "game_seed": 2300045,
-      "actions": [
-        50,
-        52
-      ],
-      "win_shares": [
-        0.40972222222222215,
-        0.3958333333333333
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 67,
-      "game_seed": 2300046,
-      "actions": [
-        6,
-        11
-      ],
-      "win_shares": [
-        0.0,
-        0.0
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 68,
-      "game_seed": 2300047,
-      "actions": [
-        6,
-        28,
-        59,
-        79,
-        81
-      ],
-      "win_shares": [
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0
-      ],
-      "continuations": 240
-    },
-    {
-      "position": 69,
-      "game_seed": 2300047,
-      "actions": [
-        50,
-        51,
-        52
-      ],
-      "win_shares": [
-        0.0,
-        0.0,
-        0.0
-      ],
-      "continuations": 144
-    },
-    {
-      "position": 70,
-      "game_seed": 2300048,
-      "actions": [
-        2,
-        12
-      ],
-      "win_shares": [
-        0.0,
-        0.0
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 71,
-      "game_seed": 2300049,
-      "actions": [
-        7,
-        26,
-        28,
-        60,
-        64,
-        79,
-        81
-      ],
-      "win_shares": [
-        0.7083333333333334,
-        0.7708333333333334,
-        0.875,
-        0.2708333333333333,
-        0.0,
-        0.0,
-        0.4166666666666667
-      ],
-      "continuations": 336
-    },
-    {
-      "position": 72,
-      "game_seed": 2300049,
-      "actions": [
-        50,
-        52
-      ],
-      "win_shares": [
-        0.9375,
-        0.375
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 73,
-      "game_seed": 2300050,
-      "actions": [
-        1,
-        54
-      ],
-      "win_shares": [
-        0.0,
-        0.7083333333333334
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 74,
-      "game_seed": 2300050,
-      "actions": [
-        50,
-        52
-      ],
-      "win_shares": [
-        0.10416666666666667,
-        0.6875
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 75,
-      "game_seed": 2300051,
-      "actions": [
-        5,
-        28,
-        58,
-        68,
-        81
-      ],
-      "win_shares": [
-        0.1875,
-        0.125,
-        0.0,
-        0.0,
-        0.2708333333333333
-      ],
-      "continuations": 240
-    },
-    {
-      "position": 76,
-      "game_seed": 2300051,
-      "actions": [
-        50,
-        52
-      ],
-      "win_shares": [
-        0.10416666666666667,
-        0.3125
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 77,
-      "game_seed": 2300052,
-      "actions": [
-        13,
-        66
-      ],
-      "win_shares": [
-        0.0,
-        0.0
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 78,
-      "game_seed": 2300052,
-      "actions": [
-        50,
-        52
-      ],
-      "win_shares": [
-        0.0,
-        0.0
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 79,
-      "game_seed": 2300053,
-      "actions": [
-        2,
-        27
-      ],
-      "win_shares": [
-        0.75,
-        0.7291666666666666
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 80,
-      "game_seed": 2300054,
-      "actions": [
-        8,
-        10,
-        13
-      ],
-      "win_shares": [
-        0.0,
-        0.0,
-        0.0
-      ],
-      "continuations": 144
-    },
-    {
-      "position": 81,
-      "game_seed": 2300055,
-      "actions": [
-        2,
-        17,
-        28,
-        55,
-        70,
-        81
-      ],
-      "win_shares": [
-        0.28125,
-        0.28125,
-        0.3125,
-        0.0,
-        0.0,
-        0.20833333333333334
-      ],
-      "continuations": 288
-    },
-    {
-      "position": 82,
-      "game_seed": 2300055,
-      "actions": [
-        0,
-        50,
-        51,
-        52
-      ],
-      "win_shares": [
-        0.4166666666666667,
-        0.25,
-        0.3020833333333333,
-        0.0
-      ],
-      "continuations": 192
-    },
-    {
-      "position": 83,
-      "game_seed": 2300057,
-      "actions": [
-        1,
-        26,
-        54,
-        64,
-        79
-      ],
-      "win_shares": [
-        0.5833333333333334,
-        0.5833333333333334,
-        0.2534722222222222,
-        0.2534722222222222,
-        0.7291666666666666
-      ],
-      "continuations": 240
-    },
-    {
-      "position": 84,
-      "game_seed": 2300057,
-      "actions": [
-        50,
-        51,
-        52
-      ],
-      "win_shares": [
-        0.6666666666666666,
-        0.6875,
-        0.25347222222222227
-      ],
-      "continuations": 144
-    },
-    {
-      "position": 85,
-      "game_seed": 2300058,
-      "actions": [
-        10,
-        63
-      ],
-      "win_shares": [
-        0.5833333333333334,
-        0.6041666666666666
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 86,
-      "game_seed": 2300058,
-      "actions": [
-        50,
-        52
-      ],
-      "win_shares": [
-        0.5416666666666666,
-        0.5833333333333334
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 87,
-      "game_seed": 2300059,
-      "actions": [
-        0,
-        25,
-        53,
-        78
-      ],
-      "win_shares": [
-        0.0,
-        0.0625,
-        0.0,
-        0.25
-      ],
-      "continuations": 192
-    },
-    {
-      "position": 88,
-      "game_seed": 2300059,
-      "actions": [
-        50,
-        52
-      ],
-      "win_shares": [
-        0.04861111111111111,
-        0.3125
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 89,
-      "game_seed": 2300060,
-      "actions": [
-        2,
-        12,
-        55,
-        65
-      ],
-      "win_shares": [
-        0.0,
-        0.0,
-        0.0,
-        0.0
-      ],
-      "continuations": 192
-    },
-    {
-      "position": 90,
-      "game_seed": 2300060,
-      "actions": [
-        50,
-        52
-      ],
-      "win_shares": [
-        0.0,
-        0.0
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 91,
-      "game_seed": 2300061,
-      "actions": [
-        21,
-        26,
-        74,
-        79
-      ],
-      "win_shares": [
-        0.8020833333333334,
-        0.8333333333333334,
-        0.5104166666666666,
-        0.6979166666666666
-      ],
-      "continuations": 192
-    },
-    {
-      "position": 92,
-      "game_seed": 2300061,
-      "actions": [
-        50,
-        52
-      ],
-      "win_shares": [
-        0.875,
-        0.65625
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 93,
-      "game_seed": 2300062,
-      "actions": [
-        2,
-        7,
-        12
-      ],
-      "win_shares": [
-        0.4479166666666667,
-        0.4791666666666667,
-        0.4791666666666667
-      ],
-      "continuations": 144
-    },
-    {
-      "position": 94,
-      "game_seed": 2300063,
-      "actions": [
-        23,
-        28,
-        76,
-        81
-      ],
-      "win_shares": [
-        0.7291666666666666,
-        0.7291666666666666,
-        0.0,
-        0.6458333333333334
-      ],
-      "continuations": 192
-    },
-    {
-      "position": 95,
-      "game_seed": 2300063,
-      "actions": [
-        50,
-        52
-      ],
-      "win_shares": [
-        0.6666666666666666,
-        0.6041666666666666
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 96,
-      "game_seed": 2300064,
-      "actions": [
-        0,
-        10,
-        53,
-        63
-      ],
-      "win_shares": [
-        0.8854166666666666,
-        0.8854166666666666,
-        0.5,
-        0.84375
-      ],
-      "continuations": 192
+      "continuations": 24
     }
   ],
   "held_labels": [
@@ -1618,12 +860,12 @@
         65
       ],
       "win_shares": [
-        0.05902777777777777,
-        0.25,
+        0.0,
+        0.0,
         0.0,
         0.6666666666666666
       ],
-      "continuations": 192
+      "continuations": 48
     },
     {
       "position": 2,
@@ -1634,11 +876,11 @@
         52
       ],
       "win_shares": [
-        0.06944444444444445,
-        0.006944444444444444,
-        0.0
+        0.0,
+        0.0,
+        0.027777777777777776
       ],
-      "continuations": 144
+      "continuations": 36
     },
     {
       "position": 3,
@@ -1651,9 +893,9 @@
       "win_shares": [
         0.08333333333333333,
         0.08333333333333333,
-        0.08333333333333333
+        0.0
       ],
-      "continuations": 144
+      "continuations": 36
     },
     {
       "position": 4,
@@ -1664,11 +906,11 @@
         12
       ],
       "win_shares": [
-        0.0625,
-        0.0625,
-        0.07291666666666667
+        0.08333333333333333,
+        0.08333333333333333,
+        0.125
       ],
-      "continuations": 144
+      "continuations": 36
     },
     {
       "position": 5,
@@ -1683,15 +925,15 @@
         81
       ],
       "win_shares": [
-        0.020833333333333332,
-        0.10416666666666667,
-        0.11458333333333333,
-        0.21875,
         0.0,
+        0.08333333333333333,
+        0.08333333333333333,
+        0.20833333333333334,
         0.0,
-        0.25
+        0.08333333333333333,
+        0.08333333333333333
       ],
-      "continuations": 336
+      "continuations": 84
     },
     {
       "position": 6,
@@ -1701,10 +943,10 @@
         52
       ],
       "win_shares": [
-        0.3125,
-        0.3333333333333333
+        0.0,
+        0.4166666666666667
       ],
-      "continuations": 96
+      "continuations": 24
     },
     {
       "position": 7,
@@ -1716,12 +958,12 @@
         64
       ],
       "win_shares": [
-        0.14583333333333334,
-        0.625,
         0.0,
-        0.625
+        0.08333333333333333,
+        0.0,
+        0.6666666666666666
       ],
-      "continuations": 192
+      "continuations": 48
     },
     {
       "position": 8,
@@ -1732,11 +974,11 @@
         52
       ],
       "win_shares": [
-        0.041666666666666664,
-        0.16666666666666666,
+        0.0,
+        0.0,
         0.0
       ],
-      "continuations": 144
+      "continuations": 36
     },
     {
       "position": 9,
@@ -1747,11 +989,11 @@
         28
       ],
       "win_shares": [
-        0.20833333333333334,
-        0.22916666666666666,
-        0.20833333333333334
+        0.08333333333333333,
+        0.08333333333333333,
+        0.08333333333333333
       ],
-      "continuations": 144
+      "continuations": 36
     },
     {
       "position": 10,
@@ -1763,12 +1005,12 @@
         65
       ],
       "win_shares": [
-        0.7395833333333334,
-        0.84375,
-        0.5,
-        0.875
+        0.9583333333333334,
+        1.0,
+        0.8333333333333334,
+        0.8333333333333334
       ],
-      "continuations": 192
+      "continuations": 48
     },
     {
       "position": 11,
@@ -1779,11 +1021,11 @@
         52
       ],
       "win_shares": [
-        0.8229166666666666,
-        0.8229166666666666,
-        0.5
+        0.9166666666666666,
+        0.9166666666666666,
+        1.0
       ],
-      "continuations": 144
+      "continuations": 36
     },
     {
       "position": 12,
@@ -1797,29 +1039,31 @@
         81
       ],
       "win_shares": [
-        0.20833333333333334,
-        0.20833333333333334,
-        0.2708333333333333,
         0.0,
-        0.0,
-        0.20833333333333334
+        0.08333333333333333,
+        0.08333333333333333,
+        0.08333333333333333,
+        0.08333333333333333,
+        0.16666666666666666
       ],
-      "continuations": 288
+      "continuations": 72
     },
     {
       "position": 13,
       "game_seed": 2400007,
       "actions": [
+        3,
         50,
         51,
         52
       ],
       "win_shares": [
-        0.1875,
-        0.1875,
-        0.0
+        0.16666666666666666,
+        0.25,
+        0.3333333333333333,
+        0.08333333333333333
       ],
-      "continuations": 144
+      "continuations": 48
     },
     {
       "position": 14,
@@ -1829,32 +1073,20 @@
         58
       ],
       "win_shares": [
-        0.6875,
-        0.5833333333333334
+        0.8333333333333334,
+        0.75
       ],
-      "continuations": 96
+      "continuations": 24
     },
     {
       "position": 15,
-      "game_seed": 2400008,
-      "actions": [
-        50,
-        52
-      ],
-      "win_shares": [
-        0.5833333333333334,
-        0.4583333333333333
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 16,
       "game_seed": 2400009,
       "actions": [
         5,
         28,
         58,
         63,
+        78,
         81
       ],
       "win_shares": [
@@ -1862,25 +1094,13 @@
         0.0,
         0.0,
         0.0,
-        0.125
+        0.08333333333333333,
+        0.08333333333333333
       ],
-      "continuations": 240
+      "continuations": 72
     },
     {
-      "position": 17,
-      "game_seed": 2400009,
-      "actions": [
-        50,
-        52
-      ],
-      "win_shares": [
-        0.0,
-        0.20833333333333334
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 18,
+      "position": 16,
       "game_seed": 2400010,
       "actions": [
         2,
@@ -1888,7 +1108,6 @@
         13,
         55,
         60,
-        65,
         66
       ],
       "win_shares": [
@@ -1897,30 +1116,31 @@
         1.0,
         1.0,
         1.0,
-        1.0,
         1.0
       ],
-      "continuations": 336
+      "continuations": 72
     },
     {
-      "position": 19,
+      "position": 17,
       "game_seed": 2400010,
       "actions": [
+        1,
         2,
         50,
         51,
         52
       ],
       "win_shares": [
-        0.9895833333333334,
+        1.0,
+        1.0,
         1.0,
         1.0,
         1.0
       ],
-      "continuations": 192
+      "continuations": 60
     },
     {
-      "position": 20,
+      "position": 18,
       "game_seed": 2400011,
       "actions": [
         7,
@@ -1928,14 +1148,14 @@
         27
       ],
       "win_shares": [
-        0.010416666666666666,
-        0.010416666666666666,
-        0.010416666666666666
+        0.08333333333333333,
+        0.0,
+        0.0
       ],
-      "continuations": 144
+      "continuations": 36
     },
     {
-      "position": 21,
+      "position": 19,
       "game_seed": 2400013,
       "actions": [
         3,
@@ -1946,17 +1166,17 @@
         81
       ],
       "win_shares": [
-        0.5208333333333334,
-        0.5208333333333334,
-        0.0,
-        0.0,
-        0.0,
-        0.5833333333333334
+        0.6666666666666666,
+        0.6666666666666666,
+        0.75,
+        0.75,
+        0.75,
+        0.8333333333333334
       ],
-      "continuations": 288
+      "continuations": 72
     },
     {
-      "position": 22,
+      "position": 20,
       "game_seed": 2400013,
       "actions": [
         50,
@@ -1964,40 +1184,40 @@
         52
       ],
       "win_shares": [
-        0.625,
         0.6666666666666666,
-        0.0
+        0.5,
+        0.8333333333333334
       ],
-      "continuations": 144
+      "continuations": 36
     },
     {
-      "position": 23,
+      "position": 21,
       "game_seed": 2400014,
       "actions": [
         13,
         66
       ],
       "win_shares": [
-        0.40277777777777785,
-        0.625
+        0.0625,
+        0.5
       ],
-      "continuations": 96
+      "continuations": 24
     },
     {
-      "position": 24,
+      "position": 22,
       "game_seed": 2400014,
       "actions": [
         50,
         52
       ],
       "win_shares": [
-        0.125,
-        0.6875
+        0.13194444444444445,
+        0.6666666666666666
       ],
-      "continuations": 96
+      "continuations": 24
     },
     {
-      "position": 25,
+      "position": 23,
       "game_seed": 2400015,
       "actions": [
         2,
@@ -2008,17 +1228,17 @@
         81
       ],
       "win_shares": [
-        0.0,
-        0.020833333333333332,
-        0.0,
-        0.0,
-        0.052083333333333336,
-        0.17708333333333334
+        0.041666666666666664,
+        0.08333333333333333,
+        0.041666666666666664,
+        0.041666666666666664,
+        0.08333333333333333,
+        0.08333333333333333
       ],
-      "continuations": 288
+      "continuations": 72
     },
     {
-      "position": 26,
+      "position": 24,
       "game_seed": 2400015,
       "actions": [
         50,
@@ -2028,341 +1248,7 @@
         0.0,
         0.08333333333333333
       ],
-      "continuations": 96
-    },
-    {
-      "position": 27,
-      "game_seed": 2400016,
-      "actions": [
-        5,
-        10
-      ],
-      "win_shares": [
-        0.7083333333333334,
-        0.7083333333333334
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 28,
-      "game_seed": 2400017,
-      "actions": [
-        3,
-        13
-      ],
-      "win_shares": [
-        0.673611111111111,
-        0.6527777777777778
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 29,
-      "game_seed": 2400019,
-      "actions": [
-        28,
-        81
-      ],
-      "win_shares": [
-        0.40451388888888884,
-        0.390625
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 30,
-      "game_seed": 2400019,
-      "actions": [
-        50,
-        52
-      ],
-      "win_shares": [
-        0.4392361111111111,
-        0.47395833333333326
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 31,
-      "game_seed": 2400020,
-      "actions": [
-        6,
-        59
-      ],
-      "win_shares": [
-        0.2552083333333333,
-        0.6041666666666666
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 32,
-      "game_seed": 2400020,
-      "actions": [
-        50,
-        52
-      ],
-      "win_shares": [
-        0.10416666666666667,
-        0.5416666666666666
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 33,
-      "game_seed": 2400021,
-      "actions": [
-        18,
-        20,
-        28,
-        71,
-        73,
-        78,
-        81
-      ],
-      "win_shares": [
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0
-      ],
-      "continuations": 336
-    },
-    {
-      "position": 34,
-      "game_seed": 2400021,
-      "actions": [
-        50,
-        52
-      ],
-      "win_shares": [
-        0.0,
-        0.0
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 35,
-      "game_seed": 2400022,
-      "actions": [
-        11,
-        64
-      ],
-      "win_shares": [
-        0.10416666666666667,
-        0.5208333333333334
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 36,
-      "game_seed": 2400022,
-      "actions": [
-        50,
-        52
-      ],
-      "win_shares": [
-        0.16666666666666666,
-        0.6041666666666666
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 37,
-      "game_seed": 2400023,
-      "actions": [
-        2,
-        22,
-        28,
-        55,
-        75,
-        80,
-        81
-      ],
-      "win_shares": [
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.2916666666666667
-      ],
-      "continuations": 336
-    },
-    {
-      "position": 38,
-      "game_seed": 2400023,
-      "actions": [
-        50,
-        52
-      ],
-      "win_shares": [
-        0.0,
-        0.020833333333333332
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 39,
-      "game_seed": 2400025,
-      "actions": [
-        2,
-        27,
-        55,
-        80
-      ],
-      "win_shares": [
-        0.75,
-        0.6666666666666666,
-        0.4375,
-        0.0
-      ],
-      "continuations": 192
-    },
-    {
-      "position": 40,
-      "game_seed": 2400025,
-      "actions": [
-        2,
-        5,
-        50,
-        51,
-        52
-      ],
-      "win_shares": [
-        0.7916666666666666,
-        0.6041666666666666,
-        0.5,
-        0.75,
-        0.0
-      ],
-      "continuations": 240
-    },
-    {
-      "position": 41,
-      "game_seed": 2400026,
-      "actions": [
-        10,
-        63
-      ],
-      "win_shares": [
-        0.6458333333333334,
-        0.5416666666666666
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 42,
-      "game_seed": 2400026,
-      "actions": [
-        50,
-        52
-      ],
-      "win_shares": [
-        0.5416666666666666,
-        0.5625
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 43,
-      "game_seed": 2400027,
-      "actions": [
-        8,
-        23,
-        28,
-        61,
-        76,
-        81
-      ],
-      "win_shares": [
-        0.16666666666666666,
-        0.23611111111111113,
-        0.23611111111111113,
-        0.4375,
-        0.13888888888888887,
-        0.13888888888888887
-      ],
-      "continuations": 288
-    },
-    {
-      "position": 44,
-      "game_seed": 2400027,
-      "actions": [
-        50,
-        52
-      ],
-      "win_shares": [
-        0.2777777777777778,
-        0.5399305555555556
-      ],
-      "continuations": 96
-    },
-    {
-      "position": 45,
-      "game_seed": 2400028,
-      "actions": [
-        10,
-        11,
-        13
-      ],
-      "win_shares": [
-        0.09722222222222221,
-        0.1111111111111111,
-        0.09027777777777778
-      ],
-      "continuations": 144
-    },
-    {
-      "position": 46,
-      "game_seed": 2400029,
-      "actions": [
-        3,
-        13,
-        28
-      ],
-      "win_shares": [
-        0.07291666666666667,
-        0.07291666666666667,
-        0.07291666666666667
-      ],
-      "continuations": 144
-    },
-    {
-      "position": 47,
-      "game_seed": 2400030,
-      "actions": [
-        2,
-        12,
-        55,
-        65
-      ],
-      "win_shares": [
-        0.8402777777777778,
-        0.75,
-        0.0,
-        0.7083333333333334
-      ],
-      "continuations": 192
-    },
-    {
-      "position": 48,
-      "game_seed": 2400030,
-      "actions": [
-        50,
-        51,
-        52
-      ],
-      "win_shares": [
-        0.8020833333333334,
-        0.8229166666666666,
-        0.0
-      ],
-      "continuations": 144
+      "continuations": 24
     }
   ],
   "source_positions": [
@@ -2593,31 +1479,6 @@
     },
     {
       "split": "train",
-      "seed": 2300005,
-      "seat": 0,
-      "round": 3,
-      "starting_dynamite": [
-        6,
-        0,
-        6,
-        0
-      ],
-      "scores": [
-        1,
-        9,
-        1,
-        6
-      ],
-      "dynamite": [
-        7,
-        0,
-        8,
-        1
-      ],
-      "own_pending": true
-    },
-    {
-      "split": "train",
       "seed": 2300007,
       "seat": 0,
       "round": 3,
@@ -2715,31 +1576,6 @@
         6
       ],
       "own_pending": false
-    },
-    {
-      "split": "train",
-      "seed": 2300009,
-      "seat": 0,
-      "round": 3,
-      "starting_dynamite": [
-        0,
-        4,
-        1,
-        6
-      ],
-      "scores": [
-        9,
-        12,
-        9,
-        7
-      ],
-      "dynamite": [
-        2,
-        7,
-        1,
-        6
-      ],
-      "own_pending": true
     },
     {
       "split": "train",
@@ -3243,31 +2079,6 @@
     },
     {
       "split": "train",
-      "seed": 2300024,
-      "seat": 2,
-      "round": 0,
-      "starting_dynamite": [
-        6,
-        2,
-        6,
-        1
-      ],
-      "scores": [
-        12,
-        9,
-        4,
-        7
-      ],
-      "dynamite": [
-        6,
-        2,
-        6,
-        1
-      ],
-      "own_pending": true
-    },
-    {
-      "split": "train",
       "seed": 2300025,
       "seat": 0,
       "round": 3,
@@ -3315,31 +2126,6 @@
         6
       ],
       "own_pending": false
-    },
-    {
-      "split": "train",
-      "seed": 2300026,
-      "seat": 3,
-      "round": 0,
-      "starting_dynamite": [
-        1,
-        2,
-        1,
-        6
-      ],
-      "scores": [
-        0,
-        0,
-        3,
-        0
-      ],
-      "dynamite": [
-        1,
-        2,
-        1,
-        6
-      ],
-      "own_pending": true
     },
     {
       "split": "train",
@@ -3665,1106 +2451,6 @@
         2
       ],
       "own_pending": true
-    },
-    {
-      "split": "train",
-      "seed": 2300036,
-      "seat": 0,
-      "round": 0,
-      "starting_dynamite": [
-        6,
-        6,
-        2,
-        0
-      ],
-      "scores": [
-        12,
-        11,
-        7,
-        7
-      ],
-      "dynamite": [
-        6,
-        6,
-        2,
-        0
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "train",
-      "seed": 2300036,
-      "seat": 0,
-      "round": 0,
-      "starting_dynamite": [
-        6,
-        6,
-        2,
-        0
-      ],
-      "scores": [
-        12,
-        11,
-        7,
-        7
-      ],
-      "dynamite": [
-        6,
-        6,
-        2,
-        0
-      ],
-      "own_pending": true
-    },
-    {
-      "split": "train",
-      "seed": 2300037,
-      "seat": 0,
-      "round": 3,
-      "starting_dynamite": [
-        2,
-        6,
-        4,
-        4
-      ],
-      "scores": [
-        0,
-        6,
-        0,
-        0
-      ],
-      "dynamite": [
-        3,
-        7,
-        6,
-        4
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "train",
-      "seed": 2300037,
-      "seat": 0,
-      "round": 3,
-      "starting_dynamite": [
-        2,
-        6,
-        4,
-        4
-      ],
-      "scores": [
-        0,
-        6,
-        0,
-        0
-      ],
-      "dynamite": [
-        3,
-        7,
-        6,
-        4
-      ],
-      "own_pending": true
-    },
-    {
-      "split": "train",
-      "seed": 2300038,
-      "seat": 2,
-      "round": 0,
-      "starting_dynamite": [
-        2,
-        6,
-        4,
-        0
-      ],
-      "scores": [
-        0,
-        0,
-        3,
-        2
-      ],
-      "dynamite": [
-        2,
-        6,
-        4,
-        0
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "train",
-      "seed": 2300038,
-      "seat": 2,
-      "round": 0,
-      "starting_dynamite": [
-        2,
-        6,
-        4,
-        0
-      ],
-      "scores": [
-        0,
-        0,
-        3,
-        2
-      ],
-      "dynamite": [
-        2,
-        6,
-        4,
-        0
-      ],
-      "own_pending": true
-    },
-    {
-      "split": "train",
-      "seed": 2300039,
-      "seat": 1,
-      "round": 3,
-      "starting_dynamite": [
-        6,
-        4,
-        6,
-        1
-      ],
-      "scores": [
-        1,
-        8,
-        1,
-        9
-      ],
-      "dynamite": [
-        8,
-        6,
-        6,
-        2
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "train",
-      "seed": 2300039,
-      "seat": 1,
-      "round": 3,
-      "starting_dynamite": [
-        6,
-        4,
-        6,
-        1
-      ],
-      "scores": [
-        1,
-        8,
-        1,
-        9
-      ],
-      "dynamite": [
-        8,
-        6,
-        6,
-        2
-      ],
-      "own_pending": true
-    },
-    {
-      "split": "train",
-      "seed": 2300041,
-      "seat": 0,
-      "round": 3,
-      "starting_dynamite": [
-        1,
-        1,
-        0,
-        0
-      ],
-      "scores": [
-        8,
-        9,
-        4,
-        4
-      ],
-      "dynamite": [
-        2,
-        1,
-        2,
-        2
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "train",
-      "seed": 2300041,
-      "seat": 0,
-      "round": 3,
-      "starting_dynamite": [
-        1,
-        1,
-        0,
-        0
-      ],
-      "scores": [
-        8,
-        9,
-        4,
-        4
-      ],
-      "dynamite": [
-        2,
-        1,
-        2,
-        2
-      ],
-      "own_pending": true
-    },
-    {
-      "split": "train",
-      "seed": 2300043,
-      "seat": 0,
-      "round": 3,
-      "starting_dynamite": [
-        6,
-        2,
-        1,
-        2
-      ],
-      "scores": [
-        7,
-        7,
-        9,
-        12
-      ],
-      "dynamite": [
-        8,
-        2,
-        3,
-        3
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "train",
-      "seed": 2300043,
-      "seat": 0,
-      "round": 3,
-      "starting_dynamite": [
-        6,
-        2,
-        1,
-        2
-      ],
-      "scores": [
-        7,
-        7,
-        9,
-        12
-      ],
-      "dynamite": [
-        8,
-        2,
-        3,
-        3
-      ],
-      "own_pending": true
-    },
-    {
-      "split": "train",
-      "seed": 2300045,
-      "seat": 3,
-      "round": 3,
-      "starting_dynamite": [
-        6,
-        6,
-        1,
-        2
-      ],
-      "scores": [
-        2,
-        3,
-        0,
-        2
-      ],
-      "dynamite": [
-        7,
-        6,
-        3,
-        3
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "train",
-      "seed": 2300045,
-      "seat": 3,
-      "round": 3,
-      "starting_dynamite": [
-        6,
-        6,
-        1,
-        2
-      ],
-      "scores": [
-        2,
-        3,
-        0,
-        2
-      ],
-      "dynamite": [
-        7,
-        6,
-        3,
-        3
-      ],
-      "own_pending": true
-    },
-    {
-      "split": "train",
-      "seed": 2300046,
-      "seat": 1,
-      "round": 0,
-      "starting_dynamite": [
-        6,
-        0,
-        4,
-        6
-      ],
-      "scores": [
-        0,
-        0,
-        3,
-        0
-      ],
-      "dynamite": [
-        6,
-        0,
-        4,
-        6
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "train",
-      "seed": 2300047,
-      "seat": 1,
-      "round": 3,
-      "starting_dynamite": [
-        1,
-        2,
-        2,
-        1
-      ],
-      "scores": [
-        1,
-        1,
-        6,
-        9
-      ],
-      "dynamite": [
-        2,
-        3,
-        4,
-        1
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "train",
-      "seed": 2300047,
-      "seat": 1,
-      "round": 3,
-      "starting_dynamite": [
-        1,
-        2,
-        2,
-        1
-      ],
-      "scores": [
-        1,
-        1,
-        6,
-        9
-      ],
-      "dynamite": [
-        2,
-        3,
-        4,
-        1
-      ],
-      "own_pending": true
-    },
-    {
-      "split": "train",
-      "seed": 2300048,
-      "seat": 2,
-      "round": 0,
-      "starting_dynamite": [
-        4,
-        4,
-        1,
-        2
-      ],
-      "scores": [
-        6,
-        1,
-        0,
-        0
-      ],
-      "dynamite": [
-        4,
-        4,
-        1,
-        2
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "train",
-      "seed": 2300049,
-      "seat": 1,
-      "round": 3,
-      "starting_dynamite": [
-        4,
-        4,
-        0,
-        4
-      ],
-      "scores": [
-        1,
-        9,
-        4,
-        8
-      ],
-      "dynamite": [
-        5,
-        4,
-        2,
-        4
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "train",
-      "seed": 2300049,
-      "seat": 1,
-      "round": 3,
-      "starting_dynamite": [
-        4,
-        4,
-        0,
-        4
-      ],
-      "scores": [
-        1,
-        9,
-        4,
-        8
-      ],
-      "dynamite": [
-        5,
-        4,
-        2,
-        4
-      ],
-      "own_pending": true
-    },
-    {
-      "split": "train",
-      "seed": 2300050,
-      "seat": 1,
-      "round": 0,
-      "starting_dynamite": [
-        4,
-        2,
-        6,
-        2
-      ],
-      "scores": [
-        0,
-        3,
-        6,
-        1
-      ],
-      "dynamite": [
-        4,
-        2,
-        6,
-        2
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "train",
-      "seed": 2300050,
-      "seat": 1,
-      "round": 0,
-      "starting_dynamite": [
-        4,
-        2,
-        6,
-        2
-      ],
-      "scores": [
-        0,
-        3,
-        6,
-        1
-      ],
-      "dynamite": [
-        4,
-        2,
-        6,
-        2
-      ],
-      "own_pending": true
-    },
-    {
-      "split": "train",
-      "seed": 2300051,
-      "seat": 0,
-      "round": 3,
-      "starting_dynamite": [
-        2,
-        6,
-        4,
-        2
-      ],
-      "scores": [
-        9,
-        11,
-        11,
-        12
-      ],
-      "dynamite": [
-        3,
-        7,
-        7,
-        2
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "train",
-      "seed": 2300051,
-      "seat": 0,
-      "round": 3,
-      "starting_dynamite": [
-        2,
-        6,
-        4,
-        2
-      ],
-      "scores": [
-        9,
-        11,
-        11,
-        12
-      ],
-      "dynamite": [
-        3,
-        7,
-        7,
-        2
-      ],
-      "own_pending": true
-    },
-    {
-      "split": "train",
-      "seed": 2300052,
-      "seat": 3,
-      "round": 0,
-      "starting_dynamite": [
-        0,
-        4,
-        2,
-        4
-      ],
-      "scores": [
-        12,
-        4,
-        9,
-        7
-      ],
-      "dynamite": [
-        0,
-        4,
-        2,
-        4
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "train",
-      "seed": 2300052,
-      "seat": 3,
-      "round": 0,
-      "starting_dynamite": [
-        0,
-        4,
-        2,
-        4
-      ],
-      "scores": [
-        12,
-        4,
-        9,
-        7
-      ],
-      "dynamite": [
-        0,
-        4,
-        2,
-        4
-      ],
-      "own_pending": true
-    },
-    {
-      "split": "train",
-      "seed": 2300053,
-      "seat": 2,
-      "round": 3,
-      "starting_dynamite": [
-        2,
-        2,
-        0,
-        6
-      ],
-      "scores": [
-        11,
-        12,
-        9,
-        9
-      ],
-      "dynamite": [
-        3,
-        3,
-        0,
-        7
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "train",
-      "seed": 2300054,
-      "seat": 3,
-      "round": 0,
-      "starting_dynamite": [
-        0,
-        2,
-        4,
-        1
-      ],
-      "scores": [
-        5,
-        0,
-        6,
-        0
-      ],
-      "dynamite": [
-        0,
-        2,
-        4,
-        1
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "train",
-      "seed": 2300055,
-      "seat": 2,
-      "round": 3,
-      "starting_dynamite": [
-        6,
-        4,
-        2,
-        4
-      ],
-      "scores": [
-        1,
-        4,
-        8,
-        9
-      ],
-      "dynamite": [
-        7,
-        5,
-        3,
-        5
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "train",
-      "seed": 2300055,
-      "seat": 2,
-      "round": 3,
-      "starting_dynamite": [
-        6,
-        4,
-        2,
-        4
-      ],
-      "scores": [
-        1,
-        4,
-        8,
-        9
-      ],
-      "dynamite": [
-        7,
-        5,
-        3,
-        5
-      ],
-      "own_pending": true
-    },
-    {
-      "split": "train",
-      "seed": 2300057,
-      "seat": 1,
-      "round": 3,
-      "starting_dynamite": [
-        6,
-        1,
-        6,
-        1
-      ],
-      "scores": [
-        3,
-        6,
-        0,
-        3
-      ],
-      "dynamite": [
-        7,
-        2,
-        6,
-        4
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "train",
-      "seed": 2300057,
-      "seat": 1,
-      "round": 3,
-      "starting_dynamite": [
-        6,
-        1,
-        6,
-        1
-      ],
-      "scores": [
-        3,
-        6,
-        0,
-        3
-      ],
-      "dynamite": [
-        7,
-        2,
-        6,
-        4
-      ],
-      "own_pending": true
-    },
-    {
-      "split": "train",
-      "seed": 2300058,
-      "seat": 0,
-      "round": 0,
-      "starting_dynamite": [
-        6,
-        2,
-        0,
-        0
-      ],
-      "scores": [
-        0,
-        0,
-        3,
-        0
-      ],
-      "dynamite": [
-        6,
-        2,
-        0,
-        0
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "train",
-      "seed": 2300058,
-      "seat": 0,
-      "round": 0,
-      "starting_dynamite": [
-        6,
-        2,
-        0,
-        0
-      ],
-      "scores": [
-        0,
-        0,
-        3,
-        0
-      ],
-      "dynamite": [
-        6,
-        2,
-        0,
-        0
-      ],
-      "own_pending": true
-    },
-    {
-      "split": "train",
-      "seed": 2300059,
-      "seat": 0,
-      "round": 3,
-      "starting_dynamite": [
-        0,
-        0,
-        6,
-        0
-      ],
-      "scores": [
-        9,
-        9,
-        7,
-        12
-      ],
-      "dynamite": [
-        2,
-        1,
-        7,
-        1
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "train",
-      "seed": 2300059,
-      "seat": 0,
-      "round": 3,
-      "starting_dynamite": [
-        0,
-        0,
-        6,
-        0
-      ],
-      "scores": [
-        9,
-        9,
-        7,
-        12
-      ],
-      "dynamite": [
-        2,
-        1,
-        7,
-        1
-      ],
-      "own_pending": true
-    },
-    {
-      "split": "train",
-      "seed": 2300060,
-      "seat": 2,
-      "round": 0,
-      "starting_dynamite": [
-        6,
-        6,
-        2,
-        0
-      ],
-      "scores": [
-        9,
-        1,
-        1,
-        1
-      ],
-      "dynamite": [
-        6,
-        6,
-        2,
-        0
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "train",
-      "seed": 2300060,
-      "seat": 2,
-      "round": 0,
-      "starting_dynamite": [
-        6,
-        6,
-        2,
-        0
-      ],
-      "scores": [
-        9,
-        1,
-        1,
-        1
-      ],
-      "dynamite": [
-        6,
-        6,
-        2,
-        0
-      ],
-      "own_pending": true
-    },
-    {
-      "split": "train",
-      "seed": 2300061,
-      "seat": 1,
-      "round": 3,
-      "starting_dynamite": [
-        1,
-        6,
-        4,
-        4
-      ],
-      "scores": [
-        1,
-        9,
-        4,
-        6
-      ],
-      "dynamite": [
-        2,
-        7,
-        6,
-        4
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "train",
-      "seed": 2300061,
-      "seat": 1,
-      "round": 3,
-      "starting_dynamite": [
-        1,
-        6,
-        4,
-        4
-      ],
-      "scores": [
-        1,
-        9,
-        4,
-        6
-      ],
-      "dynamite": [
-        2,
-        7,
-        6,
-        4
-      ],
-      "own_pending": true
-    },
-    {
-      "split": "train",
-      "seed": 2300062,
-      "seat": 2,
-      "round": 0,
-      "starting_dynamite": [
-        6,
-        6,
-        1,
-        6
-      ],
-      "scores": [
-        5,
-        3,
-        6,
-        0
-      ],
-      "dynamite": [
-        6,
-        6,
-        1,
-        6
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "train",
-      "seed": 2300063,
-      "seat": 3,
-      "round": 3,
-      "starting_dynamite": [
-        1,
-        0,
-        0,
-        6
-      ],
-      "scores": [
-        8,
-        6,
-        4,
-        9
-      ],
-      "dynamite": [
-        2,
-        2,
-        0,
-        7
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "train",
-      "seed": 2300063,
-      "seat": 3,
-      "round": 3,
-      "starting_dynamite": [
-        1,
-        0,
-        0,
-        6
-      ],
-      "scores": [
-        8,
-        6,
-        4,
-        9
-      ],
-      "dynamite": [
-        2,
-        2,
-        0,
-        7
-      ],
-      "own_pending": true
-    },
-    {
-      "split": "train",
-      "seed": 2300064,
-      "seat": 0,
-      "round": 0,
-      "starting_dynamite": [
-        6,
-        6,
-        1,
-        2
-      ],
-      "scores": [
-        6,
-        0,
-        3,
-        1
-      ],
-      "dynamite": [
-        6,
-        6,
-        1,
-        2
-      ],
-      "own_pending": false
     },
     {
       "split": "held",
@@ -5118,31 +2804,6 @@
     },
     {
       "split": "held",
-      "seed": 2400008,
-      "seat": 0,
-      "round": 0,
-      "starting_dynamite": [
-        4,
-        0,
-        6,
-        1
-      ],
-      "scores": [
-        6,
-        5,
-        0,
-        3
-      ],
-      "dynamite": [
-        4,
-        0,
-        6,
-        1
-      ],
-      "own_pending": true
-    },
-    {
-      "split": "held",
       "seed": 2400009,
       "seat": 0,
       "round": 3,
@@ -5165,31 +2826,6 @@
         6
       ],
       "own_pending": false
-    },
-    {
-      "split": "held",
-      "seed": 2400009,
-      "seat": 0,
-      "round": 3,
-      "starting_dynamite": [
-        2,
-        0,
-        4,
-        6
-      ],
-      "scores": [
-        0,
-        3,
-        2,
-        2
-      ],
-      "dynamite": [
-        4,
-        1,
-        5,
-        6
-      ],
-      "own_pending": true
     },
     {
       "split": "held",
@@ -5413,556 +3049,6 @@
         6,
         3,
         4
-      ],
-      "own_pending": true
-    },
-    {
-      "split": "held",
-      "seed": 2400016,
-      "seat": 0,
-      "round": 0,
-      "starting_dynamite": [
-        1,
-        2,
-        0,
-        4
-      ],
-      "scores": [
-        6,
-        3,
-        5,
-        0
-      ],
-      "dynamite": [
-        1,
-        2,
-        0,
-        4
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "held",
-      "seed": 2400017,
-      "seat": 3,
-      "round": 3,
-      "starting_dynamite": [
-        1,
-        6,
-        6,
-        0
-      ],
-      "scores": [
-        0,
-        3,
-        0,
-        0
-      ],
-      "dynamite": [
-        3,
-        6,
-        7,
-        0
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "held",
-      "seed": 2400019,
-      "seat": 3,
-      "round": 3,
-      "starting_dynamite": [
-        1,
-        0,
-        6,
-        0
-      ],
-      "scores": [
-        0,
-        0,
-        0,
-        3
-      ],
-      "dynamite": [
-        2,
-        1,
-        7,
-        2
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "held",
-      "seed": 2400019,
-      "seat": 3,
-      "round": 3,
-      "starting_dynamite": [
-        1,
-        0,
-        6,
-        0
-      ],
-      "scores": [
-        0,
-        0,
-        0,
-        3
-      ],
-      "dynamite": [
-        2,
-        1,
-        7,
-        2
-      ],
-      "own_pending": true
-    },
-    {
-      "split": "held",
-      "seed": 2400020,
-      "seat": 1,
-      "round": 0,
-      "starting_dynamite": [
-        4,
-        6,
-        0,
-        4
-      ],
-      "scores": [
-        3,
-        0,
-        0,
-        0
-      ],
-      "dynamite": [
-        4,
-        6,
-        0,
-        4
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "held",
-      "seed": 2400020,
-      "seat": 1,
-      "round": 0,
-      "starting_dynamite": [
-        4,
-        6,
-        0,
-        4
-      ],
-      "scores": [
-        3,
-        0,
-        0,
-        0
-      ],
-      "dynamite": [
-        4,
-        6,
-        0,
-        4
-      ],
-      "own_pending": true
-    },
-    {
-      "split": "held",
-      "seed": 2400021,
-      "seat": 0,
-      "round": 3,
-      "starting_dynamite": [
-        6,
-        1,
-        6,
-        0
-      ],
-      "scores": [
-        1,
-        6,
-        1,
-        3
-      ],
-      "dynamite": [
-        9,
-        2,
-        7,
-        0
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "held",
-      "seed": 2400021,
-      "seat": 0,
-      "round": 3,
-      "starting_dynamite": [
-        6,
-        1,
-        6,
-        0
-      ],
-      "scores": [
-        1,
-        6,
-        1,
-        3
-      ],
-      "dynamite": [
-        9,
-        2,
-        7,
-        0
-      ],
-      "own_pending": true
-    },
-    {
-      "split": "held",
-      "seed": 2400022,
-      "seat": 1,
-      "round": 0,
-      "starting_dynamite": [
-        4,
-        2,
-        4,
-        2
-      ],
-      "scores": [
-        6,
-        6,
-        9,
-        1
-      ],
-      "dynamite": [
-        4,
-        2,
-        4,
-        2
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "held",
-      "seed": 2400022,
-      "seat": 1,
-      "round": 0,
-      "starting_dynamite": [
-        4,
-        2,
-        4,
-        2
-      ],
-      "scores": [
-        6,
-        6,
-        9,
-        1
-      ],
-      "dynamite": [
-        4,
-        2,
-        4,
-        2
-      ],
-      "own_pending": true
-    },
-    {
-      "split": "held",
-      "seed": 2400023,
-      "seat": 2,
-      "round": 3,
-      "starting_dynamite": [
-        1,
-        0,
-        0,
-        1
-      ],
-      "scores": [
-        0,
-        0,
-        0,
-        3
-      ],
-      "dynamite": [
-        1,
-        3,
-        2,
-        2
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "held",
-      "seed": 2400023,
-      "seat": 2,
-      "round": 3,
-      "starting_dynamite": [
-        1,
-        0,
-        0,
-        1
-      ],
-      "scores": [
-        0,
-        0,
-        0,
-        3
-      ],
-      "dynamite": [
-        1,
-        3,
-        2,
-        2
-      ],
-      "own_pending": true
-    },
-    {
-      "split": "held",
-      "seed": 2400025,
-      "seat": 2,
-      "round": 3,
-      "starting_dynamite": [
-        4,
-        6,
-        4,
-        6
-      ],
-      "scores": [
-        2,
-        3,
-        0,
-        2
-      ],
-      "dynamite": [
-        5,
-        7,
-        4,
-        8
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "held",
-      "seed": 2400025,
-      "seat": 2,
-      "round": 3,
-      "starting_dynamite": [
-        4,
-        6,
-        4,
-        6
-      ],
-      "scores": [
-        2,
-        3,
-        0,
-        2
-      ],
-      "dynamite": [
-        5,
-        7,
-        4,
-        8
-      ],
-      "own_pending": true
-    },
-    {
-      "split": "held",
-      "seed": 2400026,
-      "seat": 0,
-      "round": 0,
-      "starting_dynamite": [
-        6,
-        1,
-        0,
-        2
-      ],
-      "scores": [
-        5,
-        1,
-        6,
-        5
-      ],
-      "dynamite": [
-        6,
-        1,
-        0,
-        2
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "held",
-      "seed": 2400026,
-      "seat": 0,
-      "round": 0,
-      "starting_dynamite": [
-        6,
-        1,
-        0,
-        2
-      ],
-      "scores": [
-        5,
-        1,
-        6,
-        5
-      ],
-      "dynamite": [
-        6,
-        1,
-        0,
-        2
-      ],
-      "own_pending": true
-    },
-    {
-      "split": "held",
-      "seed": 2400027,
-      "seat": 3,
-      "round": 3,
-      "starting_dynamite": [
-        2,
-        2,
-        6,
-        1
-      ],
-      "scores": [
-        0,
-        0,
-        0,
-        3
-      ],
-      "dynamite": [
-        2,
-        2,
-        7,
-        3
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "held",
-      "seed": 2400027,
-      "seat": 3,
-      "round": 3,
-      "starting_dynamite": [
-        2,
-        2,
-        6,
-        1
-      ],
-      "scores": [
-        0,
-        0,
-        0,
-        3
-      ],
-      "dynamite": [
-        2,
-        2,
-        7,
-        3
-      ],
-      "own_pending": true
-    },
-    {
-      "split": "held",
-      "seed": 2400028,
-      "seat": 3,
-      "round": 0,
-      "starting_dynamite": [
-        0,
-        1,
-        6,
-        1
-      ],
-      "scores": [
-        6,
-        5,
-        3,
-        5
-      ],
-      "dynamite": [
-        0,
-        1,
-        6,
-        1
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "held",
-      "seed": 2400029,
-      "seat": 3,
-      "round": 3,
-      "starting_dynamite": [
-        0,
-        4,
-        6,
-        0
-      ],
-      "scores": [
-        11,
-        12,
-        7,
-        7
-      ],
-      "dynamite": [
-        2,
-        4,
-        6,
-        1
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "held",
-      "seed": 2400030,
-      "seat": 2,
-      "round": 0,
-      "starting_dynamite": [
-        1,
-        6,
-        6,
-        0
-      ],
-      "scores": [
-        8,
-        8,
-        9,
-        6
-      ],
-      "dynamite": [
-        1,
-        6,
-        6,
-        0
-      ],
-      "own_pending": false
-    },
-    {
-      "split": "held",
-      "seed": 2400030,
-      "seat": 2,
-      "round": 0,
-      "starting_dynamite": [
-        1,
-        6,
-        6,
-        0
-      ],
-      "scores": [
-        8,
-        8,
-        9,
-        6
-      ],
-      "dynamite": [
-        1,
-        6,
-        6,
-        0
       ],
       "own_pending": true
     }

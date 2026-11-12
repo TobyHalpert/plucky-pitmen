@@ -24,33 +24,86 @@ from learning import PolicyNet
 from selfplay import play_game
 
 
+def _public_cell_propensities(env, seat: int) -> dict[tuple[int, int], float]:
+    """Relative dragon propensity weights for hidden opponent board cells from public tells."""
+    vacated = {
+        (int(ev[1]), int(ev[2]))
+        for ev in getattr(env, "vacated_events", ())
+    }
+    hop_rounds: dict[tuple[int, int], set[int]] = {}
+    hop_foreign: set[tuple[int, int]] = set()
+    for ev in getattr(env, "hopped_events", ()):
+        rnd, col, row, _back, to_foreign_free = ev[0], ev[1], ev[2], ev[3], ev[4]
+        key = (int(row), int(col))
+        hop_rounds.setdefault(key, set()).add(int(rnd))
+        if to_foreign_free:
+            hop_foreign.add(key)
+
+    prop: dict[tuple[int, int], float] = {}
+    for row_idx, row in enumerate(env.rows):
+        for col_idx, card in enumerate(row):
+            if card is None or col_idx == seat:
+                continue
+            key = (row_idx, col_idx)
+            if key in vacated or key in hop_foreign:
+                prop[key] = 12.0
+            elif key in hop_rounds:
+                k = len(hop_rounds[key])
+                prop[key] = 9.0 if k >= 3 else (5.0 if k == 2 else 2.5)
+    return prop
+
+
+def assign_rest_fronts(rest, fronts, rng) -> None:
+    """Assign ``fronts`` across ``rest`` slots weighted by public dragon propensities."""
+    if not rest:
+        return
+    n_dragons = sum(1 for front in fronts if front == DRAGON)
+    non_dragons = [front for front in fronts if front != DRAGON]
+    rng.shuffle(non_dragons)
+    weights = np.array([float(slot[4]) for slot in rest], dtype=np.float64)
+    if n_dragons > 0 and n_dragons < len(rest) and weights.sum() > 0:
+        probs = weights / weights.sum()
+        dragon_slots = set(
+            int(i)
+            for i in rng.choice(len(rest), size=n_dragons, replace=False, p=probs)
+        )
+    elif n_dragons >= len(rest):
+        dragon_slots = set(range(len(rest)))
+    else:
+        dragon_slots = set()
+
+    nd_iter = iter(non_dragons)
+    for idx, (container, index, card, _safe, _weight) in enumerate(rest):
+        front = DRAGON if idx in dragon_slots else next(nd_iter)
+        container[index] = (front, card[1])
+
+
 def sample_hidden(source, seat, rng):
     """Preserve visible cards/backs, safe hands and card inventory; vary secrets."""
     env = copy.deepcopy(source)
+    prop = _public_cell_propensities(env, seat)
     slots = []
     for row, cards in enumerate(env.rows):
         for col, card in enumerate(cards):
             if card is not None and col != seat:
-                slots.append((cards, col, card, False))
+                slots.append((cards, col, card, False, prop.get((row, col), 1.0)))
     for index, player in enumerate(env.players):
         if index != seat:
             for pos, card in enumerate(player.collected_cards):
-                slots.append((player.collected_cards, pos, card, True))
+                slots.append((player.collected_cards, pos, card, True, 1.0))
     for pos, card in enumerate(env.cards_remaining):
-        slots.append((env.cards_remaining, pos, card, False))
-    for back in {card[1] for _, _, card, _ in slots}:
+        slots.append((env.cards_remaining, pos, card, False, 1.0))
+    for back in {card[1] for _, _, card, _, _ in slots}:
         group = [slot for slot in slots if slot[2][1] == back]
         fronts = [slot[2][0] for slot in group]
         # Conditioning all collected-card slots to be non-dragons.
         safe = [slot for slot in group if slot[3]]
         rest = [slot for slot in group if not slot[3]]
-        for container, index, _, _ in safe:
+        for container, index, _, _, _ in safe:
             choices = [i for i, front in enumerate(fronts) if front != DRAGON]
             selected = int(rng.choice(choices))
             container[index] = (fronts.pop(selected), back)
-        rng.shuffle(fronts)
-        for (container, index, _, _), front in zip(rest, fronts):
-            container[index] = (front, back)
+        assign_rest_fronts(rest, fronts, rng)
     # Even the deck's backside order is hidden.
     rng.shuffle(env.cards_remaining)
     env.rng = np.random.default_rng(int(rng.integers(2**31)))

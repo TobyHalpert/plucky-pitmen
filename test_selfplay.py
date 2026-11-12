@@ -1795,6 +1795,18 @@ def test_the_counter_banks_two_gems_and_hands_the_nets_a_losing_table(monkeypatc
                 if features.digs_face_up_dragon(ctx, int(a))
                 and not features.rival_can_push(ctx, int(a))}
     monkeypatch.setattr(features, "doomed_dragon_digs", historical_doomed)
+    real_hazard = features.round_dragon_hazard
+    real_cage_nothing = features.cage_banks_nothing
+    monkeypatch.setattr(
+        features,
+        "round_dragon_hazard",
+        lambda ctx: 1.0 if ctx.own_blast_pending else real_hazard(ctx),
+    )
+    monkeypatch.setattr(
+        features,
+        "cage_banks_nothing",
+        lambda ctx: False if ctx.own_blast_pending else real_cage_nothing(ctx),
+    )
     from agents import CounterAgent, NeuralAgent
     from gui_controller import resolve_checkpoint
     from learning import PolicyNet
@@ -2344,4 +2356,77 @@ def test_same_card_displacement_policy_masks_and_dragon_bait_safety():
     ctx_r0_dragon = env.player_action_context(1)
     mask_r0_dragon = action_mask(ctx_r0_dragon)
     assert mask_r0_dragon[int(PIT_CAGE)] and not mask_r0_dragon[int(LORRY)]
+
+
+def test_own_blast_pending_commits_when_risk_is_low_instead_of_fleeing_to_cage():
+    """Announcing a blast must not scare the blaster into cancelling via PIT_CAGE."""
+    from features import (
+        blast_dragon_risk,
+        cage_banks_nothing,
+        climbs_off_the_card_it_chose,
+        round_dragon_hazard,
+    )
+
+    env = MineEnv(opponents=3)
+    env.reset(seed=17)
+    # Seat 0 sees two dragons of backside A in its own column -> low blast risk.
+    env.rows[1][0] = (DRAGON, 0)
+    env.rows[2][0] = (DRAGON, 0)
+    env.rows[0][0] = (GEM, 1)
+    env.players[0].collected_cards = [(DYNAMITE, 1), (DYNAMITE, 2)]
+
+    # Seat 0 steps onto (2, 1) (unknown backside B) or (0, 0) and announces blast.
+    env.planning_player = 0
+    env.step_one_player(2 * MAX_COLUMNS + 1, announce_blast=True, force_action=True)
+    for other in (1, 2, 3):
+        env.planning_player = other
+        env.step_one_player(2 * MAX_COLUMNS + other, force_action=True)
+
+    ctx = env.player_action_context(0)
+    assert ctx.own_blast_pending is True
+    assert blast_dragon_risk(ctx) < 0.30
+    assert round_dragon_hazard(ctx) < 0.45
+    assert cage_banks_nothing(ctx) is True
+    # Moving onto a shallower card would silently cancel the blast.
+    assert (1 * MAX_COLUMNS + 1) in climbs_off_the_card_it_chose(ctx)
+    mask = action_mask(ctx)
+    assert mask[int(PASS)] and not mask[int(PIT_CAGE)]
+
+    # By contrast, an opponent sees rival blast_pending -> hazard 1.0 -> PIT_CAGE open.
+    opp_ctx = env.player_action_context(1)
+    assert round_dragon_hazard(opp_ctx) == 1.0
+    assert cage_banks_nothing(opp_ctx) is False
+    assert action_mask(opp_ctx)[int(PIT_CAGE)]
+
+
+def test_lone_gem_holder_can_cash_out_after_rivals_commit_to_cages():
+    """Once all rivals have left or planned pit-cage exits, a gem holder may bank."""
+    from features import cage_banks_nothing, round_dragon_hazard
+
+    planned_cage = replaced(_rival(1, PIT_CAGE), position=PIT_CAGE, planned=True)
+    displaced_cage = replaced(_rival(1, PIT_CAGE), position=PIT_CAGE, planned=False)
+    escaped_rival = replaced(_rival(2, 4), escaped=True)
+    dead_rival = replaced(_rival(3, 4), dead=True)
+
+    # All rivals voluntarily in cage / escaped / dead + 1 gem -> banking allowed.
+    cashout_ctx = replaced(
+        _cage_context(opponents=(planned_cage, escaped_rival, dead_rival)),
+        private_cards=((GEM, 0),),
+    )
+    assert round_dragon_hazard(cashout_ctx) == 0.0
+    assert cage_banks_nothing(cashout_ctx) is False
+    assert action_mask(cashout_ctx)[int(PIT_CAGE)]
+
+    # Displaced rival (not yet planned) is still active in the mine -> do not herd-flee.
+    herd_ctx = replaced(
+        _cage_context(opponents=(displaced_cage, escaped_rival, dead_rival)),
+        private_cards=((GEM, 0),),
+    )
+    assert cage_banks_nothing(herd_ctx) is True
+
+    # Empty-handed seat still refuses the cage even when all rivals are out.
+    empty_ctx = _cage_context(opponents=(planned_cage, escaped_rival, dead_rival))
+    assert cage_banks_nothing(empty_ctx) is True
+
+
 

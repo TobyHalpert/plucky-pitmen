@@ -56,8 +56,12 @@ OPPONENT_BASE = BACKSIDE_BLOCK + 9
 HAZARD_FEATURE = OPPONENT_BASE + MAX_TRACKED_OPPONENTS * N_OPPONENT_FEATURES
 PHASE_CLOCK_FEATURE = HAZARD_FEATURE + 1
 FORCED_SEATS_FEATURE = HAZARD_FEATURE + 2
-N_STATE_FEATURES = FORCED_SEATS_FEATURE + 1
-N_ACTION_FEATURES = 21
+BLAST_RISK_FEATURE = HAZARD_FEATURE + 3
+DECK_RISK_BASE = BLAST_RISK_FEATURE + 1
+DECK_COUNT_BASE = DECK_RISK_BASE + 3
+SUSPECTED_DRAGON_BASE = DECK_COUNT_BASE + 3
+N_STATE_FEATURES = SUSPECTED_DRAGON_BASE + 3
+N_ACTION_FEATURES = 24
 N_INPUT_FEATURES = N_STATE_FEATURES + N_ACTION_FEATURES
 
 
@@ -74,33 +78,134 @@ def join_action(primitive_action: int, announces_blast: bool) -> int:
 # ----------------------------------------------------------------------
 # Backside bookkeeping (public knowledge + the player's own cards)
 # ----------------------------------------------------------------------
-#: How much weight to give a *suspected* dragon -- a card a seat walked off in
-#: its own column.  0.0 (the default) ignores the inference and reproduces every
-#: earlier measurement bit for bit; 1.0 treats the departure as proof.
+#: Default weight on *suspected* dragons in legacy ``backside_stats(ctx)`` calls
+#: (kept at 0.0 so frozen historical checkpoints and baseline probes remain
+#: bit-identical; ``blast_dragon_risk``, ``preferred_blast_choice``, and the
+#: dedicated backside/tell features pass ``trust_suspected=1.0`` explicitly).
 TRUST_SUSPECTED_DRAGONS = 0.0
 
 
+def cell_suspicion_weights(ctx: PlayerActionContext) -> dict[tuple[int, int], float]:
+    """Per-cell dragon suspicion in ``[0, 1]`` for opponent-column board cards.
+
+    The owner of column ``c`` sees every front in column ``c``:
+    - Walking off ``(r, c)`` inside a planning phase (``vacated_cells``) is a
+      near-certain dragon tell (1.0).
+    - Hopping past a free own-column card ``(r, c)`` to gamble on an unoccupied
+      foreign card, or hopping past ``(r, c)`` across 3+ rounds, carries 0.85.
+    - Hopping past ``(r, c)`` in 2 rounds carries 0.65; in 1 round carries 0.35.
+    Only cells still present on ``ctx.public_rows`` carry suspicion: if another
+    seat later raided ``(r, c)`` and survived, the cell is ``None`` and its
+    backside is already counted in ``collected_backsides`` as safe.
+    """
+    vacated_cells = getattr(ctx, "vacated_cells", ())
+    vacated_backsides = getattr(ctx, "vacated_backsides", ())
+    if vacated_cells and not vacated_backsides:
+        # Caller cleared ``vacated_backsides`` via ``dataclasses.replace`` (e.g.
+        # ``probe_vacated_dragons.py`` counterfactual); strip rival tells cleanly.
+        return {}
+    hopped_cells = getattr(ctx, "hopped_cells", ())
+    if not vacated_cells and not hopped_cells:
+        return {}
+
+    vacated_set = {(int(r), int(c)) for r, c, _b in vacated_cells}
+    hop_rounds: dict[tuple[int, int], set[int]] = {}
+    hop_foreign: set[tuple[int, int]] = set()
+    for rnd, col, row, _back, to_foreign_free in hopped_cells:
+        key = (int(row), int(col))
+        hop_rounds.setdefault(key, set()).add(int(rnd))
+        if to_foreign_free:
+            hop_foreign.add(key)
+
+    weights: dict[tuple[int, int], float] = {}
+    for row_idx, row in enumerate(ctx.public_rows):
+        for col_idx, entry in enumerate(row):
+            if col_idx == ctx.player_index or entry is None or entry[0] is not None:
+                continue
+            key = (row_idx, col_idx)
+            if key in vacated_set:
+                weights[key] = 1.0
+            elif key in hop_foreign:
+                weights[key] = 0.85
+            elif key in hop_rounds:
+                k = len(hop_rounds[key])
+                weights[key] = 0.85 if k >= 3 else (0.65 if k == 2 else 0.35)
+    return weights
+
+
 def suspected_dragon_counts(ctx: PlayerActionContext) -> np.ndarray:
-    """Dragons a seat has *inferred* from public departures, per backside.
+    """Dragons a seat has *inferred* from public departures and hops, per backside.
 
     Each backside colour is a ten-card set with two dragons, so a dragon sitting
-    in anybody's column is a dragon that is not in the draw pile.  The owner of a
-    column can see its fronts; everybody else has to guess.  One public tell is
-    available: a seat that *walks off* a card in its own column had that card
-    turned towards it, so the step is evidence the card was a dragon -- the seat
-    would otherwise keep a gem it can see.  It is evidence, not proof (it may be
-    leaving for a card it prefers), which is why ``backside_stats`` applies a
-    weight rather than adding it to ``known_dragons``.
-
-    ``game_env`` records only voluntary card-to-card steps inside the seat's own
-    column: a displaced figure, or a departure for the cage or the lorry, is not
-    recorded.
+    in anybody's column is a dragon that is not in the draw pile.  Combines
+    board-cell suspicion from :func:`cell_suspicion_weights` with any legacy
+    ``vacated_backsides`` entries (for synthetic contexts without cell coords).
     """
     counts = np.zeros(3, dtype=np.float32)
-    for back in getattr(ctx, "vacated_backsides", ()):  # tolerate old contexts
-        if 0 <= int(back) < 3:
-            counts[int(back)] += 1.0
+    cell_weights = cell_suspicion_weights(ctx)
+    if cell_weights:
+        for (row_idx, col_idx), weight in cell_weights.items():
+            back = int(ctx.public_rows[row_idx][col_idx][1])
+            if 0 <= back < 3:
+                counts[back] += float(weight)
+
+    vacated_cells = getattr(ctx, "vacated_cells", ())
+    vacated_backsides = getattr(ctx, "vacated_backsides", ())
+    if vacated_backsides and not vacated_cells:
+        for back in vacated_backsides:
+            if 0 <= int(back) < 3:
+                counts[int(back)] += 1.0
     return np.minimum(counts, DRAGONS_PER_BACKSIDE)
+
+
+def _raw_backside_inventory(
+    ctx: PlayerActionContext,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Return ``(known_dragons, known_safe_haul, unknown_raw, board_unknown)`` per backside."""
+    known_dragons = np.zeros(3, dtype=np.float32)
+    own_col_safe = np.zeros(3, dtype=np.float32)
+    board_unknown = np.zeros(3, dtype=np.float32)
+
+    own_column = ctx.player_index
+    for row in ctx.public_rows:
+        for col_idx, entry in enumerate(row):
+            if entry is None:
+                continue
+            front, back = entry
+            if col_idx == own_column and front is not None:
+                if front == DRAGON:
+                    known_dragons[back] += 1.0
+                else:
+                    own_col_safe[back] += 1.0
+            else:
+                board_unknown[back] += 1.0
+
+    collected_and_used = np.zeros(3, dtype=np.float32)
+    for front, back in ctx.private_cards:
+        if front != DRAGON:
+            collected_and_used[back] += 1.0
+    for opponent in ctx.opponents:
+        for back in opponent.collected_backsides:
+            collected_and_used[back] += 1.0
+    for back in ctx.used_blast_backsides:
+        collected_and_used[back] += 1.0
+
+    retained = np.zeros(3, dtype=np.float32)
+    for back in getattr(ctx, "haul_retained_backsides", ()):
+        if 0 <= int(back) < 3:
+            retained[int(back)] += 1.0
+
+    max_safe_from_haul = np.maximum(
+        0.0, TOTAL_PER_BACKSIDE - DRAGONS_PER_BACKSIDE - own_col_safe
+    )
+    haul_collected_safe = np.clip(
+        collected_and_used - retained, 0.0, max_safe_from_haul
+    )
+    known_safe = own_col_safe + haul_collected_safe
+    unknown_raw = np.maximum(
+        0.0, TOTAL_PER_BACKSIDE - known_dragons - known_safe
+    )
+    return known_dragons, known_safe, unknown_raw, board_unknown
 
 
 def backside_stats(
@@ -109,62 +214,99 @@ def backside_stats(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Return ``(known_dragons, known_safe, unknown, dragon_risk)`` per backside.
 
-    A player knows a card is *not* a dragon when it is in their own collection,
-    in an opponent's collection (dragon draws end the haul, so collected cards
-    are never dragons), was used for a blast, or lies face up in their own
-    home column.  Dragons are only ever *known* from the own home column;
-    ``trust_suspected`` turns public departures into suspected ones, which also
-    come out of the per-colour unknown count because such a card is lying in the
-    mine rather than in the pile.
+    Combines face-up own-column cards, safe collected/blast-spent cards (adjusted
+    for dynamite retained from earlier hauls), and suspected opponent-column
+    dragons from voluntary walk-offs and repeated card-hopping.  ``dragon_risk``
+    is the posterior dragon probability per non-suspected unknown card (including
+    every card of that colour in the draw pile).
     """
-    known_dragons = np.zeros(3, dtype=np.float32)
-    known_safe = np.zeros(3, dtype=np.float32)
-
-    own_column = ctx.player_index
-    for row in ctx.public_rows:
-        if own_column >= len(row):
-            continue
-        entry = row[own_column]
-        if entry is None:
-            continue
-        front, back = entry
-        if front is None:
-            continue
-        if front == DRAGON:
-            known_dragons[back] += 1
-        else:
-            known_safe[back] += 1
-
-    for front, back in ctx.private_cards:
-        if front != DRAGON:
-            known_safe[back] += 1
-
-    for opponent in ctx.opponents:
-        for back in opponent.collected_backsides:
-            known_safe[back] += 1
-
-    for back in ctx.used_blast_backsides:
-        known_safe[back] += 1
+    known_dragons, known_safe, unknown_raw, _board_unknown = _raw_backside_inventory(ctx)
 
     if trust_suspected is None:
-        # Read at call time so a probe can switch the inference on for a run
-        # instead of re-importing the module.
         trust_suspected = TRUST_SUSPECTED_DRAGONS
-    suspected = (
+    raw_suspected = (
         suspected_dragon_counts(ctx) * float(trust_suspected)
         if trust_suspected
         else np.zeros(3, dtype=np.float32)
     )
-    unknown = np.maximum(
-        0.0,
-        TOTAL_PER_BACKSIDE - known_dragons - known_safe - suspected,
+    max_suspected = np.minimum(
+        np.maximum(0.0, DRAGONS_PER_BACKSIDE - known_dragons),
+        unknown_raw,
     )
+    suspected = np.minimum(raw_suspected, max_suspected)
+    unknown = np.maximum(0.0, unknown_raw - suspected)
     remaining_dragons = np.maximum(
         0.0, DRAGONS_PER_BACKSIDE - known_dragons - suspected
     )
     with np.errstate(divide="ignore", invalid="ignore"):
-        risk = np.where(unknown > 0, remaining_dragons / np.maximum(unknown, 1), 0.0)
-    return known_dragons, known_safe, unknown, risk.astype(np.float32)
+        risk = np.where(unknown > 0, remaining_dragons / np.maximum(unknown, 1e-6), 0.0)
+    return known_dragons, known_safe, unknown, np.clip(risk, 0.0, 1.0).astype(np.float32)
+
+
+def deck_backside_counts(ctx: PlayerActionContext) -> np.ndarray:
+    """Exact count of cards of each backside colour remaining in the draw pile."""
+    _known_dragons, _known_safe, unknown_raw, board_unknown = _raw_backside_inventory(ctx)
+    return np.maximum(0.0, unknown_raw - board_unknown).astype(np.float32)
+
+
+def blast_dragon_risk(
+    ctx: PlayerActionContext,
+    trust_suspected: float = 1.0,
+) -> float:
+    """Probability ``[0, 1]`` that conducting a blast wakes a dragon.
+
+    A blast draws three cards without replacement from the draw pile, shows only
+    their backsides, and keeps two (via :func:`agents.preferred_blast_choice`,
+    which discards the highest-risk backside).  Uses exact draw-pile backside
+    counts (accounting for board backsides and collected/spent backsides) and
+    posterior per-backside dragon risk (incorporating own-column dragons and
+    opponent hopping/walk-off tells).
+    """
+    if ctx.cards_remaining_in_deck < 3:
+        return 0.0
+    _known_dragons, _known_safe, _unknown, risk = backside_stats(
+        ctx, trust_suspected=trust_suspected
+    )
+    deck_counts = deck_backside_counts(ctx)
+    total = float(deck_counts.sum())
+    if total < 3.0:
+        return 0.0
+
+    fail_prob = 0.0
+    for b0 in (0, 1, 2):
+        c0 = float(deck_counts[b0])
+        if c0 <= 0.0:
+            continue
+        for b1 in (0, 1, 2):
+            c1 = float(deck_counts[b1]) - (1.0 if b1 == b0 else 0.0)
+            if c1 <= 0.0:
+                continue
+            for b2 in (0, 1, 2):
+                c2 = (
+                    float(deck_counts[b2])
+                    - (1.0 if b2 == b0 else 0.0)
+                    - (1.0 if b2 == b1 else 0.0)
+                )
+                if c2 <= 0.0:
+                    continue
+                p_draw = (c0 / total) * (c1 / (total - 1.0)) * (c2 / (total - 2.0))
+                kept = sorted((b0, b1, b2), key=lambda b: (float(risk[b]), b))[:2]
+                k0, k1 = kept[0], kept[1]
+                if k0 != k1:
+                    p_safe = (1.0 - float(risk[k0])) * (1.0 - float(risk[k1]))
+                else:
+                    nb = float(deck_counts[k0])
+                    r = float(risk[k0])
+                    db = r * nb
+                    p_first = 1.0 - r
+                    p_second = (
+                        np.clip((nb - 1.0 - db) / (nb - 1.0), 0.0, 1.0)
+                        if nb > 1.0
+                        else 0.0
+                    )
+                    p_safe = p_first * float(p_second)
+                fail_prob += p_draw * (1.0 - p_safe)
+    return float(np.clip(fail_prob, 0.0, 1.0))
 
 
 def cell_dragon_risk(
@@ -174,7 +316,8 @@ def cell_dragon_risk(
 
     ``None`` means there is no card there at all (an empty slot, or a figure
     standing in front of the mine).  A face-up card is certain either way; a
-    face-down card is priced by the backside left in the deck.
+    face-down card combines its backside's draw-pile risk with any cell-specific
+    departures or hop-overs on ``(row, column)``.
     """
     if column is None or not 0 <= int(row) < len(ctx.public_rows):
         return None
@@ -186,8 +329,20 @@ def cell_dragon_risk(
     front, back = entry
     if front is not None:
         return 1.0 if int(front) == DRAGON else 0.0
-    _known_dragons, _known_safe, _unknown, risk = backside_stats(ctx)
-    return float(risk[int(back)])
+    known_dragons, _known_safe, _unknown, risk = backside_stats(ctx)
+    base_risk = float(risk[int(back)])
+    if not TRUST_SUSPECTED_DRAGONS:
+        return base_risk
+    rem_dragons = max(0.0, float(DRAGONS_PER_BACKSIDE - known_dragons[int(back)]))
+    if rem_dragons <= 0.0:
+        return 0.0
+    susp = cell_suspicion_weights(ctx).get((int(row), int(column)), 0.0) * float(
+        TRUST_SUSPECTED_DRAGONS
+    )
+    if susp <= 0.0:
+        return base_risk
+    susp = min(susp, rem_dragons)
+    return float(np.clip(susp + (1.0 - susp) * base_risk, 0.0, 0.98))
 
 
 def _figure_cell(
@@ -257,7 +412,7 @@ def round_dragon_hazard(ctx: PlayerActionContext) -> float:
     the case the seat can read: is anybody -- including itself -- about to turn
     a card that can be a dragon?
     """
-    if ctx.own_blast_pending or any(o.blast_pending for o in ctx.opponents):
+    if any(o.blast_pending for o in ctx.opponents):
         return 1.0
     seats = [ctx.player_index]
     seats.extend(
@@ -266,6 +421,8 @@ def round_dragon_hazard(ctx: PlayerActionContext) -> float:
     survive = 1.0
     for index in seats:
         survive *= 1.0 - figure_dragon_risk(ctx, index)
+    if ctx.own_blast_pending:
+        survive *= 1.0 - blast_dragon_risk(ctx)
     return float(1.0 - survive)
 
 
@@ -327,6 +484,14 @@ def state_features(ctx: PlayerActionContext) -> np.ndarray:
         _visible_home_counts(ctx)
     )
     known_dragons, _known_safe, unknown, risk = backside_stats(ctx)
+    _smart_kd, _smart_ks, _smart_unk, smart_risk = backside_stats(
+        ctx, trust_suspected=1.0
+    )
+    deck_counts = deck_backside_counts(ctx)
+    suspected = np.minimum(
+        suspected_dragon_counts(ctx),
+        np.maximum(0.0, DRAGONS_PER_BACKSIDE - known_dragons),
+    )
 
     values = np.zeros(N_STATE_FEATURES, dtype=np.float32)
 
@@ -421,6 +586,12 @@ def state_features(ctx: PlayerActionContext) -> np.ndarray:
             continue
         forced += 1
     values[FORCED_SEATS_FEATURE] = forced / n_players
+    values[BLAST_RISK_FEATURE] = blast_dragon_risk(ctx)
+    values[DECK_RISK_BASE : DECK_RISK_BASE + 3] = smart_risk
+    values[DECK_COUNT_BASE : DECK_COUNT_BASE + 3] = deck_counts / TOTAL_PER_BACKSIDE
+    values[SUSPECTED_DRAGON_BASE : SUSPECTED_DRAGON_BASE + 3] = (
+        suspected / DRAGONS_PER_BACKSIDE
+    )
 
     return values
 
@@ -432,11 +603,18 @@ def action_features(
     ctx: PlayerActionContext,
     action: int,
     risk: np.ndarray | None = None,
+    blast_risk: float | None = None,
+    known_dragons: np.ndarray | None = None,
+    cell_weights: dict[tuple[int, int], float] | None = None,
 ) -> np.ndarray:
     primitive, announces_blast = split_action(action)
     values = np.zeros(N_ACTION_FEATURES, dtype=np.float32)
-    if risk is None:
-        _known_dragons, _known_safe, _unknown, risk = backside_stats(ctx)
+    if risk is None or known_dragons is None:
+        known_dragons, _known_safe, _unknown, risk = backside_stats(ctx)
+    if blast_risk is None:
+        blast_risk = blast_dragon_risk(ctx) if announces_blast else 0.0
+    if cell_weights is None and primitive < PIT_CAGE:
+        cell_weights = cell_suspicion_weights(ctx)
 
     n_players = max(1, ctx.n_players)
     depth = _own_depth(ctx)
@@ -460,12 +638,19 @@ def action_features(
             if front is None:
                 values[15] = 1.0
                 card_risk = float(risk[int(back)])
+                rem_dragons = max(
+                    0.0, float(DRAGONS_PER_BACKSIDE - known_dragons[int(back)])
+                )
+                susp = (
+                    (cell_weights or {}).get((int(row), int(column)), 0.0)
+                    if rem_dragons > 0.0
+                    else 0.0
+                )
+                values[21] = float(min(susp, rem_dragons))
             else:
                 # 12 = gem, 13 = dragon, 14 = dynamite, 15 = unknown front
                 values[12 + _FRONT_SLOT[int(front)]] = 1.0
-                # A visible front is not an estimate: it is the answer. Reporting
-                # it through the same risk/safety channels as a backside is what
-                # keeps a visible dragon from looking as safe as a visible gem.
+                # A visible dragon front is certain; a visible gem/dynamite is safe.
                 card_risk = 1.0 if int(front) == DRAGON else 0.0
             values[16] = card_risk
             values[17] = 1.0 - card_risk
@@ -484,6 +669,9 @@ def action_features(
         values[3] = 1.0
 
     values[20] = float(announces_blast)
+    if announces_blast:
+        values[22] = float(blast_risk)
+        values[23] = 1.0 - float(blast_risk)
     return values
 
 
@@ -511,11 +699,20 @@ def state_action_matrix(
     """Return an ``(N_ACTIONS, N_INPUT_FEATURES)`` policy input matrix."""
     if state is None:
         state = state_features(ctx)
-    _known_dragons, _known_safe, _unknown, risk = backside_stats(ctx)
+    known_dragons, _known_safe, _unknown, risk = backside_stats(ctx)
+    blast_risk = float(state[BLAST_RISK_FEATURE])
+    cell_weights = cell_suspicion_weights(ctx)
     matrix = np.empty((N_ACTIONS, N_INPUT_FEATURES), dtype=np.float32)
     matrix[:, :N_STATE_FEATURES] = state
     for action in range(N_ACTIONS):
-        matrix[action, N_STATE_FEATURES:] = action_features(ctx, action, risk=risk)
+        matrix[action, N_STATE_FEATURES:] = action_features(
+            ctx,
+            action,
+            risk=risk,
+            blast_risk=blast_risk,
+            known_dragons=known_dragons,
+            cell_weights=cell_weights,
+        )
     return matrix
 
 
@@ -826,18 +1023,35 @@ def cage_banks_nothing(ctx: PlayerActionContext) -> bool:
     in a cage and not one gem collected, and the same thing happened in 40% of
     sampled four-net games.
     """
-    if any(front == GEM for front, _ in ctx.private_cards):
-        # Loot in hand is a reason to leave only if something can take it away.
-        # A dragon is the only thing that does: it ends the haul and everybody
-        # still inside scores for a dead figure. So the test is the danger, not
-        # the gems -- and it has to be danger above the ordinary risk of a mine,
-        # because that risk never goes away and "it might blow" would make the
-        # cage legal at every decision (see the constant).
+    own_gems = sum(1 for front, _ in ctx.private_cards if front == GEM)
+    if own_gems >= 1:
+        # Loot in hand is a reason to leave when danger can take it away, OR
+        # when every rival is already out of the haul (or 3+ gems are held with
+        # no visible safe dig left) and no blast of our own is pending. Without
+        # that clause, a successful blast that chases all rivals out leaves
+        # ``round_dragon_hazard == 0`` and traps the lone survivor inside the
+        # mine until a blind dig wakes a dragon.
+        alone_in_mine = bool(ctx.opponents) and all(
+            o.escaped or o.dead or (o.position == PIT_CAGE and o.planned)
+            for o in ctx.opponents
+        )
+        rich_without_safe_dig = (
+            own_gems >= 3 and not known_safe_card_available(ctx)
+        )
+        blast_blocks_cashout = ctx.own_blast_pending and not (
+            alone_in_mine and blast_dragon_risk(ctx) >= 0.30
+        )
+        if not blast_blocks_cashout and (alone_in_mine or rich_without_safe_dig):
+            return False
         return not (
             round_dragon_hazard(ctx) >= CAGE_ANSWERS_A_HAZARD
             or rival_is_on_my_dragon(ctx)
         )
-    if ctx.own_blast_pending or any(o.blast_pending for o in ctx.opponents):
+    if any(o.blast_pending for o in ctx.opponents):
+        return False
+    if ctx.own_position == PIT_CAGE and ctx.own_blast_pending:
+        return False
+    if ctx.own_blast_pending and round_dragon_hazard(ctx) >= CAGE_ANSWERS_A_HAZARD:
         return False
     if own_card_is_known_dragon(ctx):
         # Refusing the dragon is the point, but spending the haul is not the
@@ -1204,6 +1418,14 @@ def climbs_off_the_card_it_chose(ctx: PlayerActionContext) -> set[int]:
         return set()  # already standing on an emptied cell: nothing to give up
     if own_card_is_known_dragon(ctx):
         return set()  # rule 1: step off it, wherever that is
+    if ctx.own_blast_pending:
+        # Moving to another card silently cancels the announced blast; hold on
+        # PASS unless standing on a known dragon (handled above).
+        return {
+            int(action)
+            for action in ctx.legal_actions
+            if 0 <= int(action) < PIT_CAGE
+        }
     already_on_a_gem = entry[0] is not None and int(entry[0]) == GEM
     doomed = set()
     for action in ctx.legal_actions:
@@ -1396,6 +1618,7 @@ def action_mask(ctx: PlayerActionContext) -> np.ndarray:
 
 
 __all__ = [
+    "BLAST_RISK_FEATURE",
     "CAGE_ANSWERS_A_HAZARD",
     "N_ACTIONS",
     "N_ACTION_FEATURES",
@@ -1411,8 +1634,11 @@ __all__ = [
     "action_mask",
     "action_reason",
     "backside_stats",
+    "blast_dragon_risk",
     "cage_banks_nothing",
+    "cell_suspicion_weights",
     "climbs_off_the_card_it_chose",
+    "deck_backside_counts",
     "steps_out_of_the_cage",
     "BAIT_IS_ALLOWED",
     "the_escape_stands_once_taken",

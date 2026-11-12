@@ -26,12 +26,12 @@ from pathlib import Path
 
 import numpy as np
 
-from features import N_OPPONENT_FEATURES, N_STATE_FEATURES
+from features import N_ACTION_FEATURES, N_OPPONENT_FEATURES, N_STATE_FEATURES
 from learning import PolicyNet
 
 BASE = 34  # 25 state + 9 backside features come first
 SLOTS = 4  # MAX_TRACKED_OPPONENTS
-ACTION_FEATURES = 21
+ACTION_FEATURES = int(N_ACTION_FEATURES)
 
 
 def remap_state_index(index: int, old_opponent_features: int, new_opponent_features: int) -> int:
@@ -215,6 +215,52 @@ def add_phase_clock(source: str | Path, destination: str | Path) -> Path:
     return net.save(destination)
 
 
+def add_blast_risk(source: str | Path, destination: str | Path) -> Path:
+    """Widen a 110-input (89 state + 21 action) checkpoint to 113 inputs (90 state + 23 action).
+
+    Appends one zero row after ``FORCED_SEATS_FEATURE`` (row 89 = ``BLAST_RISK_FEATURE``)
+    in both ``W1`` and ``V1``, and two zero rows after ``action_features[20]``
+    (rows 111..112 = ``[announces_blast * blast_risk, announces_blast * (1 - blast_risk)]``).
+    """
+    raw = dict(np.load(source, allow_pickle=False))
+    meta = json.loads(str(raw.pop("meta")))
+    old_state = 89
+    old_action = 21
+    new_state = int(N_STATE_FEATURES)
+    new_action = int(ACTION_FEATURES)
+    if raw["W1"].shape[0] != old_state + old_action:
+        raise SystemExit(
+            f"{source} has {raw['W1'].shape[0]} input features, expected "
+            f"{old_state + old_action}"
+        )
+    if raw["V1"].shape[0] != old_state:
+        raise SystemExit(
+            f"{source} has {raw['V1'].shape[0]} value-head features, expected {old_state}"
+        )
+    net = PolicyNet(
+        hidden=int(meta.get("hidden", 64)),
+        value_hidden=int(meta.get("value_hidden", 32)),
+        name=str(meta.get("name", Path(source).stem)),
+    )
+    net.trained_generations = int(meta.get("trained_generations", 0))
+    net.metadata = {
+        key: value
+        for key, value in meta.items()
+        if key not in {"hidden", "value_hidden", "name", "trained_generations"}
+    }
+    W1 = np.zeros((new_state + new_action, raw["W1"].shape[1]), dtype=np.float32)
+    V1 = np.zeros((new_state, raw["V1"].shape[1]), dtype=np.float32)
+    W1[:old_state] = raw["W1"][:old_state]
+    V1[:old_state] = raw["V1"][:old_state]
+    W1[new_state : new_state + old_action] = raw["W1"][old_state : old_state + old_action]
+    params = dict(raw)
+    params["W1"] = W1
+    params["V1"] = V1
+    net.params = params
+    net.optimizer = type(net.optimizer)(params, lr=5e-4)
+    return net.save(destination)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source")
@@ -233,6 +279,12 @@ def main() -> None:
         "per-opponent flag plus two appended state features)",
     )
     parser.add_argument(
+        "--add-blast-risk",
+        action="store_true",
+        help="the checkpoint predates BLAST_RISK_FEATURE and the two blast-risk "
+        "action features (widens 89+21 -> 90+23 with zero rows)",
+    )
+    parser.add_argument(
         "--append-hazard",
         action="store_true",
         help="the checkpoint predates the table-hazard state feature, which was "
@@ -243,6 +295,9 @@ def main() -> None:
     destination = args.destination
     if destination is None:
         destination = str(Path(args.source).with_name(Path(args.source).stem + "_migrated.npz"))
+    if args.add_blast_risk:
+        print(f"wrote {add_blast_risk(args.source, destination)}")
+        return
     if args.add_phase_clock:
         print(f"wrote {add_phase_clock(args.source, destination)}")
         return

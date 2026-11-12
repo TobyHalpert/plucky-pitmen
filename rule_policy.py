@@ -4,15 +4,12 @@
 from __future__ import annotations
 
 from game_env import (
-    DYNAMITE,
     DRAGON,
     GEM,
     LORRY,
     MAX_COLUMNS,
     PASS,
     PIT_CAGE,
-    DRAGONS_PER_BACKSIDE,
-    TOTAL_PER_BACKSIDE,
     PlayerActionContext,
     OpponentPublicView,
 )
@@ -41,62 +38,17 @@ def _active_opponents(ctx: PlayerActionContext) -> list[OpponentPublicView]:
 
 
 def _estimate_dragon_risk(ctx: PlayerActionContext, backside: int) -> float:
-    """Estimate the probability that an unknown-front card with the given
-    backside is a DRAGON.
-
-    Dragons are never collected — pulling one ends the haul. Known non-dragons
-    therefore come from four sources (all publicly derivable, except own-column
-    fronts which are private to the requesting player):
-
-    - Own collected cards with this backside (definitely non-dragons).
-    - Opponents' collected cards with this backside (backsides are public).
-    - Used blast backsides matching this backside (definitely dynamite).
-    - Non-dragon fronts visible in the player's own home column with this backside.
-
-    Known dragons can only come from dragons visible in the player's own
-    home column, since dragons never enter any player's hand.
+    """Estimate the probability that a draw-pile or untested card with ``backside``
+    is a DRAGON, incorporating backside conservation and public opponent tells.
     """
-    my_column = ctx.player_index
+    from features import backside_stats
 
-    known_dragons = 0
-    known_non_dragons = 0
-
-    # Own collected cards: never dragons.
-    for _, back in ctx.private_cards:
-        if back == backside:
-            known_non_dragons += 1
-
-    # Opponents' collected cards: backsides are public, fronts are hidden.
-    # The fronts are guaranteed to be non-dragons regardless.
-    for opp in ctx.opponents:
-        for back in opp.collected_backsides:
-            if back == backside:
-                known_non_dragons += 1
-
-    # Used blast backsides: always dynamite.
-    for back in ctx.used_blast_backsides:
-        if back == backside:
-            known_non_dragons += 1
-
-    # Own home column: fronts are fully visible.
-    for row in ctx.public_rows:
-        if my_column >= len(row):
-            continue
-        card_entry = row[my_column]
-        if card_entry is None or card_entry[1] != backside:
-            continue
-        front = card_entry[0]
-        if front == DRAGON:
-            known_dragons += 1
-        else:
-            known_non_dragons += 1
-
-    remaining_dragons = max(0, DRAGONS_PER_BACKSIDE - known_dragons)
-    unknown_cards = TOTAL_PER_BACKSIDE - known_dragons - known_non_dragons
-
-    if unknown_cards <= 0:
-        return 0.0
-    return remaining_dragons / unknown_cards
+    _known_dragons, _known_safe, _unknown, risk = backside_stats(
+        ctx, trust_suspected=1.0
+    )
+    if 0 <= int(backside) < 3:
+        return float(risk[int(backside)])
+    return 0.0
 
 
 def _dragon_under_opponent(ctx: PlayerActionContext) -> bool:
@@ -356,7 +308,7 @@ def deterministic_policy(
             return int(LORRY)
 
     # --- 2.5. DISPLACEMENT RAID (STEAL KNOWN/INFERRED GEMS) ---
-    if not must_escape and not signaled_threat:
+    if not must_escape and not signaled_threat and not ctx.own_blast_pending:
         raid_action = _find_displacement_raid(
             ctx, legal_actions, trust_sitter=trust_sitter
         )
@@ -541,38 +493,9 @@ def deterministic_blast_choice(
     blast_cards: tuple[tuple[int, int], ...],
     ctx: PlayerActionContext | None = None,
 ) -> int:
-    """Choose which card index to keep during `env.resolve_blast()`.
-
-    Under the printed rules, drawn blast cards have ``FRONT_UNKNOWN`` fronts and
-    only their backside colour is visible; when ``ctx`` is provided, choose the
-    lowest-risk backside via ``_estimate_dragon_risk``. If historical peeking is
-    enabled and fronts are visible, prefer GEM > DYNAMITE > non-DRAGON.
-    """
+    """Choose which card index to keep during ``env.resolve_blast()``."""
     if not blast_cards:
         return 0
+    from agents import preferred_blast_choice
 
-    known_indices = [
-        idx for idx, (card_type, _) in enumerate(blast_cards)
-        if card_type != -1
-    ]
-    if known_indices:
-        safe_indices = [
-            idx for idx in known_indices
-            if blast_cards[idx][0] != DRAGON
-        ]
-        if not safe_indices:
-            return 0
-        for idx in safe_indices:
-            if blast_cards[idx][0] == GEM:
-                return idx
-        for idx in safe_indices:
-            if blast_cards[idx][0] == DYNAMITE:
-                return idx
-        return safe_indices[0]
-
-    if ctx is None:
-        return 0
-    return min(
-        range(len(blast_cards)),
-        key=lambda idx: _estimate_dragon_risk(ctx, blast_cards[idx][1]),
-    )
+    return preferred_blast_choice(blast_cards, ctx)

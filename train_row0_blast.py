@@ -47,37 +47,38 @@ def sample_row0_hidden(source: MineEnv, seat: int, rng) -> MineEnv:
     part of the hidden deck.  Acting-seat private cards, including its own
     pending blast cards, stay exactly as observed.
     """
+    from train_tactical import _public_cell_propensities, assign_rest_fronts
+
     env = copy.deepcopy(source)
+    prop = _public_cell_propensities(env, seat)
     slots = []
 
-    for row in env.rows:
+    for row_idx, row in enumerate(env.rows):
         for column, card in enumerate(row):
             if card is not None and column != seat:
-                slots.append((row, column, card, False))
+                slots.append((row, column, card, False, prop.get((row_idx, column), 1.0)))
 
     for player_index, player in enumerate(env.players):
         if player_index == seat:
             continue
         for index, card in enumerate(player.collected_cards):
-            slots.append((player.collected_cards, index, card, True))
+            slots.append((player.collected_cards, index, card, True, 1.0))
         for index, card in enumerate(player.blast_cards):
-            slots.append((player.blast_cards, index, card, False))
+            slots.append((player.blast_cards, index, card, False, 1.0))
 
     for index, card in enumerate(env.cards_remaining):
-        slots.append((env.cards_remaining, index, card, False))
+        slots.append((env.cards_remaining, index, card, False, 1.0))
 
-    for backside in {card[1] for _container, _index, card, _safe in slots}:
+    for backside in {card[1] for _container, _index, card, _safe, _w in slots}:
         group = [slot for slot in slots if slot[2][1] == backside]
         fronts = [slot[2][0] for slot in group]
         safe = [slot for slot in group if slot[3]]
         rest = [slot for slot in group if not slot[3]]
-        for container, index, _, _ in safe:
+        for container, index, _, _, _ in safe:
             choices = [i for i, front in enumerate(fronts) if front != DRAGON]
             selected = int(rng.choice(choices))
             container[index] = (fronts.pop(selected), backside)
-        rng.shuffle(fronts)
-        for (container, index, _, _), front in zip(rest, fronts):
-            container[index] = (front, backside)
+        assign_rest_fronts(rest, fronts, rng)
 
     rng.shuffle(env.cards_remaining)
     env.rng = np.random.default_rng(int(rng.integers(2**31)))
@@ -106,6 +107,8 @@ def collect_row0(net: PolicyNet, count: int, seed: int, *, limit: int | None = N
                  include_kinds: tuple[str, ...] = ("initial", "follow_up")):
     """Collect actual row-0 blasts and row-0 cancellations from ordinary games."""
     positions = []
+    overflow = []
+    kind_counts = {k: 0 for k in include_kinds}
     original = MineEnv.step_one_player
     max_games = limit or max(500, count * 40)
     game_index = 0
@@ -147,10 +150,17 @@ def collect_row0(net: PolicyNet, count: int, seed: int, *, limit: int | None = N
                         or has_useful_alternative(env, seat, kind)
                     )
                 ):
-                    positions.append((
-                        copy.deepcopy(env), seat, kind, game_seed, primitive
-                    ))
-                    taken[0] += 1
+                    missing_others = sum(
+                        1 for k, c in kind_counts.items() if k != kind and c == 0
+                    )
+                    item = (copy.deepcopy(env), seat, kind, game_seed, primitive)
+                    if count >= len(include_kinds) and len(positions) + missing_others >= count:
+                        if len(overflow) < count:
+                            overflow.append(item)
+                    else:
+                        positions.append(item)
+                        kind_counts[kind] += 1
+                        taken[0] += 1
             return original(env, action, **kwargs)
 
         MineEnv.step_one_player = step
@@ -164,6 +174,8 @@ def collect_row0(net: PolicyNet, count: int, seed: int, *, limit: int | None = N
             MineEnv.step_one_player = original
         game_index += 1
 
+    if len(positions) < count and overflow:
+        positions.extend(overflow[: count - len(positions)])
     if len(positions) < count:
         raise RuntimeError(
             f"only collected {len(positions)} row-0 positions in {game_index} games"

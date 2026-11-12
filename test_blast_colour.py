@@ -80,3 +80,53 @@ def test_the_counterfactual_only_rewrites_the_known_dragon():
     (front_before, back_before), (front_after, back_after) = differing[0]
     assert front_before == DRAGON and front_after == GEM
     assert back_before == back_after, "the backside has to stay put"
+
+
+def test_blast_dragon_risk_accounts_for_deck_vs_board_collected_and_retained():
+    """Draw-pile blast risk separates safe cards in the pile from board/collected/retained cards."""
+    from features import backside_stats, blast_dragon_risk, deck_backside_counts
+
+    env = MineEnv(opponents=3)
+    env.reset(seed=30)
+    # Construct two states with identical per-backside risk[0] == 0.0 (both dragons
+    # of backside 0 visible in P1's own column), but in state A the 8 safe backside-0
+    # cards are in the DRAW PILE while in state B 6 of them sit on OPPONENT COLUMNS.
+    env_pile = MineEnv(opponents=3)
+    env_pile.reset(seed=30)
+    env_pile.rows = [
+        [(DRAGON, 0), (GEM, 1), (GEM, 1), (GEM, 2)],
+        [(DRAGON, 0), (GEM, 1), (GEM, 2), (GEM, 2)],
+        [(GEM, 1), (GEM, 1), (GEM, 2), (GEM, 2)],
+    ]
+    # Remaining 18 cards in deck: 8 of backside 0 (all safe!), 5 of 1, 5 of 2.
+    ctx_pile = env_pile.player_action_context(0)
+    assert deck_backside_counts(ctx_pile).tolist() == [8.0, 5.0, 5.0]
+
+    env_board = MineEnv(opponents=3)
+    env_board.reset(seed=30)
+    env_board.rows = [
+        [(DRAGON, 0), (GEM, 0), (GEM, 0), (GEM, 0)],
+        [(DRAGON, 0), (GEM, 0), (GEM, 0), (GEM, 0)],
+        [(GEM, 1), (GEM, 1), (GEM, 2), (GEM, 2)],
+    ]
+    # Remaining 18 cards in deck: only 2 of backside 0 left in pile, 8 of 1, 8 of 2!
+    ctx_board = env_board.player_action_context(0)
+    assert deck_backside_counts(ctx_board).tolist() == [2.0, 8.0, 8.0]
+
+    # Both have risk[0] == 0.0, yet drawing 3 from the pile is much safer when the
+    # dragon-free colour is actually in the pile rather than sitting on the board!
+    assert backside_stats(ctx_pile)[3][0] == 0.0
+    assert backside_stats(ctx_board)[3][0] == 0.0
+    assert blast_dragon_risk(ctx_pile) < blast_dragon_risk(ctx_board) - 0.15
+
+    # Retained dynamite from a previous haul is additional to the 30-card haul deck
+    # and must not falsely deplete current-haul backside counts.
+    env_ret = MineEnv(opponents=3)
+    env_ret.reset(seed=31)
+    env_ret.players[0].collected_cards = [(DYNAMITE, 0)] * 4
+    env_ret._start_next_haul()
+    ctx_ret = env_ret.player_action_context(0)
+    assert len(ctx_ret.haul_retained_backsides) == 4
+    total_in_deck = float(deck_backside_counts(ctx_ret).sum())
+    assert total_in_deck == float(ctx_ret.cards_remaining_in_deck)
+

@@ -33,7 +33,7 @@ from game_env import (
     PIT_CAGE,
     PlayerActionContext,
 )
-from features import backside_stats, round_dragon_hazard, split_action
+from features import backside_stats, blast_dragon_risk, round_dragon_hazard, split_action
 
 
 @dataclass(frozen=True)
@@ -109,10 +109,12 @@ def preferred_blast_choice(
 
     if ctx is None:
         return 0
-    _known_dragons, _known_safe, _unknown, risk = backside_stats(ctx)
+    _known_dragons, _known_safe, _unknown, risk = backside_stats(
+        ctx, trust_suspected=1.0
+    )
     return min(
         range(len(cards)),
-        key=lambda index: float(risk[cards[index][1]]),
+        key=lambda index: (float(risk[cards[index][1]]), int(cards[index][1])),
     )
 
 
@@ -921,6 +923,7 @@ def should_blast(mode: str, ctx: PlayerActionContext) -> bool:
     ``never``  - the baseline rule policy never blasts.
     ``rich``   - blast once two gems are safe in hand.
     ``always`` - blast whenever two dynamite are available.
+    ``safe``   - blast when ``blast_dragon_risk`` is low (<= 0.30).
     ``trap``   - blast when a dragon is known to be waiting in the player's own
                  column, i.e. sitting still is a losing move anyway.
     ``behind`` - blast when another player is ahead on gems.
@@ -935,14 +938,10 @@ def should_blast(mode: str, ctx: PlayerActionContext) -> bool:
         return visible_dragon_ahead(ctx) is not None
     if mode == "behind":
         return behind_on_score(ctx)
-    if mode in ("never", "", None):
-        return False
-    if not owns_dynamite_pair(ctx):
-        return False
-    if not _card_actions(ctx):
-        return False
     if mode == "always":
         return True
+    if mode == "safe":
+        return ctx.cards_remaining_in_deck >= 3 and blast_dragon_risk(ctx) <= 0.30
     if mode == "rich":
         gems = sum(1 for front, _ in ctx.private_cards if front == GEM)
         return gems >= 2
