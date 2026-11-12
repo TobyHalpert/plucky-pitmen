@@ -61,7 +61,7 @@ DECK_RISK_BASE = BLAST_RISK_FEATURE + 1
 DECK_COUNT_BASE = DECK_RISK_BASE + 3
 SUSPECTED_DRAGON_BASE = DECK_COUNT_BASE + 3
 N_STATE_FEATURES = SUSPECTED_DRAGON_BASE + 3
-N_ACTION_FEATURES = 32
+N_ACTION_FEATURES = 34
 N_INPUT_FEATURES = N_STATE_FEATURES + N_ACTION_FEATURES
 
 
@@ -599,6 +599,15 @@ def state_features(ctx: PlayerActionContext) -> np.ndarray:
 # ----------------------------------------------------------------------
 # Action features
 # ----------------------------------------------------------------------
+def _opponent_movement_depth(opp: object) -> int:
+    pos = int(opp.position)
+    if pos == PIT_CAGE:
+        return int(opp.cage_index) if opp.cage_index is not None else 0
+    if pos == LORRY:
+        return 0
+    return pos
+
+
 def action_features(
     ctx: PlayerActionContext,
     action: int,
@@ -611,6 +620,8 @@ def action_features(
     max_score: int | None = None,
     own_dynamite: int | None = None,
     table_pushes: int | None = None,
+    min_own_gem_row: int | None = -1,
+    opp_depths: tuple[tuple[int, int], ...] | None = None,
 ) -> np.ndarray:
     primitive, announces_blast = split_action(action)
     values = np.zeros(N_ACTION_FEATURES, dtype=np.float32)
@@ -631,6 +642,23 @@ def action_features(
             own_dynamite = sum(1 for f, _ in ctx.private_cards if f == DYNAMITE)
         if table_pushes is None:
             table_pushes = sum(o.displacements for o in ctx.opponents)
+        if min_own_gem_row == -1:
+            gem_rows = [
+                int(a) // MAX_COLUMNS
+                for a in ctx.legal_actions
+                if 0 <= int(a) < PIT_CAGE
+                and int(a) % MAX_COLUMNS == ctx.player_index
+                and int(a) // MAX_COLUMNS < len(ctx.public_rows)
+                and ctx.public_rows[int(a) // MAX_COLUMNS][ctx.player_index] is not None
+                and ctx.public_rows[int(a) // MAX_COLUMNS][ctx.player_index][0] == GEM
+            ]
+            min_own_gem_row = min(gem_rows) if gem_rows else None
+        if opp_depths is None:
+            opp_depths = tuple(
+                (o.player_index, _opponent_movement_depth(o))
+                for o in ctx.opponents
+                if not o.escaped and not o.dead
+            )
 
     n_players = max(1, ctx.n_players)
     depth = _own_depth(ctx)
@@ -694,6 +722,15 @@ def action_features(
                         values[28] = float(
                             owner.score == max_score and ctx.own_score < max_score
                         )
+                        if not ctx.own_planned and float(values[21]) < 0.5:
+                            others_can_reach = any(
+                                o_idx != column and o_depth > row
+                                for o_idx, o_depth in (opp_depths or ())
+                            )
+                            if not others_can_reach:
+                                values[32] = 1.0
+                            if min_own_gem_row is not None and row > min_own_gem_row:
+                                values[33] = 1.0
                 if front is None and smart_risk is not None:
                     values[29] = float(
                         max(
@@ -757,6 +794,21 @@ def state_action_matrix(
     max_score = max([ctx.own_score] + [o.score for o in ctx.opponents])
     own_dynamite = sum(1 for f, _ in ctx.private_cards if f == DYNAMITE)
     table_pushes = sum(o.displacements for o in ctx.opponents)
+    gem_rows = [
+        int(a) // MAX_COLUMNS
+        for a in ctx.legal_actions
+        if 0 <= int(a) < PIT_CAGE
+        and int(a) % MAX_COLUMNS == ctx.player_index
+        and int(a) // MAX_COLUMNS < len(ctx.public_rows)
+        and ctx.public_rows[int(a) // MAX_COLUMNS][ctx.player_index] is not None
+        and ctx.public_rows[int(a) // MAX_COLUMNS][ctx.player_index][0] == GEM
+    ]
+    min_own_gem_row = min(gem_rows) if gem_rows else None
+    opp_depths = tuple(
+        (o.player_index, _opponent_movement_depth(o))
+        for o in ctx.opponents
+        if not o.escaped and not o.dead
+    )
     matrix = np.empty((N_ACTIONS, N_INPUT_FEATURES), dtype=np.float32)
     matrix[:, :N_STATE_FEATURES] = state
     for action in range(N_ACTIONS):
@@ -772,6 +824,8 @@ def state_action_matrix(
             max_score=max_score,
             own_dynamite=own_dynamite,
             table_pushes=table_pushes,
+            min_own_gem_row=min_own_gem_row,
+            opp_depths=opp_depths,
         )
     return matrix
 

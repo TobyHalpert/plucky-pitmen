@@ -110,14 +110,41 @@ def test_climbs_off_card_unlocks_midround_displacement_and_leader_row0_push():
     )
 
 
-def test_retrained_selfplay4_uses_displacements_and_preserves_shape():
-    """Shipped ``selfplay4.npz`` has 131 inputs and actively displaces rivals."""
-    assert features.N_ACTION_FEATURES == 32
-    assert features.N_INPUT_FEATURES == 131
-    net = PolicyNet.load("checkpoints/selfplay4.npz")
-    assert net.params["W1"].shape == (131, 64)
+def test_turn1_last_chance_and_parachute_push_features():
+    """Turn-1 pushes distinguish 'last chance before rival sits forever' and
+    'shallower own gem stays ahead as parachute' from early dragon-bait pushes.
+    """
+    env = MineEnv(opponents=3)
+    env.reset(seed=5)
+    # Put P0's own gem at row 0, and P1 standing on their own card at row 2.
+    env.rows[0][0] = (GEM, env.rows[0][0][1])
+    env.rows[2][1] = (GEM, env.rows[2][1][1])
+    env.players[1].position, env.players[1].column, env.planned_players[1] = 2, 1, True
+    # P2 and P3 are still at starting depth (3 > 2), so others CAN still reach row 2:
+    env.planning_player = 0
+    ctx_early = env.player_action_context(0)
+    af_early = features.action_features(ctx_early, 2 * MAX_COLUMNS + 1)
+    assert af_early[32] == 0.0  # not last chance yet (P2, P3 have depth 3 > 2)
+    assert af_early[33] == 1.0  # parachute: own gem at row 0 < row 2 stays ahead!
 
-    displacements = 0
+    # Once P2 and P3 have stepped to row <= 2, nobody else has depth > 2:
+    env.players[2].position, env.players[2].column, env.planned_players[2] = 1, 2, True
+    env.players[3].position, env.players[3].column, env.planned_players[3] = 2, 3, True
+    ctx_last = env.player_action_context(0)
+    af_last = features.action_features(ctx_last, 2 * MAX_COLUMNS + 1)
+    assert af_last[32] == 1.0  # last chance: P1 sits at (2, 1) forever if P0 skips!
+    assert af_last[33] == 1.0
+
+
+def test_retrained_selfplay4_uses_turn1_and_turn2_displacements():
+    """Shipped ``selfplay4.npz`` has 133 inputs and displaces on Turn 1 and Turn 2."""
+    assert features.N_ACTION_FEATURES == 34
+    assert features.N_INPUT_FEATURES == 133
+    net = PolicyNet.load("checkpoints/selfplay4.npz")
+    assert net.params["W1"].shape == (133, 64)
+
+    turn1_pushes = 0
+    turn2_pushes = 0
 
     class Counter(NeuralAgent):
         def decide(self, ctx):
@@ -125,12 +152,16 @@ def test_retrained_selfplay4_uses_displacements_and_preserves_shape():
             if 0 <= choice.action < PIT_CAGE:
                 r, c = divmod(choice.action, MAX_COLUMNS)
                 if c != ctx.player_index and features._occupant(ctx, r, c) == c:
-                    nonlocal displacements
-                    displacements += 1
+                    nonlocal turn1_pushes, turn2_pushes
+                    if not ctx.own_planned:
+                        turn1_pushes += 1
+                    else:
+                        turn2_pushes += 1
             return choice
 
     for seed in range(12):
         agents = [Counter(net, seed=seed * 31 + i, temperature=0.7) for i in range(4)]
         res = play_game(agents, seed=seed)
         assert not res.aborted
-    assert displacements >= 10
+    assert turn1_pushes >= 10
+    assert turn2_pushes >= 5

@@ -262,23 +262,22 @@ def add_blast_risk(source: str | Path, destination: str | Path) -> Path:
 
 
 def add_raider_features(source: str | Path, destination: str | Path) -> Path:
-    """Widen a 123-input (99 state + 24 action) checkpoint to 131 inputs (99 state + 32 action).
+    """Widen a 123- or 131-input checkpoint to ``N_STATE_FEATURES + N_ACTION_FEATURES`` (133).
 
-    Appends eight zero rows at ``action_features[24..31]`` (active foreign canary,
-    foreign owner loot/pushes, row-0 push, leader push, smart foreign safe,
-    completes dynamite pair, pushable dragon bait), preserving exact forward-pass
+    Appends zero rows at ``action_features[24..33]`` (foreign canary/loot/push,
+    row-0/leader push, smart foreign safe, dynamite pair, dragon bait, and
+    Turn-1 last-chance / parachute pushes), preserving exact forward-pass
     logits until retrained.
     """
     raw = dict(np.load(source, allow_pickle=False))
     meta = json.loads(str(raw.pop("meta")))
     old_state = 99
-    old_action = 24
+    old_total = int(raw["W1"].shape[0])
     new_state = int(N_STATE_FEATURES)
     new_action = int(ACTION_FEATURES)
-    if raw["W1"].shape[0] != old_state + old_action:
+    if old_total not in {99 + 24, 99 + 32}:
         raise SystemExit(
-            f"{source} has {raw['W1'].shape[0]} input features, expected "
-            f"{old_state + old_action}"
+            f"{source} has {old_total} input features, expected 123 or 131"
         )
     if raw["V1"].shape[0] != old_state:
         raise SystemExit(
@@ -296,7 +295,7 @@ def add_raider_features(source: str | Path, destination: str | Path) -> Path:
         if key not in {"hidden", "value_hidden", "name", "trained_generations"}
     }
     W1 = np.zeros((new_state + new_action, raw["W1"].shape[1]), dtype=np.float32)
-    W1[: old_state + old_action] = raw["W1"]
+    W1[:old_total] = raw["W1"]
     params = dict(raw)
     params["W1"] = W1
     net.params = params

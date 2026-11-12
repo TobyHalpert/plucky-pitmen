@@ -1,15 +1,19 @@
-"""Co-evolutionary CEM retraining of ``checkpoints/selfplay4.npz`` with unlocked
-foreign-column probing, row-0/leader displacement, and dragon-signal dodging.
+"""Co-evolutionary CEM retraining of ``checkpoints/selfplay4.npz`` (133 inputs)
+with foreign dragon-signal dodging, mid-round/row-0 pushes, and Turn-1
+last-chance & parachute displacements.
 
-Preserves all 123 baseline input rows of ``W1`` (keeping own-column card choice,
-cage/lorry/pass calibration, and blast-risk reading intact) and co-evolves the
-eight new action-feature rows ``W1[99+24 : 99+32]`` across the ``tanh`` hidden
-layer against:
-  - Invasion: 1x Candidate vs 3x Baseline ``selfplay4``
-  - Defense : 3x Candidate vs 1x Baseline ``selfplay4``
-  - Self-play Nash co-evolution: 1x Candidate vs 3x Current Champion
-  - 4x Candidate Self-Play Mirror (enforcing mean table score >= 2.15)
-  - Tactical League: ``[RuleAgent, CounterAgent, PusherAgent]``
+Preserves all 123 baseline input rows of ``W1`` and co-evolves the ten raider
+action-feature rows ``W1[99+24 : 99+34]`` across the ``tanh`` hidden layer:
+  - [24] foreign_canary_active
+  - [25] foreign_owner_loot
+  - [26] raiding_owner (non-blast displacement)
+  - [27] is_row0_push
+  - [28] pushes_leader
+  - [29] smart_foreign_safe
+  - [30] completes_dynamite_pair
+  - [31] pushable_dragon_bait
+  - [32] last_chance_push (Turn-1 push where no other rival has depth > row)
+  - [33] turn1_parachute_push (Turn-1 push preserving shallower own gem ahead)
 """
 
 from __future__ import annotations
@@ -37,19 +41,9 @@ from features import (
 from learning import PolicyNet
 from selfplay import play_game
 
-BASELINE_BACKUP = Path("/tmp/selfplay4_131_baseline.npz")
+PREV_RAIDER_BACKUP = Path("/tmp/selfplay4_aeafe19_133.npz")
 TARGET_CKPT = Path("checkpoints/selfplay4.npz")
 
-# Theta parameterizes the 8 new action-feature rows W1[99+24 : 99+32] along the
-# tanh output direction u = W2 / ||W2||^2:
-#   0: [24] foreign_canary_active
-#   1: [25] foreign_owner_loot
-#   2: [26] raiding_owner (non-blast displacement)
-#   3: [27] is_row0_push
-#   4: [28] pushes_leader
-#   5: [29] smart_foreign_safe
-#   6: [30] completes_dynamite_pair
-#   7: [31] pushable_dragon_bait
 THETA_NAMES = [
     "foreign_canary_active",
     "foreign_owner_loot",
@@ -59,18 +53,22 @@ THETA_NAMES = [
     "smart_foreign_safe",
     "completes_dyn_pair",
     "pushable_dragon_bait",
+    "last_chance_push",
+    "turn1_parachute_push",
 ]
 
 THETA_BOUNDS = np.array(
     [
-        [0.5, 5.0],   # 0 foreign_canary_active
-        [0.0, 3.5],   # 1 foreign_owner_loot
-        [1.5, 6.5],   # 2 raiding_owner_push
-        [0.5, 5.0],   # 3 is_row0_push
-        [0.5, 6.5],   # 4 pushes_leader
-        [1.5, 7.0],   # 5 smart_foreign_safe
-        [0.5, 5.0],   # 6 completes_dyn_pair
-        [0.0, 4.0],   # 7 pushable_dragon_bait
+        [0.8, 4.0],    # 0 foreign_canary_active
+        [0.0, 3.0],    # 1 foreign_owner_loot
+        [1.5, 5.5],    # 2 raiding_owner_push
+        [1.0, 5.0],    # 3 is_row0_push
+        [1.0, 6.0],    # 4 pushes_leader
+        [2.0, 6.5],    # 5 smart_foreign_safe
+        [1.0, 5.0],    # 6 completes_dyn_pair
+        [0.0, 3.5],    # 7 pushable_dragon_bait
+        [1.0, 10.5],   # 8 last_chance_push (Turn 1 untouchable!)
+        [1.5, 11.0],   # 9 turn1_parachute_push (Turn 1 own-gem ahead!)
     ],
     dtype=np.float32,
 )
@@ -85,7 +83,7 @@ def apply_theta(
     params = {k: v.copy() for k, v in base_params.items()}
     W1 = params["W1"]
     s = N_STATE_FEATURES
-    for k in range(8):
+    for k in range(len(THETA_NAMES)):
         W1[s + 24 + k] = float(theta[k]) * u_tanh
     return params
 
@@ -101,11 +99,12 @@ def _make_net(params: dict[str, np.ndarray], name: str = "selfplay4") -> PolicyN
 
 
 class _MoveStatsAgent(NeuralAgent):
-    def __init__(self, net: PolicyNet, *, seed: int = 0):
-        super().__init__(net, seed=seed)
+    def __init__(self, net: PolicyNet, *, seed: int = 0, temperature: float = 0.7):
+        super().__init__(net, seed=seed, temperature=temperature)
         self.card_moves = 0
         self.ffree_moves = 0
-        self.disp_moves = 0
+        self.disp_t1 = 0
+        self.disp_t2 = 0
 
     def decide(self, ctx):
         choice = super().decide(ctx)
@@ -123,7 +122,10 @@ class _MoveStatsAgent(NeuralAgent):
                     for o in ctx.opponents
                 )
                 if occ:
-                    self.disp_moves += 1
+                    if not ctx.own_planned:
+                        self.disp_t1 += 1
+                    else:
+                        self.disp_t2 += 1
                 else:
                     self.ffree_moves += 1
         return choice
@@ -133,90 +135,103 @@ def _eval_candidate_worker(args: tuple) -> dict:
     (
         cand_idx,
         theta,
-        base_params,
+        silo_params,
+        prev_params,
         champ_params,
         u_tanh,
         seed_offset,
-        n_inv,
-        n_def,
+        n_silo,
+        n_prev,
         n_coev,
         n_mir,
         n_tac,
     ) = args
-    cand_params = apply_theta(base_params, u_tanh, theta)
+    cand_params = apply_theta(silo_params, u_tanh, theta)
     cand_net = _make_net(cand_params, "cand")
-    old_net = _make_net(base_params, "old")
+    silo_net = _make_net(silo_params, "silo")
+    prev_net = _make_net(prev_params, "prev")
     champ_net = _make_net(champ_params, "champ")
 
-    # 1. Invasion: 1x Candidate vs 3x Old selfplay4
-    inv_diff = 0.0
-    inv_wins = 0.0
-    for g in range(n_inv):
+    # 1. Invasion vs Legacy Silo (temperature=0.7 & 1.0 mixed)
+    silo_diff = 0.0
+    silo_wins = 0.0
+    for g in range(n_silo):
         seat = g % 4
+        temp = 0.7 if g % 2 == 0 else 1.0
         seats = [
-            NeuralAgent(cand_net, seed=seed_offset + g * 5 + s)
+            NeuralAgent(cand_net, seed=seed_offset + g * 5 + s, temperature=temp)
             if s == seat
-            else NeuralAgent(old_net, seed=seed_offset + g * 5 + s)
+            else NeuralAgent(silo_net, seed=seed_offset + g * 5 + s, temperature=temp)
             for s in range(4)
         ]
         res = play_game(seats, seed=seed_offset + g)
         sc = res.scores[seat]
-        inv_diff += sc - (sum(res.scores) - sc) / 3.0
+        silo_diff += sc - (sum(res.scores) - sc) / 3.0
         mx = max(res.scores)
         if sc == mx:
-            inv_wins += 1.0 / sum(1 for x in res.scores if x == mx)
-    inv_diff /= n_inv
-    inv_win_rate = inv_wins / n_inv
+            silo_wins += 1.0 / sum(1 for x in res.scores if x == mx)
+    silo_diff /= n_silo
+    silo_win_rate = silo_wins / n_silo
 
-    # 2. Defense: 3x Candidate vs 1x Old selfplay4
-    def_diff = 0.0
-    for g in range(n_def):
+    # 2. Head-to-head vs Prev Turn-2-only Raider (aeafe19): 1v3 AND 3v1!
+    prev_diff = 0.0
+    prev_wins = 0.0
+    for g in range(n_prev):
         seat = g % 4
-        seats = [
-            NeuralAgent(old_net, seed=seed_offset + 500 + g * 5 + s)
-            if s == seat
-            else NeuralAgent(cand_net, seed=seed_offset + 500 + g * 5 + s)
-            for s in range(4)
-        ]
-        res = play_game(seats, seed=seed_offset + 500 + g)
-        opp_sc = res.scores[seat]
-        def_diff += (sum(res.scores) - opp_sc) / 3.0 - opp_sc
-    def_diff /= n_def
+        if g < n_prev // 2:
+            seats = [
+                NeuralAgent(cand_net, seed=seed_offset + 500 + g * 5 + s, temperature=0.7)
+                if s == seat
+                else NeuralAgent(prev_net, seed=seed_offset + 500 + g * 5 + s, temperature=0.7)
+                for s in range(4)
+            ]
+            res = play_game(seats, seed=seed_offset + 500 + g)
+            sc = res.scores[seat]
+            prev_diff += sc - (sum(res.scores) - sc) / 3.0
+            mx = max(res.scores)
+            if sc == mx:
+                prev_wins += 1.0 / sum(1 for x in res.scores if x == mx)
+        else:
+            seats = [
+                NeuralAgent(prev_net, seed=seed_offset + 500 + g * 5 + s, temperature=0.7)
+                if s == seat
+                else NeuralAgent(cand_net, seed=seed_offset + 500 + g * 5 + s, temperature=0.7)
+                for s in range(4)
+            ]
+            res = play_game(seats, seed=seed_offset + 500 + g)
+            opp_sc = res.scores[seat]
+            prev_diff += (sum(res.scores) - opp_sc) / 3.0 - opp_sc
+    prev_diff /= n_prev
+    prev_win_rate = prev_wins / max(1, n_prev // 2)
 
-    # 3. Co-evolution: 1x Candidate vs 3x Current Champion
+    # 3. Co-evolution vs Current Generation Champion
     coev_diff = 0.0
-    coev_wins = 0.0
     for g in range(n_coev):
         seat = g % 4
         seats = [
-            NeuralAgent(cand_net, seed=seed_offset + 1000 + g * 5 + s)
+            NeuralAgent(cand_net, seed=seed_offset + 1000 + g * 5 + s, temperature=0.7)
             if s == seat
-            else NeuralAgent(champ_net, seed=seed_offset + 1000 + g * 5 + s)
+            else NeuralAgent(champ_net, seed=seed_offset + 1000 + g * 5 + s, temperature=0.7)
             for s in range(4)
         ]
         res = play_game(seats, seed=seed_offset + 1000 + g)
         sc = res.scores[seat]
         coev_diff += sc - (sum(res.scores) - sc) / 3.0
-        mx = max(res.scores)
-        if sc == mx:
-            coev_wins += 1.0 / sum(1 for x in res.scores if x == mx)
     coev_diff /= n_coev
-    coev_win_rate = coev_wins / n_coev
 
-    # 4. 4x Candidate Self-Play Mirror (first 12 games match test_selfplay.py:2001!)
+    # 4. 4x Self-Play Mirror at temperature=0.7 (matching GameController & test_selfplay!)
     mir_scores: list[float] = []
     mir_0_11: list[float] = []
     tot_cards = 0
     tot_ffree = 0
-    tot_disp = 0
+    tot_t1 = 0
+    tot_t2 = 0
     max_turns = 0
     for g in range(n_mir):
         sd = g if g < 12 else (seed_offset + 2000 + g)
         stats_agents = [
-            _MoveStatsAgent(cand_net, seed=sd * 31 + s) for s in range(4)
+            _MoveStatsAgent(cand_net, seed=sd * 31 + s, temperature=0.7) for s in range(4)
         ]
-        for a in stats_agents:
-            a.temperature = 0.7
         res = play_game(stats_agents, seed=sd)
         mean_sc = sum(res.scores) / 4.0
         mir_scores.append(mean_sc)
@@ -225,14 +240,17 @@ def _eval_candidate_worker(args: tuple) -> dict:
         max_turns = max(max_turns, res.turns)
         tot_cards += sum(a.card_moves for a in stats_agents)
         tot_ffree += sum(a.ffree_moves for a in stats_agents)
-        tot_disp += sum(a.disp_moves for a in stats_agents)
+        tot_t1 += sum(a.disp_t1 for a in stats_agents)
+        tot_t2 += sum(a.disp_t2 for a in stats_agents)
     mir_mean = float(np.mean(mir_scores))
     mir_seed12_mean = float(np.mean(mir_0_11))
     tot_cards = max(1, tot_cards)
     ffree_rate = tot_ffree / tot_cards
-    disp_rate = tot_disp / tot_cards
+    t1_rate = tot_t1 / tot_cards
+    t2_rate = tot_t2 / tot_cards
+    disp_rate = t1_rate + t2_rate
 
-    # 5. Tactical League: Candidate vs [RuleAgent, CounterAgent, PusherAgent]
+    # 5. Tactical League
     tac_diff = 0.0
     for g in range(n_tac):
         seat = g % 4
@@ -241,7 +259,7 @@ def _eval_candidate_worker(args: tuple) -> dict:
         oi = 0
         for s in range(4):
             if s == seat:
-                seats.append(NeuralAgent(cand_net, seed=seed_offset + 3000 + g * 5 + s))
+                seats.append(NeuralAgent(cand_net, seed=seed_offset + 3000 + g * 5 + s, temperature=0.7))
             else:
                 seats.append(opps[oi])
                 oi += 1
@@ -250,88 +268,76 @@ def _eval_candidate_worker(args: tuple) -> dict:
         tac_diff += sc - (sum(res.scores) - sc) / 3.0
     tac_diff /= n_tac
 
-    # Balanced Nash + League Fitness with strict mirror-quality floor (>= 2.15)
     fitness = (
-        1.25 * inv_diff
-        + 1.25 * (inv_win_rate - 0.25)
-        + 0.90 * def_diff
-        + 1.35 * coev_diff
-        + 1.35 * (coev_win_rate - 0.25)
+        1.10 * silo_diff
+        + 1.60 * prev_diff
+        + 1.30 * coev_diff
         + 0.65 * tac_diff
-        + 0.55 * (mir_mean - 2.15)
+        + 0.60 * (mir_mean - 2.08)
     )
     if mir_seed12_mean < 2.15:
-        fitness -= 8.0 * (2.15 - mir_seed12_mean)
-    if mir_mean < 2.12:
-        fitness -= 7.0 * (2.12 - mir_mean)
+        fitness -= 10.0 * (2.15 - mir_seed12_mean)
+    if mir_mean < 2.02:
+        fitness -= 8.0 * (2.02 - mir_mean)
     if max_turns >= 260:
         fitness -= 4.0
-    # Selectivity band: meaningful displacement & canary raiding without chaos
-    if disp_rate < 0.05:
-        fitness -= 15.0 * (0.05 - disp_rate)
-    elif disp_rate > 0.17:
-        fitness -= 20.0 * (disp_rate - 0.17)
-    if ffree_rate > 0.11:
-        fitness -= 15.0 * (ffree_rate - 0.11)
+    if t1_rate < 0.025:
+        fitness -= 15.0 * (0.025 - t1_rate)
+    if disp_rate > 0.20:
+        fitness -= 20.0 * (disp_rate - 0.20)
 
     return {
         "idx": cand_idx,
         "theta": theta,
         "fitness": float(fitness),
-        "inv_diff": float(inv_diff),
-        "inv_win": float(inv_win_rate),
-        "def_diff": float(def_diff),
+        "silo_diff": float(silo_diff),
+        "silo_win": float(silo_win_rate),
+        "prev_diff": float(prev_diff),
+        "prev_win": float(prev_win_rate),
         "coev_diff": float(coev_diff),
-        "coev_win": float(coev_win_rate),
         "tac_diff": float(tac_diff),
         "mir_mean": float(mir_mean),
         "mir_12": float(mir_seed12_mean),
         "ffree": float(ffree_rate),
-        "disp": float(disp_rate),
-        "max_turns": int(max_turns),
+        "t1": float(t1_rate),
+        "t2": float(t2_rate),
     }
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--generations", type=int, default=6)
+    parser.add_argument("--generations", type=int, default=5)
     parser.add_argument("--pop", type=int, default=14)
     parser.add_argument("--elite", type=int, default=4)
     parser.add_argument("--workers", type=int, default=2)
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
-    src = BASELINE_BACKUP if BASELINE_BACKUP.exists() else TARGET_CKPT
-    base_net = PolicyNet.load(src)
-    base_params = {k: v.copy() for k, v in base_net.params.items()}
-    W2 = base_params["W2"][:, 0]
+    prev_src = PREV_RAIDER_BACKUP if PREV_RAIDER_BACKUP.exists() else TARGET_CKPT
+    prev_net = PolicyNet.load(prev_src)
+    prev_params = {k: v.copy() for k, v in prev_net.params.items()}
+    silo_params = {k: v.copy() for k, v in prev_params.items()}
+    silo_params["W1"][N_STATE_FEATURES + 24 :] = 0.0
+
+    W2 = silo_params["W2"][:, 0]
     u_tanh = (W2 / float(np.sum(W2 * W2))).astype(np.float32)
 
-    # Selective warm start below calib_A ([3.2, 1.0, 5.2, 2.5, 4.0, 6.2, 3.0, 1.5])
-    # so 4x mirror stays >= 2.15 while 1v3 & 3v1 crush Old selfplay4:
+    # Warm-start from surg_A ([1.75, 1.05, 3.45, 2.95, 3.85, 4.55, 3.00, 1.35])
+    # plus Turn-1 untouchable [8] and Turn-1 parachute [9]:
     mean = np.array(
-        [
-            2.30,  # 0 foreign_canary_active
-            0.90,  # 1 foreign_owner_loot
-            4.10,  # 2 raiding_owner_push
-            2.10,  # 3 is_row0_push
-            3.80,  # 4 pushes_leader
-            4.90,  # 5 smart_foreign_safe
-            2.90,  # 6 completes_dyn_pair
-            1.70,  # 7 pushable_dragon_bait
-        ],
+        [1.70, 1.05, 3.15, 2.90, 3.80, 4.45, 3.00, 1.35, 5.20, 6.20],
         dtype=np.float32,
     )
     std = np.array(
-        [0.65, 0.50, 0.80, 0.70, 0.85, 0.80, 0.65, 0.65],
+        [0.45, 0.45, 0.65, 0.60, 0.70, 0.65, 0.55, 0.50, 1.60, 1.60],
         dtype=np.float32,
     )
 
     rng = np.random.default_rng(args.seed)
-    champ_params = {k: v.copy() for k, v in base_params.items()}
+    champ_params = {k: v.copy() for k, v in prev_params.items()}
 
     print(
-        f"Starting {args.generations}-generation CEM Raider League "
+        f"Starting {args.generations}-generation Turn-1 + Turn-2 CEM Raider League "
         f"(pop={args.pop}, elite={args.elite}, workers={args.workers})",
         flush=True,
     )
@@ -345,17 +351,18 @@ def main() -> None:
             samples[0] = mean.copy()
             samples = np.clip(samples, THETA_BOUNDS[:, 0], THETA_BOUNDS[:, 1])
 
-            seed_offset = 10_000 * (gen + 1)
+            seed_offset = 20_000 * (gen + 1)
             tasks = [
                 (
                     i,
                     samples[i],
-                    base_params,
+                    silo_params,
+                    prev_params,
                     champ_params,
                     u_tanh,
                     seed_offset,
-                    20,  # n_inv
-                    16,  # n_def
+                    20,  # n_silo
+                    24,  # n_prev
                     20,  # n_coev
                     20,  # n_mir
                     12,  # n_tac
@@ -374,33 +381,32 @@ def main() -> None:
             ).astype(np.float32)
 
             top = elites[0]
-            champ_params = apply_theta(base_params, u_tanh, top["theta"])
+            champ_params = apply_theta(silo_params, u_tanh, top["theta"])
 
             dt = time.time() - gen_t0
             print(
                 f"Gen {gen + 1}/{args.generations} ({dt:4.1f}s) | "
                 f"fit={top['fitness']:+.3f} | "
-                f"1v3:{top['inv_diff']:+.2f}({top['inv_win']*100:4.1f}%W) | "
-                f"3v1:{top['def_diff']:+.2f} | "
-                f"coev:{top['coev_diff']:+.2f}({top['coev_win']*100:4.1f}%W) | "
-                f"tac:{top['tac_diff']:+.2f} | "
+                f"vs_silo:{top['silo_diff']:+.2f} | "
+                f"vs_prev:{top['prev_diff']:+.2f}({top['prev_win']*100:4.1f}%W) | "
+                f"coev:{top['coev_diff']:+.2f} | "
                 f"mir={top['mir_mean']:.2f}(s12={top['mir_12']:.2f}) | "
-                f"ff={top['ffree']*100:4.1f}% dp={top['disp']*100:4.1f}%",
+                f"t1={top['t1']*100:4.1f}% t2={top['t2']*100:4.1f}% ff={top['ffree']*100:4.1f}%",
                 flush=True,
             )
 
-        # Final head-to-head holdout validation (160 games per matchup)
         final_candidates = [mean] + [e["theta"] for e in elites[:3]]
         final_tasks = [
             (
                 i,
                 th,
-                base_params,
+                silo_params,
+                prev_params,
                 champ_params,
                 u_tanh,
-                90_000,
-                160,  # n_inv
-                120,  # n_def
+                190_000,
+                160,  # n_silo
+                160,  # n_prev
                 120,  # n_coev
                 60,   # n_mir
                 60,   # n_tac
@@ -411,23 +417,23 @@ def main() -> None:
         final_res.sort(key=lambda r: r["fitness"], reverse=True)
         winner = final_res[0]
 
-    print("\n=== Final Selected Policy (Holdout Validation) ===", flush=True)
+    print("\n=== Final Selected Turn-1 + Turn-2 Policy (Holdout Validation) ===", flush=True)
     print(
-        f"  1v3 Old selfplay4 : diff={winner['inv_diff']:+.3f}, win={winner['inv_win']*100:.1f}%\n"
-        f"  3v1 Old selfplay4 : diff={winner['def_diff']:+.3f}\n"
-        f"  1v3 Coev Champion : diff={winner['coev_diff']:+.3f}, win={winner['coev_win']*100:.1f}%\n"
+        f"  vs Legacy Silo    : diff={winner['silo_diff']:+.3f}, win={winner['silo_win']*100:.1f}%\n"
+        f"  vs Prev Turn2-Only: diff={winner['prev_diff']:+.3f}, 1v3_win={winner['prev_win']*100:.1f}%\n"
+        f"  vs Coev Champion  : diff={winner['coev_diff']:+.3f}\n"
         f"  vs Tactical League: diff={winner['tac_diff']:+.3f}\n"
-        f"  4x Mirror Score   : {winner['mir_mean']:.3f} (seeds 0..11: {winner['mir_12']:.3f})\n"
-        f"  Move Selectivity  : foreign_free={winner['ffree']*100:.1f}%, displacements={winner['disp']*100:.1f}%",
+        f"  4x Mirror (t=0.7) : {winner['mir_mean']:.3f} (seeds 0..11: {winner['mir_12']:.3f})\n"
+        f"  Move Breakdown    : Turn1_disp={winner['t1']*100:.1f}%, Turn2_disp={winner['t2']*100:.1f}%, foreign_free={winner['ffree']*100:.1f}%",
         flush=True,
     )
     for name, val in zip(THETA_NAMES, winner["theta"]):
         print(f"    {name:<24}: {float(val):+.3f}", flush=True)
 
-    out_net = copy.deepcopy(base_net)
-    out_net.params = apply_theta(base_params, u_tanh, winner["theta"])
+    out_net = copy.deepcopy(prev_net)
+    out_net.params = apply_theta(silo_params, u_tanh, winner["theta"])
     out_net.optimizer = type(out_net.optimizer)(out_net.params, lr=5e-4)
-    out_net.trained_generations = int(base_net.trained_generations) + args.generations
+    out_net.trained_generations = int(prev_net.trained_generations) + args.generations
     out_net.save(TARGET_CKPT)
     print(
         f"\nSaved retrained checkpoint -> {TARGET_CKPT} in {time.time() - t0:.1f}s",
