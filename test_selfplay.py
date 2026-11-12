@@ -2408,25 +2408,98 @@ def test_lone_gem_holder_can_cash_out_after_rivals_commit_to_cages():
     escaped_rival = replaced(_rival(2, 4), escaped=True)
     dead_rival = replaced(_rival(3, 4), dead=True)
 
-    # All rivals voluntarily in cage / escaped / dead + 1 gem -> banking allowed.
+    # All rivals voluntarily in cage / escaped / dead + 1 gem on a lorry or
+    # unknown card -> banking allowed.
     cashout_ctx = replaced(
         _cage_context(opponents=(planned_cage, escaped_rival, dead_rival)),
+        own_position=LORRY,
+        own_column=None,
         private_cards=((GEM, 0),),
     )
     assert round_dragon_hazard(cashout_ctx) == 0.0
     assert cage_banks_nothing(cashout_ctx) is False
     assert action_mask(cashout_ctx)[int(PIT_CAGE)]
 
+    # Standing on a visible gem in own column with 0% hazard -> collect the gem
+    # rather than walking off it into a cage.
+    on_known_gem = replaced(
+        _cage_context(opponents=(planned_cage, escaped_rival, dead_rival)),
+        private_cards=((GEM, 0),),
+    )
+    assert cage_banks_nothing(on_known_gem) is True
+
     # Displaced rival (not yet planned) is still active in the mine -> do not herd-flee.
     herd_ctx = replaced(
-        _cage_context(opponents=(displaced_cage, escaped_rival, dead_rival)),
-        private_cards=((GEM, 0),),
+        cashout_ctx,
+        opponents=(displaced_cage, escaped_rival, dead_rival),
     )
     assert cage_banks_nothing(herd_ctx) is True
 
     # Empty-handed seat still refuses the cage even when all rivals are out.
-    empty_ctx = _cage_context(opponents=(planned_cage, escaped_rival, dead_rival))
+    empty_ctx = replaced(cashout_ctx, private_cards=())
     assert cage_banks_nothing(empty_ctx) is True
+
+
+def test_no_seat_leaves_calm_mine_when_all_seats_are_in_own_columns():
+    """When every active seat stands in its own column and no blast is pending,
+    no seat should abandon the haul via PIT_CAGE."""
+    from features import cage_banks_nothing
+    from learning import PolicyNet
+    from selfplay import play_game
+
+    rivals_home = tuple(
+        replaced(_rival(i, 2), column=i, planned=True) for i in (1, 2, 3)
+    )
+    # Even when standing on a visible dragon in own column with 0, 1, or 3 gems,
+    # if LORRY (or a safe card) is legal and all rivals are in their own columns,
+    # PIT_CAGE is refused so the seat stays in the haul.
+    for gems in (0, 1, 3):
+        ctx_dragon = replaced(
+            _board_context(
+                {(0, 0): (DRAGON, 0)},
+                legal=(int(PIT_CAGE), int(LORRY), int(PASS)),
+                own_position=0,
+            ),
+            private_cards=tuple((GEM, 0) for _ in range(gems)),
+            opponents=rivals_home,
+        )
+        assert cage_banks_nothing(ctx_dragon) is True
+        mask = action_mask(ctx_dragon)
+        assert mask[int(LORRY)] and not mask[int(PIT_CAGE)]
+
+    # End-to-end across 20 four-net games: zero PIT_CAGE moves when all active
+    # players are in their own columns and no blast is pending.
+    net = PolicyNet.load("checkpoints/selfplay4.npz")
+    for seed in range(20):
+        rec = []
+        play_game(
+            [NeuralAgent(net, seed=seed * 31 + i, temperature=0.7, recorder=rec) for i in range(4)],
+            seed=seed,
+        )
+        for d in rec:
+            ctx = d.ctx
+            if ctx is None:
+                continue
+            prim, _ = split_action(int(d.action))
+            if prim != int(PIT_CAGE):
+                continue
+            all_in_own_col = (
+                ctx.own_column == ctx.player_index
+                and any(
+                    not o.escaped and not o.dead and o.position != PIT_CAGE
+                    for o in ctx.opponents
+                )
+                and all(
+                    o.column == o.player_index
+                    for o in ctx.opponents
+                    if not o.escaped and not o.dead and 0 <= o.position < PIT_CAGE
+                )
+            )
+            any_blast = ctx.own_blast_pending or any(
+                o.blast_pending for o in ctx.opponents
+            )
+            assert not (all_in_own_col and not any_blast)
+
 
 
 

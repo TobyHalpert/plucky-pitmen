@@ -987,6 +987,32 @@ def rival_is_on_my_dragon(ctx: PlayerActionContext) -> bool:
     return False
 
 
+def _external_round_hazard(ctx: PlayerActionContext) -> float:
+    """Dragon blow-up risk from rivals and rival blasts if this seat steps to safety."""
+    if any(o.blast_pending for o in ctx.opponents) or rival_is_on_my_dragon(ctx):
+        return 1.0
+    survive = 1.0
+    for opponent in ctx.opponents:
+        if opponent.escaped or opponent.dead:
+            continue
+        survive *= 1.0 - figure_dragon_risk(ctx, opponent.player_index)
+    return float(1.0 - survive)
+
+
+def _own_card_is_known_safe(ctx: PlayerActionContext) -> bool:
+    """True when standing on a card in own column whose front is known not to be a dragon."""
+    if getattr(ctx, "own_displaced", False):
+        return False
+    row = ctx.own_position
+    if not 0 <= row < len(ctx.public_rows):
+        return False
+    column = ctx.own_column if ctx.own_column is not None else ctx.player_index
+    if column != ctx.player_index or column >= len(ctx.public_rows[row]):
+        return False
+    entry = ctx.public_rows[row][column]
+    return entry is not None and entry[0] is not None and int(entry[0]) != DRAGON
+
+
 def cage_banks_nothing(ctx: PlayerActionContext) -> bool:
     """True when leaving through a pit cage would collect nothing and answer nothing.
 
@@ -996,72 +1022,65 @@ def cage_banks_nothing(ctx: PlayerActionContext) -> bool:
     escape from. Loot means a gem in hand (dynamite is not scored and survives an
     escape either way). Something to escape from means a blast that is charged --
     it can end the haul whatever the board says -- a dragon the seat can see is
-    about to be turned (the card under its own figure, or a card in its column
-    with a rival standing on it), or a board that is genuinely going up in flames
-    (``round_dragon_hazard`` above ``CAGE_ANSWERS_A_HAZARD``, which a charged
-    blast reads as 1.00).
+    about to be turned (the card under its own figure when no safe card or lorry
+    can refuse it, or a card in its column with a rival standing on it), or a
+    board that is genuinely going up in flames (``round_dragon_hazard`` above
+    ``CAGE_ANSWERS_A_HAZARD``, which a charged blast reads as 1.00).
 
-    What is *not* a reason, and used to be one: the ordinary risk of a mine. Four
-    figures on face-down cards read 0.2-0.3 every single round, so any bar below
-    that made the cage legal at every decision, and a seat holding one gem had no
-    reason not to take it. Seed 7, haul 3: all four seats left with one gem each
-    at 0.22-0.29 while three of them could see gems in their own columns, and the
-    haul paid a four-way tie of +1 with the mine abandoned. Leaving is a
-    **decision that repeats**: the cage is still there next round, the gems are
-    still there next round, and until something can actually take them away the
-    round is better spent digging.
-
-    The same question is asked of a *pass* taken while already in a cage: a
-    figure in a cage leaves the mine when the cards are turned, so passing there
-    is the same departure one decision later.
-
-    Everything else is a wasted round, and the clause has to get one more case
-    right, which it does not by looking at the table: **"somebody is already in a
-    cage"** is not a threat. Ordinary raiding displaces rivals into cages all the
-    time, and once one seat reads another's cage as a reason to flee, the whole
-    table follows: an earlier checkpoint, seed 7, haul 1, ended with every figure
-    in a cage and not one gem collected, and the same thing happened in 40% of
-    sampled four-net games.
+    What is *not* a reason, and used to be one: the ordinary risk of a mine, or
+    a visible dragon under the seat's own figure while every rival stands safely
+    in its own column and a safe card or lorry is available to refuse that
+    dragon without forfeiting the haul. Leaving is a **decision that repeats**:
+    the cage is still there next round, the gems are still there next round, and
+    until something external can actually take them away (or every rival has
+    already left the mine) the round is better spent staying in the haul.
     """
     own_gems = sum(1 for front, _ in ctx.private_cards if front == GEM)
+    ext_hazard = _external_round_hazard(ctx)
+    lorry_legal = int(LORRY) in {int(a) for a in ctx.legal_actions}
+    safe_refusal_available = known_safe_card_available(ctx) or lorry_legal
+    alone_in_mine = bool(ctx.opponents) and all(
+        o.escaped or o.dead or (o.position == PIT_CAGE and o.planned)
+        for o in ctx.opponents
+    )
+
+    if own_card_is_known_dragon(ctx) and ext_hazard < CAGE_ANSWERS_A_HAZARD:
+        # Standing on a visible dragon in own column with no external danger:
+        # even if own_blast_pending is True, that blast can never fire from a
+        # dragon square (phase 2 reveals board cards before blasts). Stepping to
+        # a visible safe card or the lorry refuses the dragon without giving up
+        # the haul, unless all rivals are already out and we are banking loot.
+        if not (own_gems >= 1 and alone_in_mine):
+            return safe_refusal_available
+
     if own_gems >= 1:
-        # Loot in hand is a reason to leave when danger can take it away, OR
-        # when every rival is already out of the haul (or 3+ gems are held with
-        # no visible safe dig left) and no blast of our own is pending. Without
-        # that clause, a successful blast that chases all rivals out leaves
-        # ``round_dragon_hazard == 0`` and traps the lone survivor inside the
-        # mine until a blind dig wakes a dragon.
-        alone_in_mine = bool(ctx.opponents) and all(
-            o.escaped or o.dead or (o.position == PIT_CAGE and o.planned)
-            for o in ctx.opponents
+        if alone_in_mine:
+            if not ctx.own_blast_pending and _own_card_is_known_safe(ctx):
+                return True
+            if not ctx.own_blast_pending or blast_dragon_risk(ctx) >= 0.30:
+                return False
+        hazard_if_staying = (
+            ext_hazard
+            if own_card_is_known_dragon(ctx)
+            else round_dragon_hazard(ctx)
         )
-        rich_without_safe_dig = (
-            own_gems >= 3 and not known_safe_card_available(ctx)
-        )
-        blast_blocks_cashout = ctx.own_blast_pending and not (
-            alone_in_mine and blast_dragon_risk(ctx) >= 0.30
-        )
-        if not blast_blocks_cashout and (alone_in_mine or rich_without_safe_dig):
-            return False
         return not (
-            round_dragon_hazard(ctx) >= CAGE_ANSWERS_A_HAZARD
+            hazard_if_staying >= CAGE_ANSWERS_A_HAZARD
             or rival_is_on_my_dragon(ctx)
         )
+
     if any(o.blast_pending for o in ctx.opponents):
         return False
     if ctx.own_position == PIT_CAGE and ctx.own_blast_pending:
         return False
-    if ctx.own_blast_pending and round_dragon_hazard(ctx) >= CAGE_ANSWERS_A_HAZARD:
+    if (
+        ctx.own_blast_pending
+        and not own_card_is_known_dragon(ctx)
+        and round_dragon_hazard(ctx) >= CAGE_ANSWERS_A_HAZARD
+    ):
         return False
     if own_card_is_known_dragon(ctx):
-        # Refusing the dragon is the point, but spending the haul is not the
-        # only way to do it: a card the seat can see is a gem it can take, and
-        # one row away is close enough. Seed 7, haul 3, round 0 -- P3 sits on a
-        # dragon it can see, holds nothing, plans the cage at 62% while a gem it
-        # can see sits at r0c2, and takes that gem at its next decision in the
-        # same phase; from that position the gem is worth +2.59 +- 0.12 and the
-        # cage +2.23 +- 0.10.
-        return known_safe_card_available(ctx)
+        return safe_refusal_available
     if rival_is_on_my_dragon(ctx):
         return False
     return True
