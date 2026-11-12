@@ -170,8 +170,10 @@ def test_feature_encoder_is_seat_invariant():
 def test_action_mask_never_widens_the_rules():
     """The mask may narrow the rules for documented policies, never widen them."""
     from features import (
+        climbs_off_the_card_it_chose,
         digs_face_up_dragon,
         digs_past_a_known_gem,
+        holds_a_signalled_dragon,
         lorry_skips_a_card_worth_taking,
         strands_the_figure,
         takes_the_gem_over_the_dynamite,
@@ -193,6 +195,8 @@ def test_action_mask_never_widens_the_rules():
                     or action == int(LORRY)
                     and lorry_skips_a_card_worth_taking(ctx)
                     or digs_face_up_dragon(ctx, action)
+                    or action in holds_a_signalled_dragon(ctx)
+                    or action in climbs_off_the_card_it_chose(ctx)
                     or action in walks_past_a_free_card(ctx)
                     or action in strands_the_figure(ctx)
                     or action in digs_past_a_known_gem(ctx)

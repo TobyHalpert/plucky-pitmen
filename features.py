@@ -61,7 +61,7 @@ DECK_RISK_BASE = BLAST_RISK_FEATURE + 1
 DECK_COUNT_BASE = DECK_RISK_BASE + 3
 SUSPECTED_DRAGON_BASE = DECK_COUNT_BASE + 3
 N_STATE_FEATURES = SUSPECTED_DRAGON_BASE + 3
-N_ACTION_FEATURES = 24
+N_ACTION_FEATURES = 32
 N_INPUT_FEATURES = N_STATE_FEATURES + N_ACTION_FEATURES
 
 
@@ -606,6 +606,11 @@ def action_features(
     blast_risk: float | None = None,
     known_dragons: np.ndarray | None = None,
     cell_weights: dict[tuple[int, int], float] | None = None,
+    smart_risk: np.ndarray | None = None,
+    opp_by_col: dict[int, object] | None = None,
+    max_score: int | None = None,
+    own_dynamite: int | None = None,
+    table_pushes: int | None = None,
 ) -> np.ndarray:
     primitive, announces_blast = split_action(action)
     values = np.zeros(N_ACTION_FEATURES, dtype=np.float32)
@@ -613,8 +618,19 @@ def action_features(
         known_dragons, _known_safe, _unknown, risk = backside_stats(ctx)
     if blast_risk is None:
         blast_risk = blast_dragon_risk(ctx) if announces_blast else 0.0
-    if cell_weights is None and primitive < PIT_CAGE:
-        cell_weights = cell_suspicion_weights(ctx)
+    if primitive < PIT_CAGE:
+        if cell_weights is None:
+            cell_weights = cell_suspicion_weights(ctx)
+        if smart_risk is None:
+            _, _, _, smart_risk = backside_stats(ctx, trust_suspected=1.0)
+        if opp_by_col is None:
+            opp_by_col = {o.player_index: o for o in ctx.opponents}
+        if max_score is None:
+            max_score = max([ctx.own_score] + [o.score for o in ctx.opponents])
+        if own_dynamite is None:
+            own_dynamite = sum(1 for f, _ in ctx.private_cards if f == DYNAMITE)
+        if table_pushes is None:
+            table_pushes = sum(o.displacements for o in ctx.opponents)
 
     n_players = max(1, ctx.n_players)
     depth = _own_depth(ctx)
@@ -635,6 +651,7 @@ def action_features(
         if entry is not None:
             front, back = entry
             values[8 + int(back)] = 1.0
+            susp = 0.0
             if front is None:
                 values[15] = 1.0
                 card_risk = float(risk[int(back)])
@@ -656,11 +673,44 @@ def action_features(
             values[17] = 1.0 - card_risk
 
             occupant = _occupant(ctx, row, column)
+            raiding_owner = False
             if occupant is not None:
                 values[18] = 1.0
-                values[19] = float(
-                    occupant != ctx.player_index and occupant == column
-                )
+                raiding_owner = occupant != ctx.player_index and occupant == column
+                values[19] = float(raiding_owner)
+
+            if column != own_column and not announces_blast:
+                owner = (opp_by_col or {}).get(int(column))
+                if owner is not None:
+                    values[24] = float(
+                        not owner.escaped
+                        and not owner.dead
+                        and owner.position != PIT_CAGE
+                    )
+                    values[25] = owner.card_count / 8.0
+                    values[26] = float(raiding_owner)
+                    if raiding_owner:
+                        values[27] = float(row == 0)
+                        values[28] = float(
+                            owner.score == max_score and ctx.own_score < max_score
+                        )
+                if front is None and smart_risk is not None:
+                    values[29] = float(
+                        max(
+                            0.0,
+                            (1.0 - float(smart_risk[int(back)]))
+                            * (1.0 - float(values[21])),
+                        )
+                    )
+            elif front is not None:
+                if int(front) == DYNAMITE and own_dynamite == 1:
+                    values[30] = 1.0
+                elif (
+                    int(front) == DRAGON
+                    and table_pushes
+                    and rival_can_push(ctx, primitive)
+                ):
+                    values[31] = min(float(table_pushes), 3.0) / 3.0
     elif primitive == PIT_CAGE:
         values[1] = 1.0
     elif primitive == LORRY:
@@ -701,7 +751,12 @@ def state_action_matrix(
         state = state_features(ctx)
     known_dragons, _known_safe, _unknown, risk = backside_stats(ctx)
     blast_risk = float(state[BLAST_RISK_FEATURE])
+    smart_risk = state[DECK_RISK_BASE : DECK_RISK_BASE + 3]
     cell_weights = cell_suspicion_weights(ctx)
+    opp_by_col = {o.player_index: o for o in ctx.opponents}
+    max_score = max([ctx.own_score] + [o.score for o in ctx.opponents])
+    own_dynamite = sum(1 for f, _ in ctx.private_cards if f == DYNAMITE)
+    table_pushes = sum(o.displacements for o in ctx.opponents)
     matrix = np.empty((N_ACTIONS, N_INPUT_FEATURES), dtype=np.float32)
     matrix[:, :N_STATE_FEATURES] = state
     for action in range(N_ACTIONS):
@@ -712,6 +767,11 @@ def state_action_matrix(
             blast_risk=blast_risk,
             known_dragons=known_dragons,
             cell_weights=cell_weights,
+            smart_risk=smart_risk,
+            opp_by_col=opp_by_col,
+            max_score=max_score,
+            own_dynamite=own_dynamite,
+            table_pushes=table_pushes,
         )
     return matrix
 
@@ -899,6 +959,55 @@ def own_card_is_known_dragon(ctx: PlayerActionContext) -> bool:
     return entry is not None and entry[0] is not None and int(entry[0]) == DRAGON
 
 
+def own_card_is_signalled_dragon(ctx: PlayerActionContext) -> bool:
+    """True when standing on a foreign card whose column owner signalled dragon.
+
+    The owner of column ``c`` sees every front in column ``c``:
+    - If ``(row, c)`` was previously walked off voluntarily (``vacated_cells``),
+      or
+    - If owner ``c`` bolted into ``PIT_CAGE`` in this round (``not escaped`` and
+      ``position == PIT_CAGE``) with no blast pending and external hazard from
+      other columns below ``CAGE_ANSWERS_A_HAZARD``,
+    then ``(row, c)`` is a signalled dragon that the seat must step off rather
+    than pass on.
+    """
+    if getattr(ctx, "own_displaced", False):
+        return False
+    row = ctx.own_position
+    column = ctx.own_column
+    if column is None or column == ctx.player_index or not (0 <= row < len(ctx.public_rows)):
+        return False
+    if column >= len(ctx.public_rows[row]) or ctx.public_rows[row][column] is None:
+        return False
+    if ctx.own_blast_pending or any(o.blast_pending for o in ctx.opponents):
+        return False
+    for vr, vc, _vb in getattr(ctx, "vacated_cells", ()):
+        if int(vr) == int(row) and int(vc) == int(column):
+            return True
+    owner = next((o for o in ctx.opponents if o.player_index == column), None)
+    if (
+        owner is not None
+        and not owner.escaped
+        and not owner.dead
+        and owner.position == PIT_CAGE
+    ):
+        survive = 1.0
+        for other in ctx.opponents:
+            if other.escaped or other.dead or other.player_index == column:
+                continue
+            survive *= 1.0 - figure_dragon_risk(ctx, other.player_index)
+        if (1.0 - survive) < CAGE_ANSWERS_A_HAZARD:
+            return True
+    return False
+
+
+def holds_a_signalled_dragon(ctx: PlayerActionContext) -> set[int]:
+    """Refuse ``PASS`` when standing on a foreign dragon signalled by its owner."""
+    if int(PASS) in {int(a) for a in ctx.legal_actions} and own_card_is_signalled_dragon(ctx):
+        return {int(PASS)}
+    return set()
+
+
 def known_safe_card_available(ctx: PlayerActionContext) -> bool:
     """True when the seat can step onto a card it can see is not a dragon.
 
@@ -955,7 +1064,7 @@ def lorry_skips_a_card_worth_taking(ctx: PlayerActionContext) -> bool:
         # Displaced on row 0: no card is reachable and Pass is illegal, so the
         # only choice is leaving via pit cage vs staying in the haul on the lorry.
         return not cage_banks_nothing(ctx)
-    return not own_card_is_known_dragon(ctx)
+    return not (own_card_is_known_dragon(ctx) or own_card_is_signalled_dragon(ctx))
 
 
 # The hazard a cage actually answers.  It cannot be the ordinary risk of the
@@ -1039,13 +1148,14 @@ def cage_banks_nothing(ctx: PlayerActionContext) -> bool:
     ext_hazard = _external_round_hazard(ctx)
     lorry_legal = int(LORRY) in {int(a) for a in ctx.legal_actions}
     safe_refusal_available = known_safe_card_available(ctx) or lorry_legal
+    on_dragon = own_card_is_known_dragon(ctx) or own_card_is_signalled_dragon(ctx)
     alone_in_mine = bool(ctx.opponents) and all(
         o.escaped or o.dead or (o.position == PIT_CAGE and o.planned)
         for o in ctx.opponents
     )
 
-    if own_card_is_known_dragon(ctx) and ext_hazard < CAGE_ANSWERS_A_HAZARD:
-        # Standing on a visible dragon in own column with no external danger:
+    if on_dragon and ext_hazard < CAGE_ANSWERS_A_HAZARD:
+        # Standing on a visible or signalled dragon with no external danger:
         # even if own_blast_pending is True, that blast can never fire from a
         # dragon square (phase 2 reveals board cards before blasts). Stepping to
         # a visible safe card or the lorry refuses the dragon without giving up
@@ -1061,7 +1171,7 @@ def cage_banks_nothing(ctx: PlayerActionContext) -> bool:
                 return False
         hazard_if_staying = (
             ext_hazard
-            if own_card_is_known_dragon(ctx)
+            if on_dragon
             else round_dragon_hazard(ctx)
         )
         return not (
@@ -1075,11 +1185,11 @@ def cage_banks_nothing(ctx: PlayerActionContext) -> bool:
         return False
     if (
         ctx.own_blast_pending
-        and not own_card_is_known_dragon(ctx)
+        and not on_dragon
         and round_dragon_hazard(ctx) >= CAGE_ANSWERS_A_HAZARD
     ):
         return False
-    if own_card_is_known_dragon(ctx):
+    if on_dragon:
         return safe_refusal_available
     if rival_is_on_my_dragon(ctx):
         return False
@@ -1101,6 +1211,8 @@ def _cage_reason(ctx: PlayerActionContext) -> str:
     why: list[str] = []
     if own_card_is_known_dragon(ctx):
         why.append("the dragon under me")
+    elif own_card_is_signalled_dragon(ctx):
+        why.append("the signalled dragon under me")
     if ctx.own_blast_pending:
         why.append("my blast")
     elif any(opponent.blast_pending for opponent in ctx.opponents):
@@ -1133,11 +1245,12 @@ def action_reason(ctx: PlayerActionContext, action: int) -> str:
     if primitive == PIT_CAGE:
         return _cage_reason(ctx) + suffix
     if primitive == LORRY:
-        refusal = (
-            "lorry, refuses the dragon I can see"
-            if own_card_is_known_dragon(ctx)
-            else "lorry"
-        )
+        if own_card_is_known_dragon(ctx):
+            refusal = "lorry, refuses the dragon I can see"
+        elif own_card_is_signalled_dragon(ctx):
+            refusal = "lorry, refuses the signalled dragon"
+        else:
+            refusal = "lorry"
         return refusal + suffix
     if primitive == PASS:
         return "pass" + suffix
@@ -1435,17 +1548,19 @@ def climbs_off_the_card_it_chose(ctx: PlayerActionContext) -> set[int]:
     entry = ctx.public_rows[ctx.own_position][ctx.own_column]
     if entry is None:
         return set()  # already standing on an emptied cell: nothing to give up
-    if own_card_is_known_dragon(ctx):
+    if own_card_is_known_dragon(ctx) or own_card_is_signalled_dragon(ctx):
         return set()  # rule 1: step off it, wherever that is
     if ctx.own_blast_pending:
         # Moving to another card silently cancels the announced blast; hold on
-        # PASS unless standing on a known dragon (handled above).
+        # PASS unless standing on a known/signalled dragon (handled above).
         return {
             int(action)
             for action in ctx.legal_actions
             if 0 <= int(action) < PIT_CAGE
         }
     already_on_a_gem = entry[0] is not None and int(entry[0]) == GEM
+    max_score = max([ctx.own_score] + [o.score for o in ctx.opponents])
+    opp_by_col = {o.player_index: o for o in ctx.opponents}
     doomed = set()
     for action in ctx.legal_actions:
         primitive = int(action)
@@ -1460,6 +1575,17 @@ def climbs_off_the_card_it_chose(ctx: PlayerActionContext) -> set[int]:
             and not already_on_a_gem
         ):
             continue  # a gem it can see is worth the swap, if it is not on one
+        if column != ctx.player_index:
+            occupant = _occupant(ctx, row, column)
+            if occupant is not None and occupant == column:
+                owner = opp_by_col.get(column)
+                victim_is_leader = (
+                    owner is not None
+                    and owner.score == max_score
+                    and ctx.own_score < max_score
+                )
+                if not already_on_a_gem or (row == 0 and victim_is_leader):
+                    continue  # displacement guarantees another turn + owner canary
         doomed.add(primitive)
     return doomed
 
@@ -1547,6 +1673,13 @@ def action_mask(ctx: PlayerActionContext) -> np.ndarray:
         for primitive in doomed:
             mask[primitive] = False
             mask[join_action(primitive, True)] = False
+    signalled = holds_a_signalled_dragon(ctx)
+    if signalled:
+        trial = mask.copy()
+        for primitive in signalled:
+            trial[primitive] = False
+        if trial.any():
+            mask = trial
     passed = {
         action for action in walks_past_a_free_card(ctx) if mask[int(action)]
     }
@@ -1669,10 +1802,12 @@ __all__ = [
     "doomed_dragon_digs",
     "figure_dragon_risk",
     "has_dragon_free_move",
+    "holds_a_signalled_dragon",
     "join_action",
     "known_safe_card_available",
     "lorry_skips_a_card_worth_taking",
     "own_card_is_known_dragon",
+    "own_card_is_signalled_dragon",
     "rival_can_push",
     "round_dragon_hazard",
     "split_action",
