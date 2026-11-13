@@ -151,6 +151,38 @@ def test_turn1_last_chance_and_parachute_push_features():
     assert af_last[33] == 1.0
 
 
+def test_exposed_own_row0_unlocks_deeper_lanes_and_flags_lorry_trap():
+    """When a seat's only own gem sits at row 0 and unsettled rivals remain on
+    Turn 1, deeper foreign lanes and deeper own dynamite stay unmasked and
+    ``action_features[34]`` flags the exposed row-0 lorry trap; once no pushers
+    remain, ``action_features[34]`` drops to 0 and own row-0 gem dominates.
+    """
+    env = MineEnv(opponents=3)
+    env.reset(seed=9)
+    env.rows[0][0] = (GEM, 0)
+    env.rows[1][0] = (DYNAMITE, 0)
+    env.rows[2][0] = (DRAGON, 0)
+    env.planning_player = 0
+    ctx_exp = env.player_action_context(0)
+    mask_exp = features.action_mask(ctx_exp)
+    # Deeper foreign free lane (row 2, col 1..3) and deeper own dynamite (1, 0) are unmasked:
+    assert mask_exp[1 * MAX_COLUMNS + 0]
+    assert any(mask_exp[2 * MAX_COLUMNS + c] for c in (1, 2, 3))
+    # Row-0 foreign free cards stay masked against an own row-0 gem:
+    assert not any(mask_exp[0 * MAX_COLUMNS + c] for c in (1, 2, 3))
+    af_exp = features.action_features(ctx_exp, 0 * MAX_COLUMNS + 0)
+    assert af_exp[33] < -1.0  # 3 unsettled rivals can push (0, 0) into lorry!
+
+    # Once all 3 rivals have settled (0 unsettled pushers), (0, 0) is unpushable:
+    for r_seat in (1, 2, 3):
+        env.players[r_seat].position = 2
+        env.players[r_seat].column = r_seat
+        env.planned_players[r_seat] = True
+    ctx_safe = env.player_action_context(0)
+    af_safe = features.action_features(ctx_safe, 0 * MAX_COLUMNS + 0)
+    assert af_safe[33] == 0.0
+
+
 def test_retrained_selfplay4_uses_turn1_and_turn2_displacements():
     """Shipped ``selfplay4.npz`` has 133 inputs and displaces on Turn 1 and Turn 2."""
     assert features.N_ACTION_FEATURES == 34

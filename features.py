@@ -782,10 +782,57 @@ def action_features(
                     values[30] = 1.0
                 elif (
                     int(front) == DRAGON
+                    and row >= 1
                     and table_pushes
                     and rival_can_push(ctx, primitive)
                 ):
                     values[31] = min(float(table_pushes), 3.0) / 3.0
+                if row == 0 and occupant is None:
+                    unsettled_r0 = sum(
+                        1
+                        for _idx, o_depth, is_settled, _on_own in (opp_depths or ())
+                        if not is_settled and o_depth > 0
+                    )
+                    foreign_climbers_r0 = sum(
+                        1
+                        for _idx, o_depth, is_settled, on_own in (opp_depths or ())
+                        if is_settled and not on_own and 1 <= o_depth < PIT_CAGE
+                    )
+                    has_deeper_card = any(
+                        0 <= int(a) < PIT_CAGE and int(a) // MAX_COLUMNS >= 1
+                        for a in ctx.legal_actions
+                    )
+                    has_alt_r0 = any(
+                        0 <= int(a) < PIT_CAGE
+                        and int(a) // MAX_COLUMNS == 0
+                        and int(a) % MAX_COLUMNS != own_column
+                        and _occupant(ctx, 0, int(a) % MAX_COLUMNS) is None
+                        for a in ctx.legal_actions
+                    )
+                    if (
+                        int(front) == GEM
+                        and not ctx.own_planned
+                        and has_deeper_card
+                        and unsettled_r0 >= 1
+                    ):
+                        values[33] = -1.04 * float(min(1.0, unsettled_r0 / 2.0))
+                    elif int(front) == DRAGON and (has_deeper_card or has_alt_r0):
+                        values[33] = -1.04
+                    elif int(front) == DYNAMITE and own_dynamite == 0:
+                        if (
+                            not ctx.own_planned
+                            and (has_deeper_card or has_alt_r0)
+                            and (unsettled_r0 + foreign_climbers_r0) >= 1
+                        ):
+                            values[33] = -1.04
+                        elif (
+                            ctx.own_planned
+                            and has_alt_r0
+                            and (unsettled_r0 + foreign_climbers_r0) >= 1
+                        ):
+                            values[33] = -1.04 * (
+                                0.70 if unsettled_r0 >= 1 else 0.35
+                            )
     elif primitive == PIT_CAGE:
         values[1] = 1.0
     elif primitive == LORRY:
@@ -1439,6 +1486,41 @@ def strands_the_figure(ctx: PlayerActionContext) -> set[int]:
     return hidden
 
 
+def _exposed_own_row0_gem_unsettled(ctx: PlayerActionContext) -> int:
+    """Count unsettled/displaced rivals who can still push ``(0, own_col)`` on
+    Turn 1 when the seat's only legal own gem sits at row 0 and deeper cards
+    exist (0 when not applicable).
+    """
+    if ctx.own_planned:
+        return 0
+    has_row0_own_gem = False
+    has_deeper_card = False
+    for action in ctx.legal_actions:
+        primitive = int(action)
+        if not 0 <= primitive < PIT_CAGE:
+            continue
+        row, column = divmod(primitive, MAX_COLUMNS)
+        if row >= 1:
+            has_deeper_card = True
+        if column != ctx.player_index or row >= len(ctx.public_rows):
+            continue
+        entry = ctx.public_rows[row][column]
+        if entry is not None and entry[0] == GEM:
+            if row >= 1:
+                return 0
+            has_row0_own_gem = True
+    if not (has_row0_own_gem and has_deeper_card):
+        return 0
+    return sum(
+        1
+        for o in ctx.opponents
+        if not o.escaped
+        and not o.dead
+        and (not o.planned or getattr(o, "displaced", False))
+        and _opponent_movement_depth(o) > 0
+    )
+
+
 def digs_past_a_known_gem(ctx: PlayerActionContext) -> set[int]:
     """Face-down digs that a gem the seat can see makes pointless.
 
@@ -1480,6 +1562,7 @@ def digs_past_a_known_gem(ctx: PlayerActionContext) -> set[int]:
             break
     if not own_gem_legal:
         return set()
+    allow_deeper_foreign = _exposed_own_row0_gem_unsettled(ctx) >= 2
 
     hidden: set[int] = set()
     for action in ctx.legal_actions:
@@ -1493,6 +1576,8 @@ def digs_past_a_known_gem(ctx: PlayerActionContext) -> set[int]:
         if entry is None or entry[0] is not None:
             continue
         if _occupant(ctx, row, column) is not None:
+            continue
+        if allow_deeper_foreign and row >= 1 and column != ctx.player_index:
             continue
         hidden.add(primitive)
     return hidden
@@ -1523,6 +1608,7 @@ def takes_the_gem_over_the_dynamite(ctx: PlayerActionContext) -> set[int]:
     """
     gem_legal = False
     dynamite_digs: set[int] = set()
+    allow_deeper_dynamite = _exposed_own_row0_gem_unsettled(ctx) >= 1
     for action in ctx.legal_actions:
         primitive = int(action)
         if not 0 <= primitive < PIT_CAGE:
@@ -1536,6 +1622,8 @@ def takes_the_gem_over_the_dynamite(ctx: PlayerActionContext) -> set[int]:
         if int(entry[0]) == GEM:
             gem_legal = True
         elif int(entry[0]) == DYNAMITE:
+            if allow_deeper_dynamite and row >= 1:
+                continue
             dynamite_digs.add(primitive)
     return dynamite_digs if gem_legal else set()
 

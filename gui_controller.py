@@ -522,10 +522,14 @@ class GameController:
         player_num = player_index + 1
         
         if chosen[0] == DRAGON:
-            if final_haul:
+            if final_haul and self.env.game_finished:
                 return StepResult(
                     f"Blast choice: DRAGON. Player {player_num} awakened the dragon. Game over.",
                     game_over=True,
+                )
+            if final_haul and self.env.tie_breaker_contenders:
+                return StepResult(
+                    f"Blast choice: DRAGON. Player {player_num} awakened the dragon. Tie-break required."
                 )
             return StepResult(
                 f"Blast choice: DRAGON. Player {player_num} awakened the dragon. Starting the next haul."

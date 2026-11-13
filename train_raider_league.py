@@ -41,7 +41,7 @@ from features import (
 from learning import PolicyNet
 from selfplay import play_game
 
-PREV_RAIDER_BACKUP = Path("/tmp/selfplay4_4d7c113.npz")
+PREV_RAIDER_BACKUP = Path("/tmp/selfplay4_3b6d9f8.npz")
 TARGET_CKPT = Path("checkpoints/selfplay4.npz")
 
 THETA_NAMES = [
@@ -59,16 +59,16 @@ THETA_NAMES = [
 
 THETA_BOUNDS = np.array(
     [
-        [0.8, 4.0],    # 0 foreign_canary_active
-        [0.0, 3.0],    # 1 foreign_owner_loot
-        [1.5, 5.5],    # 2 raiding_owner_push
-        [1.0, 5.0],    # 3 is_row0_push
-        [1.0, 6.0],    # 4 pushes_leader
-        [2.0, 6.5],    # 5 smart_foreign_safe
-        [1.0, 5.0],    # 6 completes_dyn_pair
-        [0.0, 3.5],    # 7 pushable_dragon_bait
-        [1.0, 10.5],   # 8 last_chance_push (Turn 1 untouchable!)
-        [1.5, 11.0],   # 9 turn1_parachute_push (Turn 1 own-gem ahead!)
+        [0.8, 4.0],     # 0 foreign_canary_active
+        [0.0, 3.0],     # 1 foreign_owner_loot
+        [1.5, 5.5],     # 2 raiding_owner_push
+        [1.0, 5.0],     # 3 is_row0_push
+        [1.0, 6.0],     # 4 pushes_leader
+        [2.0, 6.5],     # 5 smart_foreign_safe
+        [1.0, 5.0],     # 6 completes_dyn_pair
+        [-2.5, 2.5],    # 7 pushable_dragon_bait
+        [1.0, 10.5],    # 8 last_chance_push
+        [1.5, 11.0],    # 9 turn1_parachute_push (+ on push, -1.04 on exposed own row-0)
     ],
     dtype=np.float32,
 )
@@ -283,8 +283,8 @@ def _eval_candidate_worker(args: tuple) -> dict:
         fitness -= 4.0
     if t1_rate < 0.025:
         fitness -= 15.0 * (0.025 - t1_rate)
-    if disp_rate > 0.20:
-        fitness -= 20.0 * (disp_rate - 0.20)
+    if disp_rate > 0.32:
+        fitness -= 20.0 * (disp_rate - 0.32)
 
     return {
         "idx": cand_idx,
@@ -322,13 +322,13 @@ def main() -> None:
     W2 = silo_params["W2"][:, 0]
     u_tanh = (W2 / float(np.sum(W2 * W2))).astype(np.float32)
 
-    # Warm-start from 4d7c113 calibrated for pigeonhole + parachute/no-gem Turn-1 pushes:
+    # Warm-start from 3b6d9f8 + exposed_own_row0 avoidance (folded into [33]):
     mean = np.array(
-        [1.70, 1.05, 2.85, 2.85, 3.20, 4.20, 2.85, 1.55, 5.80, 5.60],
+        [1.95, 1.25, 3.36, 2.77, 2.12, 4.27, 3.40, 0.30, 5.18, 7.16],
         dtype=np.float32,
     )
     std = np.array(
-        [0.40, 0.40, 0.55, 0.55, 0.65, 0.55, 0.50, 0.45, 1.40, 1.40],
+        [0.30, 0.30, 0.40, 0.40, 0.50, 0.45, 0.40, 0.65, 0.90, 0.90],
         dtype=np.float32,
     )
 
