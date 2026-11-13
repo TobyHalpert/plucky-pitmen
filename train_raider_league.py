@@ -41,7 +41,7 @@ from features import (
 from learning import PolicyNet
 from selfplay import play_game
 
-PREV_RAIDER_BACKUP = Path("/tmp/selfplay4_aeafe19_133.npz")
+PREV_RAIDER_BACKUP = Path("/tmp/selfplay4_4d7c113.npz")
 TARGET_CKPT = Path("checkpoints/selfplay4.npz")
 
 THETA_NAMES = [
@@ -322,14 +322,13 @@ def main() -> None:
     W2 = silo_params["W2"][:, 0]
     u_tanh = (W2 / float(np.sum(W2 * W2))).astype(np.float32)
 
-    # Warm-start from surg_A ([1.75, 1.05, 3.45, 2.95, 3.85, 4.55, 3.00, 1.35])
-    # plus Turn-1 untouchable [8] and Turn-1 parachute [9]:
+    # Warm-start from 4d7c113 calibrated for pigeonhole + parachute/no-gem Turn-1 pushes:
     mean = np.array(
-        [1.70, 1.05, 3.15, 2.90, 3.80, 4.45, 3.00, 1.35, 5.20, 6.20],
+        [1.70, 1.05, 2.85, 2.85, 3.20, 4.20, 2.85, 1.55, 5.80, 5.60],
         dtype=np.float32,
     )
     std = np.array(
-        [0.45, 0.45, 0.65, 0.60, 0.70, 0.65, 0.55, 0.50, 1.60, 1.60],
+        [0.40, 0.40, 0.55, 0.55, 0.65, 0.55, 0.50, 0.45, 1.40, 1.40],
         dtype=np.float32,
     )
 

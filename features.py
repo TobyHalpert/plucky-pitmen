@@ -655,7 +655,17 @@ def action_features(
             min_own_gem_row = min(gem_rows) if gem_rows else None
         if opp_depths is None:
             opp_depths = tuple(
-                (o.player_index, _opponent_movement_depth(o))
+                (
+                    o.player_index,
+                    _opponent_movement_depth(o),
+                    bool(o.planned and not getattr(o, "displaced", False)),
+                    bool(
+                        o.planned
+                        and not getattr(o, "displaced", False)
+                        and o.column == o.player_index
+                        and 0 <= o.position < PIT_CAGE
+                    ),
+                )
                 for o in ctx.opponents
                 if not o.escaped and not o.dead
             )
@@ -723,14 +733,42 @@ def action_features(
                             owner.score == max_score and ctx.own_score < max_score
                         )
                         if not ctx.own_planned and float(values[21]) < 0.5:
-                            others_can_reach = any(
-                                o_idx != column and o_depth > row
-                                for o_idx, o_depth in (opp_depths or ())
+                            unsettled_above = sum(
+                                1
+                                for o_idx, o_depth, is_settled, _on_own in (
+                                    opp_depths or ()
+                                )
+                                if o_idx != column and not is_settled and o_depth > row
                             )
-                            if not others_can_reach:
-                                values[32] = 1.0
+                            settled_targets = sum(
+                                1
+                                for _idx, o_depth, _set, on_own in (opp_depths or ())
+                                if on_own and o_depth >= row
+                            )
+                            start_p = int(getattr(ctx, "starting_player", 0))
+                            turn_ord = (column - start_p) % n_players
+                            early_bonus = 0.20 * (
+                                1.0 - turn_ord / max(1, n_players - 1)
+                            )
+                            has_para_or_nogem = (
+                                min_own_gem_row is None or row > min_own_gem_row
+                            )
+                            if unsettled_above == 0:
+                                urgency = 1.0
+                            elif settled_targets > unsettled_above:
+                                urgency = (
+                                    settled_targets - unsettled_above
+                                ) / settled_targets
+                            elif has_para_or_nogem:
+                                urgency = 0.30
+                            else:
+                                urgency = 0.0
+                            if urgency > 0.0:
+                                values[32] = float(min(1.2, urgency + early_bonus))
                             if min_own_gem_row is not None and row > min_own_gem_row:
                                 values[33] = 1.0
+                            elif min_own_gem_row is None:
+                                values[33] = 0.85 if own_dynamite == 0 else 0.35
                 if front is None and smart_risk is not None:
                     values[29] = float(
                         max(
@@ -805,7 +843,17 @@ def state_action_matrix(
     ]
     min_own_gem_row = min(gem_rows) if gem_rows else None
     opp_depths = tuple(
-        (o.player_index, _opponent_movement_depth(o))
+        (
+            o.player_index,
+            _opponent_movement_depth(o),
+            bool(o.planned and not getattr(o, "displaced", False)),
+            bool(
+                o.planned
+                and not getattr(o, "displaced", False)
+                and o.column == o.player_index
+                and 0 <= o.position < PIT_CAGE
+            ),
+        )
         for o in ctx.opponents
         if not o.escaped and not o.dead
     )
