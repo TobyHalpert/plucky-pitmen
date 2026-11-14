@@ -8,7 +8,8 @@ make such a run interpretable:
 
 * with the flag absent the league is *bit-identical* to the historical one (its
   random stream is untouched), so old checkpoints can be reproduced;
-* with the flag on, that share of scripted seats really is the reaction policy.
+* with the threat flag on, that share of scripted seats really is the reaction policy;
+* an optional pusher-match draw fills every non-learning seat with the adversarial pusher.
 """
 
 from __future__ import annotations
@@ -17,7 +18,8 @@ import argparse
 
 import numpy as np
 
-from agents import ThreatAgent, make_scripted_agent
+import train_selfplay as trainer
+from agents import AlwaysDisplaceAgent, NeuralAgent, ThreatAgent, make_scripted_agent
 from train_selfplay import SCRIPTED_POOL, scripted_league_agent, train
 
 
@@ -135,3 +137,39 @@ def test_a_train_step_runs_with_no_periodic_save(tmp_path):
     )
     assert out.exists()
     assert summary["generations"] == 1
+
+
+def test_pusher_match_curriculum_fills_nonlearner_seats(tmp_path, monkeypatch):
+    """A pusher-match draw puts all three scripted opponents on that policy."""
+    original_play_game = trainer.play_game
+    observed = []
+
+    def record_agents(agents, *args, **kwargs):
+        observed.append(tuple(agents))
+        return original_play_game(agents, *args, **kwargs)
+
+    monkeypatch.setattr(trainer, "play_game", record_agents)
+    args = trainer.build_parser().parse_args([
+        "--generations", "1",
+        "--games-per-generation", "1",
+        "--players", "4",
+        "--hidden", "8",
+        "--value-hidden", "4",
+        "--mirror-prob", "0",
+        "--pusher-match-prob", "1",
+        "--league-prob", "0",
+        "--snapshot-every", "0",
+        "--save-every", "0",
+        "--eval-games", "0",
+        "--epsilon", "0",
+        "--escape-shaping", "0",
+        "--seed", "19",
+        "--name", "push-curriculum-test",
+        "--out", str(tmp_path / "push.npz"),
+    ])
+    summary = trainer.train(args)
+
+    assert summary["pusher_match_games"] == 1
+    assert len(observed) == 1
+    assert sum(isinstance(agent, AlwaysDisplaceAgent) for agent in observed[0]) == 3
+    assert sum(isinstance(agent, NeuralAgent) for agent in observed[0]) == 1

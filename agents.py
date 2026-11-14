@@ -896,6 +896,54 @@ class PusherAgent(CounterAgent):
         return super().act(ctx)
 
 
+class AlwaysDisplaceAgent(Agent):
+    """Adversarial audit policy that takes any legal displacement offered.
+
+    It prefers the highest-scoring victim, then the shallowest row, and falls
+    back to ``CounterAgent`` only when no legal push is available. This policy
+    is for stress simulations and training curricula; it is not a printed game
+    rule.
+    """
+
+    name = "always-pusher"
+
+    def __init__(self) -> None:
+        self.fallback = CounterAgent()
+        self.pushes = 0
+
+    def act(self, ctx: PlayerActionContext) -> int:
+        candidates = []
+        for action in ctx.legal_actions:
+            action = int(action)
+            if action >= PIT_CAGE:
+                continue
+            row, column = divmod(action, MAX_COLUMNS)
+            if row >= len(ctx.public_rows) or column >= len(ctx.public_rows[row]):
+                continue
+            occupant = next(
+                (
+                    opponent
+                    for opponent in ctx.opponents
+                    if not (
+                        opponent.escaped
+                        or opponent.dead
+                        or getattr(opponent, "displaced", False)
+                    )
+                    and opponent.column is not None
+                    and int(opponent.position) == row
+                    and int(opponent.column) == column
+                    and int(opponent.player_index) == int(opponent.column)
+                ),
+                None,
+            )
+            if occupant is not None:
+                candidates.append((-int(occupant.score), int(row), action))
+        if candidates:
+            self.pushes += 1
+            return int(min(candidates)[2])
+        return int(self.fallback.act(ctx))
+
+
 def visible_dragon_ahead(ctx: PlayerActionContext) -> tuple[int, int] | None:
     """A dragon the player can see in its own column, if it can still be forced onto it.
 
@@ -1034,6 +1082,7 @@ SCRIPTED = (
     "threat",
     "counter",
     "pusher",
+    "always-pusher",
     "pusher-leader",
     "pusher-leader-only",
 )
@@ -1064,6 +1113,8 @@ def make_scripted_agent(
         return CounterAgent()
     if policy == "pusher":
         return PusherAgent()
+    if policy == "always-pusher":
+        return AlwaysDisplaceAgent()
     if policy in ("pusher-leader", "pusher-leader-only"):
         target = "top-score" if policy == "pusher-leader" else "leader-only"
         return PusherAgent(tell="any", before_planning=False, target=target)
@@ -1073,6 +1124,7 @@ def make_scripted_agent(
 __all__ = [
     "ActionChoice",
     "Agent",
+    "AlwaysDisplaceAgent",
     "CautiousAgent",
     "CounterAgent",
     "GreedyAgent",

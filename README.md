@@ -273,7 +273,7 @@ uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
 | module | purpose |
 | :-- | :-- |
 | `features.py` | fixed-size, seat-invariant state + action features; no hidden information |
-| `agents.py` | `Agent` interface, scripted baselines (incl. `rusher`, `leaver`, `threat`, `reader` — `rule` without the "a quiet rival means a safe card" inference — `bluffer`, which announces a blast it always cancels, and `counter`, the deterministic seat that farms the trained net), `NeuralAgent` |
+| `agents.py` | `Agent` interface, scripted baselines (incl. `rusher`, `leaver`, `threat`, `reader` — `rule` without the "a quiet rival means a safe card" inference — `bluffer`, which announces a blast it always cancels, `counter`, and the adversarial `always-pusher` audit policy), `NeuralAgent` |
 | `learning.py` | masked-softmax MLP policy + value baseline, REINFORCE, Adam, save/load |
 | `selfplay.py` | full-game driver: every seat controlled, blasts, tie-breaks, per-player returns |
 | `train_tactical.py` | branch-based tactical distillation from sampled hidden worlds and full-game win-share comparisons |
@@ -299,7 +299,7 @@ uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
 | `probe_push_clock.py` | deprecated historical clock diagnostic; its conclusions are withdrawn (see BALANCE.md) |
 | `probe_seed7_p2.py` | exact-position forks of seed-7 P2 push, blast and cancellation; limitations and results in SEED7_P2.md |
 | `probe_pusher_match.py` | deterministic pusher versus three retrained nets, rotated seats, no-push control and actual displacement counts |
-| `probe_always_pusher_match.py` | one net versus three seats that take every displacement opportunity, with incoming and outgoing pushes and paired scores |
+| `probe_always_pusher_match.py` | one net versus three always-pushers; counts own-column Gem choices, successful displacements, whether the Gem is actually taken at execution, and paired scores (`--fixed-p1-first` isolates Player 1) |
 | `probe_nextcard_training.py` | old versus retrained nets under the current rule: actual pushes, own-column card moves, scores and completed games |
 | `probe_backside_reading.py` | does the learner read a backside? risk of the card it takes, against the risk it was offered |
 | `probe_lorry.py` | how often a seat parks on its lorry, and how often a haul is lost to a stand-off because every seat did |
@@ -349,6 +349,7 @@ Useful flags:
 | `--league-blast-mode {never,rich,always}` | how the scripted league blasts (default `rich`) |
 | `--league-blast-prob` | fraction of that league that uses the blast mode in the chosen proportion (default 0.15; set `1.0 --league-blast-mode always` for a league that blasts on sight) |
 | `--league-threat-prob` | share of scripted league seats replaced by `threat`, the policy that leaves when a rival's blast is pending (default 0, which keeps the historical league bit-identical); measured: no gain, see [THREAT_LEAGUE.md](THREAT_LEAGUE.md) |
+| `--pusher-match-prob` | optional share of non-mirror training games with one learner against three `always-pusher` seats (default 0; adversarial curriculum, not a printed rule) |
 
 Each game gives the learner one rotating seat while the other seats are filled
 from a league of the hand-tuned rule policy, simple bots and older snapshots of
@@ -564,6 +565,14 @@ The full write-up, with confidence intervals and reproduction commands, is in
   1,953 offers** — the same habit it had before — while the pushes it declines
   price at **−0.30 (se 0.06)**. The blind spot was real; closing it did not make
   the move good. BALANCE.md, "The planning clock went into the input".
+* **Own-column Gem exposure is now tested, not guessed from the rules.** In 500
+  P1-first games against three always-pushers, the original `selfplay4` chose an
+  own-column Gem on its opening move 66.0% of the time, and every such choice
+  was displaced before reveal. Under the push-aware policy plus retraining the
+  opening rate was 2.8%; displacement and actual Gem theft are reported
+  separately because same-card displacement gives the victim another turn.
+  This is a development-only policy signal, not a new game rule. See
+  [OWN_COLUMN_PUSH_AUDIT.md](OWN_COLUMN_PUSH_AUDIT.md).
 * **The blast threat is real; the AI ignores it.** A pending blast costs the
   blaster's rivals **-0.43 points [-0.81, -0.06]** and 11 points of win rate, and
   the cheapest counter — walk to the pit cage while the blast is pending —

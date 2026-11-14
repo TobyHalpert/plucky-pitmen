@@ -1,5 +1,5 @@
 """Tests for foreign-column dragon-signal dodging, mid-round displacement
-unlocking, and the 131-input retrained ``selfplay4`` policy.
+unlocking, and the 133-input retrained ``selfplay4`` policy.
 """
 
 from __future__ import annotations
@@ -154,8 +154,8 @@ def test_turn1_last_chance_and_parachute_push_features():
 def test_exposed_own_row0_unlocks_deeper_lanes_and_flags_lorry_trap():
     """When a seat's only own gem sits at row 0 and unsettled rivals remain on
     Turn 1, deeper foreign lanes and deeper own dynamite stay unmasked and
-    ``action_features[34]`` flags the exposed row-0 lorry trap; once no pushers
-    remain, ``action_features[34]`` drops to 0 and own row-0 gem dominates.
+    ``action_features[33]`` flags the exposed row-0 lorry trap; once no pushers
+    remain, ``action_features[33]`` drops to 0 and own row-0 gem dominates.
     """
     env = MineEnv(opponents=3)
     env.reset(seed=9)
@@ -181,6 +181,64 @@ def test_exposed_own_row0_unlocks_deeper_lanes_and_flags_lorry_trap():
     ctx_safe = env.player_action_context(0)
     af_safe = features.action_features(ctx_safe, 0 * MAX_COLUMNS + 0)
     assert af_safe[33] == 0.0
+
+
+def test_exposed_own_gems_keep_alternative_lanes_open():
+    """A known gem is not automatically dominant if an unsettled rival can
+    reach it; the policy keeps foreign alternatives available without changing
+    the engine's legal action set.
+    """
+    env = MineEnv(opponents=3)
+    env.reset(seed=17)
+    for row in range(len(env.rows)):
+        env.rows[row][0] = (DYNAMITE, env.rows[row][0][1])
+    env.rows[2][0] = (GEM, env.rows[2][0][1])
+
+    gem_action = 2 * MAX_COLUMNS
+    ctx_exposed = env.player_action_context(0)
+    # The engine still considers the Gem legal; the heuristic only adjusts the
+    # neural policy mask and leaves that legal choice available.
+    assert gem_action in ctx_exposed.legal_actions
+    assert features.exposed_own_gem_actions(ctx_exposed) == {gem_action}
+    exposed_mask = features.action_mask(ctx_exposed)
+    assert exposed_mask[gem_action]
+    assert any(exposed_mask[2 * MAX_COLUMNS + column] for column in (1, 2, 3))
+    assert features.action_features(ctx_exposed, gem_action)[33] < 0.0
+
+    # Home-column choice risk is independent of the column the figure currently
+    # occupies. P0 may be standing in a foreign column and still choose (and be
+    # displaced from) a legal Gem in its own column.
+    raiding_env = MineEnv(opponents=3)
+    raiding_env.reset(seed=18)
+    for row in range(len(raiding_env.rows)):
+        raiding_env.rows[row][0] = (
+            DYNAMITE,
+            raiding_env.rows[row][0][1],
+        )
+    raiding_env.rows[1][0] = (GEM, raiding_env.rows[1][0][1])
+    raiding_env.players[0].position = 2
+    raiding_env.players[0].column = 1
+    raiding_ctx = raiding_env.player_action_context(0)
+    assert raiding_ctx.own_column == 1
+    assert 1 * MAX_COLUMNS in features.exposed_own_gem_actions(raiding_ctx)
+
+    # With all rivals settled at row 2, none can move to the Gem on that same
+    # row. The ordinary known-Gem preference masks the foreign lotteries again.
+    for seat in (1, 2, 3):
+        env.players[seat].position = 2
+        env.players[seat].column = seat
+        env.planned_players[seat] = True
+    ctx_safe = env.player_action_context(0)
+    assert not features.exposed_own_gem_actions(ctx_safe)
+    safe_mask = features.action_mask(ctx_safe)
+    assert safe_mask[gem_action]
+    assert not any(
+        safe_mask[row * MAX_COLUMNS + column]
+        for row in range(len(env.rows))
+        for column in (1, 2, 3)
+        if features._occupant(ctx_safe, row, column) is None
+    )
+    assert features.action_features(ctx_safe, gem_action)[33] == 0.0
 
 
 def test_retrained_selfplay4_uses_turn1_and_turn2_displacements():

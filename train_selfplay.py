@@ -11,7 +11,10 @@ The learner is updated with REINFORCE + value baseline on the cheat-safe
 features from ``features.py``.
 
 Use ``--eval-games 0`` to skip the periodic benchmark, and ``--out`` to pick
-where the checkpoint and learning curve are written.
+where the checkpoint and learning curve are written. ``--pusher-match-prob``
+optionally reserves some non-mirror games for one learner against three
+always-pushing displacement opponents; the default is zero, preserving the
+historical league schedule.
 """
 
 from __future__ import annotations
@@ -24,7 +27,7 @@ from typing import Any
 
 import numpy as np
 
-from agents import NeuralAgent, make_scripted_agent
+from agents import AlwaysDisplaceAgent, NeuralAgent, make_scripted_agent
 from learning import PolicyNet
 from selfplay import play_game, play_series
 
@@ -138,6 +141,9 @@ def evaluate(
 
 
 def train(args: argparse.Namespace) -> dict[str, Any]:
+    pusher_match_prob = float(getattr(args, "pusher_match_prob", 0.0))
+    if not 0.0 <= pusher_match_prob <= 1.0:
+        raise ValueError("pusher_match_prob must be between 0 and 1")
     rng = np.random.default_rng(args.seed)
 
     if args.resume:
@@ -158,13 +164,23 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
     out.parent.mkdir(parents=True, exist_ok=True)
     started = time.time()
     total_games = 0
+    pusher_match_games = 0
 
     for generation in range(1, args.generations + 1):
         decisions: list[Any] = []
         generation_results = []
+        generation_pusher_games = 0
         for game in range(args.games_per_generation):
             game_seed = args.seed * 1_000_003 + generation * 10_007 + game
             mirror = bool(rng.random() < args.mirror_prob)
+            pusher_match = (
+                not mirror
+                and pusher_match_prob > 0.0
+                and rng.random() < pusher_match_prob
+            )
+            if pusher_match:
+                generation_pusher_games += 1
+                pusher_match_games += 1
             learner_seats = (
                 list(range(args.players))
                 if mirror
@@ -183,6 +199,8 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
                             recorder=recorder,
                         )
                     )
+                elif pusher_match:
+                    agents.append(AlwaysDisplaceAgent())
                 elif league and rng.random() < args.league_prob:
                     snapshot = league[int(rng.integers(len(league)))]
                     agents.append(
@@ -227,6 +245,7 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
         entry: dict[str, Any] = {
             "generation": generation,
             "games": total_games,
+            "pusher_match_games": generation_pusher_games,
             "decisions": len(decisions),
             "mean_score": float(np.mean([np.mean(r.scores) for r in generation_results])),
             "dragons": float(np.mean([r.dragons for r in generation_results])),
@@ -301,6 +320,7 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
         "history": str(curve_path),
         "generations": net.trained_generations,
         "games": total_games,
+        "pusher_match_games": pusher_match_games,
         "seconds": round(elapsed, 1),
         "final": history[-1] if history else None,
     }
@@ -361,6 +381,16 @@ def build_parser() -> argparse.ArgumentParser:
             "share of scripted league seats replaced by the 'threat' reaction "
             "policy (walks to a pit cage when an opponent's blast is pending); "
             "0 keeps the historical league exactly"
+        ),
+    )
+    parser.add_argument(
+        "--pusher-match-prob",
+        type=float,
+        default=0.0,
+        help=(
+            "share of non-mirror training games where every non-learning seat "
+            "uses the always-pusher audit policy; 0 leaves the historical "
+            "training schedule unchanged"
         ),
     )
     parser.add_argument(

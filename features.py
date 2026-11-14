@@ -621,7 +621,7 @@ def action_features(
     own_dynamite: int | None = None,
     table_pushes: int | None = None,
     min_own_gem_row: int | None = -1,
-    opp_depths: tuple[tuple[int, int], ...] | None = None,
+    opp_depths: tuple[tuple[int, int, bool, bool], ...] | None = None,
 ) -> np.ndarray:
     primitive, announces_blast = split_action(action)
     values = np.zeros(N_ACTION_FEATURES, dtype=np.float32)
@@ -787,6 +787,23 @@ def action_features(
                     and rival_can_push(ctx, primitive)
                 ):
                     values[31] = min(float(table_pushes), 3.0) / 3.0
+                if column == own_column and int(front) == GEM:
+                    # A visible gem is certain, but not guaranteed to remain
+                    # ours: an unsettled rival can still raid this exact row.
+                    # The existing action channel 33 already carries a
+                    # learned penalty for exposed row-0 gems; extend it to every
+                    # reachable own-column gem and size it by the number of
+                    # unsettled rivals that can get there.
+                    reachable_pushers = sum(
+                        1
+                        for _idx, o_depth, is_settled, _on_own in (opp_depths or ())
+                        if not is_settled and o_depth > row
+                    )
+                    if reachable_pushers:
+                        values[33] = min(
+                            float(values[33]),
+                            -1.04 * min(1.0, reachable_pushers / 2.0),
+                        )
                 if row == 0 and occupant is None:
                     unsettled_r0 = sum(
                         1
@@ -809,14 +826,7 @@ def action_features(
                         and _occupant(ctx, 0, int(a) % MAX_COLUMNS) is None
                         for a in ctx.legal_actions
                     )
-                    if (
-                        int(front) == GEM
-                        and not ctx.own_planned
-                        and has_deeper_card
-                        and unsettled_r0 >= 1
-                    ):
-                        values[33] = -1.04 * float(min(1.0, unsettled_r0 / 2.0))
-                    elif int(front) == DRAGON and (has_deeper_card or has_alt_r0):
+                    if int(front) == DRAGON and (has_deeper_card or has_alt_r0):
                         values[33] = -1.04
                     elif int(front) == DYNAMITE and own_dynamite == 0:
                         if (
@@ -1521,34 +1531,26 @@ def _exposed_own_row0_gem_unsettled(ctx: PlayerActionContext) -> int:
     )
 
 
-def digs_past_a_known_gem(ctx: PlayerActionContext) -> set[int]:
-    """Face-down digs that a gem the seat can see makes pointless.
+def exposed_own_gem_actions(ctx: PlayerActionContext) -> set[int]:
+    """Legal own-column gem moves an unsettled rival could reach and displace.
 
-    A front of the seat's **own** column is information the rest of the table
-    does not have: a card there is a gem or a dynamite, never a dragon. A card
-    still face down may be a dragon — two of them per backside — and the seat
-    that turns it is the dragon player. So the two are not a trade. Take the
-    known gem and compare the branch each way:
-
-    - the face-down card turns out a gem: equal to the gem that was there;
-    - it turns out dynamite: it is not scored at all, so worse;
-    - it turns out a dragon: the hull is over and its turner scores -2.
-
-    That is weak dominance in every branch, and it holds whether the face-down
-    card is in the seat's own column or a rival's. The one thing that could
-    outweigh it is a **displacement** — pushing a rival who stands on its own
-    column into the cage costs that rival its position — so a dig that displaces
-    is left alone, and only an unoccupied face-down cell is hidden. Seed 7 of the
-    viewer, haul 1, planning phase 1: P1 has gems at r0 and r1 of its own column
-    and takes **r1c1**, an empty cell in P2's column, at 25% dragon risk — P2 was
-    standing in P3's column at the time, so there was nobody to displace and the
-    move bought nothing but the lottery ticket.
-
-    Note what this rule does **not** need: a threshold. Face-down dragons cost
-    25% at that table and 0% at another, and the argument is the same in both,
-    because a known gem is 100% a gem.
+    This is a policy signal, not a change to the printed legality of a move.
+    An opponent must still be active and able to reach a row closer to the
+    lorries; a rival already settled for the phase does not count. In the
+    opening, the still-unplanned seats are the ones that can immediately raid
+    the selected gem before it is revealed.
     """
-    own_gem_legal = False
+    push_depths = [
+        _opponent_movement_depth(opponent)
+        for opponent in ctx.opponents
+        if not opponent.escaped
+        and not opponent.dead
+        and (not opponent.planned or getattr(opponent, "displaced", False))
+    ]
+    if not push_depths:
+        return set()
+
+    exposed: set[int] = set()
     for action in ctx.legal_actions:
         primitive = int(action)
         if not 0 <= primitive < PIT_CAGE:
@@ -1557,12 +1559,50 @@ def digs_past_a_known_gem(ctx: PlayerActionContext) -> set[int]:
         if column != ctx.player_index or row >= len(ctx.public_rows):
             continue
         entry = ctx.public_rows[row][column]
-        if entry is not None and entry[0] == GEM:
-            own_gem_legal = True
-            break
-    if not own_gem_legal:
+        if (
+            entry is not None
+            and entry[0] == GEM
+            and any(row < depth for depth in push_depths)
+        ):
+            exposed.add(primitive)
+    return exposed
+
+
+def digs_past_a_known_gem(ctx: PlayerActionContext) -> set[int]:
+    """Face-down digs that a secure gem the seat can see makes pointless.
+
+    A front of the seat's **own** column is information the rest of the table
+    does not have: a card there is a gem or a dynamite, never a dragon. A face-
+    down card may be a dragon, so a secure known gem usually dominates it. But
+    "known" does not mean "guaranteed to collect": an unsettled rival may still
+    reach the selected row and displace the seat before the card is revealed.
+    If every legal own-column gem is exposed that way, deeper foreign lanes stay
+    available as alternatives instead of being hidden by this policy heuristic.
+
+    This is deliberately not a hard ban on taking the gem. The action feature
+    prices the exposure and self-play decides whether the safer lane is worth
+    the dragon risk. With no exposed own gem, the usual comparison still holds:
+    a hidden card that becomes a gem ties the known gem, dynamite is not scored,
+    and a dragon can end the haul.
+    """
+    own_gem_actions = {
+        int(action)
+        for action in ctx.legal_actions
+        if 0 <= int(action) < PIT_CAGE
+        and int(action) % MAX_COLUMNS == ctx.player_index
+        and int(action) // MAX_COLUMNS < len(ctx.public_rows)
+        and ctx.public_rows[int(action) // MAX_COLUMNS][ctx.player_index] is not None
+        and ctx.public_rows[int(action) // MAX_COLUMNS][ctx.player_index][0] == GEM
+    }
+    if not own_gem_actions:
         return set()
-    allow_deeper_foreign = _exposed_own_row0_gem_unsettled(ctx) >= 2
+
+    exposed_gems = exposed_own_gem_actions(ctx)
+    has_secure_gem = bool(own_gem_actions - exposed_gems)
+    allow_foreign_alternatives = (
+        _exposed_own_row0_gem_unsettled(ctx) >= 2
+        or (bool(exposed_gems) and not has_secure_gem)
+    )
 
     hidden: set[int] = set()
     for action in ctx.legal_actions:
@@ -1577,7 +1617,7 @@ def digs_past_a_known_gem(ctx: PlayerActionContext) -> set[int]:
             continue
         if _occupant(ctx, row, column) is not None:
             continue
-        if allow_deeper_foreign and row >= 1 and column != ctx.player_index:
+        if allow_foreign_alternatives and row >= 1 and column != ctx.player_index:
             continue
         hidden.add(primitive)
     return hidden
@@ -1808,10 +1848,11 @@ def action_mask(ctx: PlayerActionContext) -> np.ndarray:
        first: the row a card is taken at is the cage index a raid would leave the
        figure with, and a shallow row leaves it nothing to step back onto.
        ``strands_the_figure``.
-    7. A face-down dig is not a trade against a gem the seat can see in its own
-       column: the same one card a round, and only one of the two can be a
-       dragon. Raids are left alone, because pushing a rival is worth something
-       the card is not. ``digs_past_a_known_gem``.
+    7. A face-down dig is normally dominated by a gem the seat can see in its
+       own column. Exception: if every legal own-column gem is exposed to a
+       reachable, unsettled rival, keep foreign alternatives open and let the
+       learned action feature price the displacement risk. This is a policy
+       heuristic, not a printed rule. ``digs_past_a_known_gem``.
     8. A figure in a pit cage is already halfway out: whoever is still in a cage
        when the cards are turned leaves the mine.  So from a cage the lorry and
        the pass are one decision, not two — the escape is taken when it banks
@@ -1990,6 +2031,7 @@ __all__ = [
     "digs_face_up_dragon",
     "digs_past_a_known_gem",
     "doomed_dragon_digs",
+    "exposed_own_gem_actions",
     "figure_dragon_risk",
     "has_dragon_free_move",
     "holds_a_signalled_dragon",
