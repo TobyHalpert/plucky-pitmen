@@ -394,23 +394,25 @@ def figure_dragon_risk(ctx: PlayerActionContext, player_index: int) -> float:
 
 
 def round_dragon_hazard(ctx: PlayerActionContext) -> float:
-    """How likely a dragon is woken this round, from this seat's knowledge.
+    """Snapshot dragon exposure from the figures' current positions.
 
     This is the only thing a pit cage insures against: a dragon ends the haul and
     everybody still in the mine scores for a dead figure, loot and haul bonus
-    gone with it.  A figure in front of the mine, in a cage or on a lorry is
-    standing on nothing and carries no risk.  A figure standing on a card
+    gone with it. A figure in front of the mine, in a cage or on a lorry is
+    standing on nothing and carries no risk. A figure standing on a card
     *nobody at the table can see* carries the risk of that card -- and that is
     the only way a dragon is woken in this game, because a seat can see its own
     column and will step away from a dragon rather than turn it (see
-    ``figure_dragon_risk``).  A charged blast can wake one whatever the board
+    ``figure_dragon_risk``). A charged blast can wake one whatever the board
     says, so it reads as certain danger.
 
-    It is deliberately a *lower* bound on the truth: a rival is free to walk
-    onto a card mid-round, so a table where nobody currently stands on a
-    dragon-capable card is more dangerous than zero.  What it does capture is
-    the case the seat can read: is anybody -- including itself -- about to turn
-    a card that can be a dragon?
+    This is a snapshot, not the probability that the round will actually end on
+    a dragon. It assumes each counted figure stays on its current cell until the
+    cards are revealed. Planning is still open: a later move can take a figure
+    off a risky card, or put one onto a new risky card. The estimate can
+    therefore move up or down before reveal; it is neither a strict lower nor an
+    upper bound on the eventual hazard. It remains useful as a state feature and
+    as a coarse trigger for the cage rule.
     """
     if any(o.blast_pending for o in ctx.opponents):
         return 1.0
@@ -1327,8 +1329,10 @@ def cage_banks_nothing(ctx: PlayerActionContext) -> bool:
     it can end the haul whatever the board says -- a dragon the seat can see is
     about to be turned (the card under its own figure when no safe card or lorry
     can refuse it, or a card in its column with a rival standing on it), or a
-    board that is genuinely going up in flames (``round_dragon_hazard`` above
-    ``CAGE_ANSWERS_A_HAZARD``, which a charged blast reads as 1.00).
+    high snapshot of current raider exposure (``round_dragon_hazard`` above
+    ``CAGE_ANSWERS_A_HAZARD``, which a charged blast reads as 1.00). That
+    threshold is a policy trigger, not a prediction that no later move can avert
+    the dragon.
 
     What is *not* a reason, and used to be one: the ordinary risk of a mine, or
     a visible dragon under the seat's own figure while every rival stands safely
@@ -1422,7 +1426,7 @@ def _cage_reason(ctx: PlayerActionContext) -> str:
         if entry is not None and entry[0] is not None and int(entry[0]) == DRAGON:
             why.append(f"P{opponent.player_index + 1} is on my dragon")
     if not why:
-        why.append(f"{round_dragon_hazard(ctx):.0%} the mine blows this round")
+        why.append(f"{round_dragon_hazard(ctx):.0%} risk if current figures stay")
     return f"pit cage, banks {gems}g ({', '.join(why)})"
 
 

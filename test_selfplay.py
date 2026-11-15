@@ -940,7 +940,7 @@ def test_action_reason_says_what_an_escape_is_running_from():
     # Nothing in particular: fall back to the table's hazard.
     calm = _board_context({}, legal=(int(PIT_CAGE),), own_position=5)
     assert action_reason(calm, int(PIT_CAGE)) == (
-        "pit cage, banks 0g (0% the mine blows this round)"
+        "pit cage, banks 0g (0% risk if current figures stay)"
     )
 
 
@@ -1337,8 +1337,8 @@ def test_the_mask_forbids_parking_on_a_lorry_to_skip_an_ordinary_card():
     assert action_mask(only_lorry)[int(LORRY)]
 
 
-def test_the_state_says_how_likely_the_mine_is_to_blow_this_round():
-    """A cage is insurance; the risk it insures against has to be an input.
+def test_the_state_encodes_current_position_dragon_exposure():
+    """A cage is insurance; the current-position exposure has to be an input.
 
     The board only enters the policy input through the candidate-action block, so
     a seat cannot see the card under a rival's figure.  Without this feature the
@@ -1346,7 +1346,7 @@ def test_the_state_says_how_likely_the_mine_is_to_blow_this_round():
     """
     from features import HAZARD_FEATURE, round_dragon_hazard, state_features
 
-    # Nobody is in the columns: no card can be turned, so no dragon this round.
+    # No figure currently occupies a card, so snapshot exposure is zero.
     empty = _board_context({}, legal=(0,), own_position=5)
     assert round_dragon_hazard(empty) == 0.0
     assert state_features(empty)[HAZARD_FEATURE] == 0.0
@@ -1391,6 +1391,49 @@ def test_the_state_says_how_likely_the_mine_is_to_blow_this_round():
         opponents=(replaced(_rival(1, 2), column=0, blast_pending=True),),
     )
     assert round_dragon_hazard(charged) == 1.0
+
+
+def test_shared_card_hazard_counts_the_raider_not_its_displaced_owner():
+    """A safe sitter is not risk, but a raider sharing its card still is.
+
+    Seed 7, haul 1, round 1: P2 is displaced on its own card, P3 raids that
+    same cell, P4 sits on its own card, and P1 raids a different hidden card.
+    P2 must leave and P4 can see its own card; only P1 and P3 contribute a
+    current-position Dragon risk. The estimate is conditional on those raiders
+    staying put through reveal, not on their future planning choices.
+    """
+    from features import figure_dragon_risk, round_dragon_hazard
+
+    ctx = _board_context(
+        {
+            (1, 1): (None, 2),  # P2's card, shared by displaced P2 and raider P3
+            (2, 2): (None, 1),  # P1's separate raid
+            (2, 3): (None, 1),  # P4's own card
+        },
+        legal=(int(PIT_CAGE),),
+        own_position=2,
+    )
+    ctx = replaced(
+        ctx,
+        own_column=2,
+        opponents=(
+            replaced(_rival(1, 1), column=1, displaced=True),
+            replaced(_rival(2, 1), column=1),
+            replaced(_rival(3, 2), column=3),
+        ),
+    )
+
+    p1_risk = figure_dragon_risk(ctx, 0)
+    p2_risk = figure_dragon_risk(ctx, 1)
+    p3_risk = figure_dragon_risk(ctx, 2)
+    p4_risk = figure_dragon_risk(ctx, 3)
+    assert p1_risk > 0.0
+    assert p2_risk == 0.0
+    assert p3_risk > 0.0
+    assert p4_risk == 0.0
+    assert round_dragon_hazard(ctx) == pytest.approx(
+        1.0 - (1.0 - p1_risk) * (1.0 - p3_risk)
+    )
 
 
 def test_the_mask_forbids_an_escape_that_banks_nothing():
