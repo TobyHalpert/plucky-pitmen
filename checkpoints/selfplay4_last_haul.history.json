@@ -1,0 +1,3056 @@
+{
+  "config": {
+    "resume": "checkpoints/selfplay4.npz",
+    "out": "checkpoints/selfplay4_last_haul.npz",
+    "positions": 48,
+    "held_out": 24,
+    "samples": 12,
+    "epochs": 12,
+    "seed": 2300000,
+    "diagnose_seed7": false
+  },
+  "loss": [
+    1.301097904855851,
+    1.2164768901469263,
+    1.1188312274462078,
+    1.0331437011676219,
+    0.9662134781635056,
+    0.9268884911822776,
+    0.9000327481577793,
+    0.8864229267152647,
+    0.8779670909668008,
+    0.8727354511308173,
+    0.8688867955158154,
+    0.8656962184856335
+  ],
+  "train_before": {
+    "conditional_estimated_win_share": 0.30562450974117544,
+    "mean_candidate_probability_mass": 0.9931277384360632,
+    "teacher_best": 0.4252025462962963
+  },
+  "train_after": {
+    "conditional_estimated_win_share": 0.3086861701435808,
+    "mean_candidate_probability_mass": 0.9768294207751751,
+    "teacher_best": 0.4252025462962963
+  },
+  "held_before": {
+    "conditional_estimated_win_share": 0.3232879744044565,
+    "mean_candidate_probability_mass": 0.9782113110025724,
+    "teacher_best": 0.449074074074074
+  },
+  "held_after": {
+    "conditional_estimated_win_share": 0.33106608248092634,
+    "mean_candidate_probability_mass": 0.9499879777431488,
+    "teacher_best": 0.449074074074074
+  },
+  "held_behaviour_before": {
+    "trailing_initial": {
+      "count": 12,
+      "blast_probability": 0.5005552406828189,
+      "pass_probability": 0.0
+    },
+    "leading_initial": {
+      "count": 3,
+      "blast_probability": 0.7454638371352628,
+      "pass_probability": 0.0
+    },
+    "trailing_pending": {
+      "count": 7,
+      "blast_probability": 0.0,
+      "pass_probability": 7.884344605762246e-05
+    },
+    "round3_initial": {
+      "count": 8,
+      "blast_probability": 0.48053082610973474,
+      "pass_probability": 0.0
+    }
+  },
+  "held_behaviour_after": {
+    "trailing_initial": {
+      "count": 12,
+      "blast_probability": 0.461203376064077,
+      "pass_probability": 0.0
+    },
+    "leading_initial": {
+      "count": 3,
+      "blast_probability": 0.7037229960551485,
+      "pass_probability": 0.0
+    },
+    "trailing_pending": {
+      "count": 7,
+      "blast_probability": 0.0,
+      "pass_probability": 0.08184396901300975
+    },
+    "round3_initial": {
+      "count": 8,
+      "blast_probability": 0.4313360912492499,
+      "pass_probability": 0.0
+    }
+  },
+  "evaluation": [
+    {
+      "policy": "baseline",
+      "groups": {
+        "trailing": {
+          "continuations": 152,
+          "outright_win_rate": 0.1513157894736842
+        },
+        "round3": {
+          "continuations": 96,
+          "outright_win_rate": 0.17708333333333334
+        }
+      },
+      "continuations": 192,
+      "outright_win_rate": 0.328125,
+      "tied_top_rate": 0.020833333333333332,
+      "score": 5.807291666666667,
+      "announcements": 74,
+      "cancellations": 124,
+      "fired_blast_hauls": 19,
+      "unfinished": 0,
+      "paired_win_change": 0.0,
+      "source_cluster_give_or_take": 0.0
+    },
+    {
+      "policy": "last_haul",
+      "groups": {
+        "trailing": {
+          "continuations": 152,
+          "outright_win_rate": 0.16447368421052633
+        },
+        "round3": {
+          "continuations": 96,
+          "outright_win_rate": 0.19791666666666666
+        }
+      },
+      "continuations": 192,
+      "outright_win_rate": 0.3385416666666667,
+      "tied_top_rate": 0.020833333333333332,
+      "score": 5.864583333333333,
+      "announcements": 74,
+      "cancellations": 121,
+      "fired_blast_hauls": 24,
+      "unfinished": 0,
+      "paired_win_change": 0.010416666666666666,
+      "source_cluster_give_or_take": 0.008333333333333333
+    }
+  ],
+  "training_continuations": 1668,
+  "held_continuations": 1104,
+  "training_labels": [
+    {
+      "position": 1,
+      "game_seed": 2300000,
+      "actions": [
+        11,
+        64
+      ],
+      "win_shares": [
+        0.0,
+        0.0
+      ],
+      "continuations": 24
+    },
+    {
+      "position": 2,
+      "game_seed": 2300000,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.0,
+        0.0
+      ],
+      "continuations": 24
+    },
+    {
+      "position": 3,
+      "game_seed": 2300001,
+      "actions": [
+        13,
+        27,
+        28
+      ],
+      "win_shares": [
+        0.08333333333333333,
+        0.16666666666666666,
+        0.08333333333333333
+      ],
+      "continuations": 36
+    },
+    {
+      "position": 4,
+      "game_seed": 2300002,
+      "actions": [
+        0,
+        5,
+        53,
+        58
+      ],
+      "win_shares": [
+        0.0,
+        0.3333333333333333,
+        0.6666666666666666,
+        0.0
+      ],
+      "continuations": 48
+    },
+    {
+      "position": 5,
+      "game_seed": 2300002,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.0,
+        0.5
+      ],
+      "continuations": 24
+    },
+    {
+      "position": 6,
+      "game_seed": 2300003,
+      "actions": [
+        3,
+        10,
+        28,
+        56,
+        63,
+        78,
+        81
+      ],
+      "win_shares": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "continuations": 84
+    },
+    {
+      "position": 7,
+      "game_seed": 2300003,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.0,
+        0.0
+      ],
+      "continuations": 24
+    },
+    {
+      "position": 8,
+      "game_seed": 2300004,
+      "actions": [
+        0,
+        5,
+        10
+      ],
+      "win_shares": [
+        0.08333333333333333,
+        0.16666666666666666,
+        0.16666666666666666
+      ],
+      "continuations": 36
+    },
+    {
+      "position": 9,
+      "game_seed": 2300005,
+      "actions": [
+        10,
+        25,
+        63,
+        78
+      ],
+      "win_shares": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "continuations": 48
+    },
+    {
+      "position": 10,
+      "game_seed": 2300007,
+      "actions": [
+        20,
+        25,
+        73,
+        78
+      ],
+      "win_shares": [
+        0.5,
+        0.5,
+        0.5833333333333334,
+        1.0
+      ],
+      "continuations": 48
+    },
+    {
+      "position": 11,
+      "game_seed": 2300007,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.6666666666666666,
+        0.5833333333333334
+      ],
+      "continuations": 24
+    },
+    {
+      "position": 12,
+      "game_seed": 2300008,
+      "actions": [
+        7,
+        12
+      ],
+      "win_shares": [
+        0.0625,
+        0.041666666666666664
+      ],
+      "continuations": 24
+    },
+    {
+      "position": 13,
+      "game_seed": 2300009,
+      "actions": [
+        5,
+        28,
+        58,
+        78,
+        81
+      ],
+      "win_shares": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.4166666666666667
+      ],
+      "continuations": 60
+    },
+    {
+      "position": 14,
+      "game_seed": 2300010,
+      "actions": [
+        6,
+        59
+      ],
+      "win_shares": [
+        0.0,
+        0.0
+      ],
+      "continuations": 24
+    },
+    {
+      "position": 15,
+      "game_seed": 2300010,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.0,
+        0.0
+      ],
+      "continuations": 24
+    },
+    {
+      "position": 16,
+      "game_seed": 2300011,
+      "actions": [
+        28,
+        81
+      ],
+      "win_shares": [
+        0.9166666666666666,
+        0.625
+      ],
+      "continuations": 24
+    },
+    {
+      "position": 17,
+      "game_seed": 2300011,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        1.0,
+        0.8333333333333334
+      ],
+      "continuations": 24
+    },
+    {
+      "position": 18,
+      "game_seed": 2300012,
+      "actions": [
+        0,
+        10,
+        53,
+        63
+      ],
+      "win_shares": [
+        0.9166666666666666,
+        0.8333333333333334,
+        0.9166666666666666,
+        1.0
+      ],
+      "continuations": 48
+    },
+    {
+      "position": 19,
+      "game_seed": 2300012,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.9166666666666666,
+        0.8888888888888888
+      ],
+      "continuations": 24
+    },
+    {
+      "position": 20,
+      "game_seed": 2300014,
+      "actions": [
+        0,
+        5,
+        53,
+        58
+      ],
+      "win_shares": [
+        0.08333333333333333,
+        0.08333333333333333,
+        0.041666666666666664,
+        0.6666666666666666
+      ],
+      "continuations": 48
+    },
+    {
+      "position": 21,
+      "game_seed": 2300014,
+      "actions": [
+        50,
+        51,
+        52
+      ],
+      "win_shares": [
+        0.0,
+        0.0,
+        0.08333333333333333
+      ],
+      "continuations": 36
+    },
+    {
+      "position": 22,
+      "game_seed": 2300015,
+      "actions": [
+        11,
+        26,
+        28
+      ],
+      "win_shares": [
+        0.16666666666666666,
+        0.16666666666666666,
+        0.25
+      ],
+      "continuations": 36
+    },
+    {
+      "position": 23,
+      "game_seed": 2300016,
+      "actions": [
+        2,
+        12,
+        55,
+        65
+      ],
+      "win_shares": [
+        0.16666666666666666,
+        0.75,
+        0.8333333333333334,
+        0.3333333333333333
+      ],
+      "continuations": 48
+    },
+    {
+      "position": 24,
+      "game_seed": 2300016,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.0,
+        1.0
+      ],
+      "continuations": 24
+    },
+    {
+      "position": 25,
+      "game_seed": 2300017,
+      "actions": [
+        7,
+        12,
+        27,
+        60,
+        65,
+        80
+      ],
+      "win_shares": [
+        0.16666666666666666,
+        0.16666666666666666,
+        0.16666666666666666,
+        0.08333333333333333,
+        0.08333333333333333,
+        0.5
+      ],
+      "continuations": 72
+    },
+    {
+      "position": 26,
+      "game_seed": 2300017,
+      "actions": [
+        50,
+        51,
+        52
+      ],
+      "win_shares": [
+        0.16666666666666666,
+        0.16666666666666666,
+        0.0
+      ],
+      "continuations": 36
+    },
+    {
+      "position": 27,
+      "game_seed": 2300018,
+      "actions": [
+        2,
+        12
+      ],
+      "win_shares": [
+        0.5833333333333334,
+        0.5833333333333334
+      ],
+      "continuations": 24
+    },
+    {
+      "position": 28,
+      "game_seed": 2300021,
+      "actions": [
+        25,
+        27,
+        28,
+        78,
+        81
+      ],
+      "win_shares": [
+        0.3333333333333333,
+        0.25,
+        0.3333333333333333,
+        0.3333333333333333,
+        0.16666666666666666
+      ],
+      "continuations": 60
+    },
+    {
+      "position": 29,
+      "game_seed": 2300021,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.3333333333333333,
+        0.3333333333333333
+      ],
+      "continuations": 24
+    },
+    {
+      "position": 30,
+      "game_seed": 2300022,
+      "actions": [
+        6,
+        59
+      ],
+      "win_shares": [
+        0.020833333333333332,
+        0.5
+      ],
+      "continuations": 24
+    },
+    {
+      "position": 31,
+      "game_seed": 2300022,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.020833333333333332,
+        0.9166666666666666
+      ],
+      "continuations": 24
+    },
+    {
+      "position": 32,
+      "game_seed": 2300023,
+      "actions": [
+        25,
+        26,
+        28
+      ],
+      "win_shares": [
+        0.4444444444444445,
+        0.5277777777777778,
+        0.5
+      ],
+      "continuations": 36
+    },
+    {
+      "position": 33,
+      "game_seed": 2300024,
+      "actions": [
+        2,
+        55
+      ],
+      "win_shares": [
+        0.0,
+        0.0
+      ],
+      "continuations": 24
+    },
+    {
+      "position": 34,
+      "game_seed": 2300025,
+      "actions": [
+        25,
+        26,
+        28
+      ],
+      "win_shares": [
+        0.5833333333333334,
+        0.5833333333333334,
+        0.5
+      ],
+      "continuations": 36
+    },
+    {
+      "position": 35,
+      "game_seed": 2300026,
+      "actions": [
+        13,
+        66
+      ],
+      "win_shares": [
+        0.16666666666666666,
+        0.4166666666666667
+      ],
+      "continuations": 24
+    },
+    {
+      "position": 36,
+      "game_seed": 2300027,
+      "actions": [
+        17,
+        27,
+        70,
+        80
+      ],
+      "win_shares": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "continuations": 48
+    },
+    {
+      "position": 37,
+      "game_seed": 2300027,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.0,
+        0.0
+      ],
+      "continuations": 24
+    },
+    {
+      "position": 38,
+      "game_seed": 2300028,
+      "actions": [
+        5,
+        10,
+        58,
+        63
+      ],
+      "win_shares": [
+        0.5,
+        0.75,
+        0.6666666666666666,
+        0.5833333333333334
+      ],
+      "continuations": 48
+    },
+    {
+      "position": 39,
+      "game_seed": 2300028,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.75,
+        0.5
+      ],
+      "continuations": 24
+    },
+    {
+      "position": 40,
+      "game_seed": 2300029,
+      "actions": [
+        26,
+        79
+      ],
+      "win_shares": [
+        0.8333333333333334,
+        0.6319444444444445
+      ],
+      "continuations": 24
+    },
+    {
+      "position": 41,
+      "game_seed": 2300029,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.9166666666666666,
+        0.7222222222222222
+      ],
+      "continuations": 24
+    },
+    {
+      "position": 42,
+      "game_seed": 2300030,
+      "actions": [
+        0,
+        5,
+        10
+      ],
+      "win_shares": [
+        0.25,
+        0.16666666666666666,
+        0.16666666666666666
+      ],
+      "continuations": 36
+    },
+    {
+      "position": 43,
+      "game_seed": 2300031,
+      "actions": [
+        25,
+        26,
+        27
+      ],
+      "win_shares": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "continuations": 36
+    },
+    {
+      "position": 44,
+      "game_seed": 2300033,
+      "actions": [
+        2,
+        28,
+        55,
+        80,
+        81
+      ],
+      "win_shares": [
+        0.0,
+        0.08333333333333333,
+        0.0,
+        0.0,
+        0.16666666666666666
+      ],
+      "continuations": 60
+    },
+    {
+      "position": 45,
+      "game_seed": 2300033,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.0,
+        0.16666666666666666
+      ],
+      "continuations": 24
+    },
+    {
+      "position": 46,
+      "game_seed": 2300034,
+      "actions": [
+        6,
+        11
+      ],
+      "win_shares": [
+        0.16666666666666666,
+        0.16666666666666666
+      ],
+      "continuations": 24
+    },
+    {
+      "position": 47,
+      "game_seed": 2300035,
+      "actions": [
+        0,
+        53
+      ],
+      "win_shares": [
+        0.5138888888888888,
+        0.5
+      ],
+      "continuations": 24
+    },
+    {
+      "position": 48,
+      "game_seed": 2300035,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.7222222222222223,
+        0.6666666666666666
+      ],
+      "continuations": 24
+    }
+  ],
+  "held_labels": [
+    {
+      "position": 1,
+      "game_seed": 2400000,
+      "actions": [
+        2,
+        12,
+        55,
+        65
+      ],
+      "win_shares": [
+        0.0,
+        0.0,
+        0.0,
+        0.6666666666666666
+      ],
+      "continuations": 48
+    },
+    {
+      "position": 2,
+      "game_seed": 2400000,
+      "actions": [
+        50,
+        51,
+        52
+      ],
+      "win_shares": [
+        0.0,
+        0.0,
+        0.027777777777777776
+      ],
+      "continuations": 36
+    },
+    {
+      "position": 3,
+      "game_seed": 2400001,
+      "actions": [
+        12,
+        22,
+        27
+      ],
+      "win_shares": [
+        0.08333333333333333,
+        0.08333333333333333,
+        0.0
+      ],
+      "continuations": 36
+    },
+    {
+      "position": 4,
+      "game_seed": 2400002,
+      "actions": [
+        6,
+        11,
+        12
+      ],
+      "win_shares": [
+        0.08333333333333333,
+        0.08333333333333333,
+        0.125
+      ],
+      "continuations": 36
+    },
+    {
+      "position": 5,
+      "game_seed": 2400003,
+      "actions": [
+        2,
+        17,
+        28,
+        55,
+        70,
+        80,
+        81
+      ],
+      "win_shares": [
+        0.0,
+        0.08333333333333333,
+        0.08333333333333333,
+        0.20833333333333334,
+        0.0,
+        0.08333333333333333,
+        0.08333333333333333
+      ],
+      "continuations": 84
+    },
+    {
+      "position": 6,
+      "game_seed": 2400003,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.0,
+        0.4166666666666667
+      ],
+      "continuations": 24
+    },
+    {
+      "position": 7,
+      "game_seed": 2400004,
+      "actions": [
+        1,
+        11,
+        54,
+        64
+      ],
+      "win_shares": [
+        0.0,
+        0.08333333333333333,
+        0.0,
+        0.6666666666666666
+      ],
+      "continuations": 48
+    },
+    {
+      "position": 8,
+      "game_seed": 2400004,
+      "actions": [
+        50,
+        51,
+        52
+      ],
+      "win_shares": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "continuations": 36
+    },
+    {
+      "position": 9,
+      "game_seed": 2400005,
+      "actions": [
+        25,
+        26,
+        28
+      ],
+      "win_shares": [
+        0.08333333333333333,
+        0.08333333333333333,
+        0.08333333333333333
+      ],
+      "continuations": 36
+    },
+    {
+      "position": 10,
+      "game_seed": 2400006,
+      "actions": [
+        2,
+        12,
+        55,
+        65
+      ],
+      "win_shares": [
+        0.9583333333333334,
+        1.0,
+        0.8333333333333334,
+        0.8333333333333334
+      ],
+      "continuations": 48
+    },
+    {
+      "position": 11,
+      "game_seed": 2400006,
+      "actions": [
+        50,
+        51,
+        52
+      ],
+      "win_shares": [
+        0.9166666666666666,
+        0.9166666666666666,
+        1.0
+      ],
+      "continuations": 36
+    },
+    {
+      "position": 12,
+      "game_seed": 2400007,
+      "actions": [
+        2,
+        22,
+        28,
+        55,
+        75,
+        81
+      ],
+      "win_shares": [
+        0.0,
+        0.08333333333333333,
+        0.08333333333333333,
+        0.08333333333333333,
+        0.08333333333333333,
+        0.16666666666666666
+      ],
+      "continuations": 72
+    },
+    {
+      "position": 13,
+      "game_seed": 2400007,
+      "actions": [
+        3,
+        50,
+        51,
+        52
+      ],
+      "win_shares": [
+        0.16666666666666666,
+        0.25,
+        0.3333333333333333,
+        0.08333333333333333
+      ],
+      "continuations": 48
+    },
+    {
+      "position": 14,
+      "game_seed": 2400008,
+      "actions": [
+        5,
+        58
+      ],
+      "win_shares": [
+        0.8333333333333334,
+        0.75
+      ],
+      "continuations": 24
+    },
+    {
+      "position": 15,
+      "game_seed": 2400009,
+      "actions": [
+        5,
+        28,
+        58,
+        63,
+        78,
+        81
+      ],
+      "win_shares": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.08333333333333333,
+        0.08333333333333333
+      ],
+      "continuations": 72
+    },
+    {
+      "position": 16,
+      "game_seed": 2400010,
+      "actions": [
+        2,
+        7,
+        13,
+        55,
+        60,
+        66
+      ],
+      "win_shares": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "continuations": 72
+    },
+    {
+      "position": 17,
+      "game_seed": 2400010,
+      "actions": [
+        1,
+        2,
+        50,
+        51,
+        52
+      ],
+      "win_shares": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "continuations": 60
+    },
+    {
+      "position": 18,
+      "game_seed": 2400011,
+      "actions": [
+        7,
+        25,
+        27
+      ],
+      "win_shares": [
+        0.08333333333333333,
+        0.0,
+        0.0
+      ],
+      "continuations": 36
+    },
+    {
+      "position": 19,
+      "game_seed": 2400013,
+      "actions": [
+        3,
+        28,
+        56,
+        66,
+        71,
+        81
+      ],
+      "win_shares": [
+        0.6666666666666666,
+        0.6666666666666666,
+        0.75,
+        0.75,
+        0.75,
+        0.8333333333333334
+      ],
+      "continuations": 72
+    },
+    {
+      "position": 20,
+      "game_seed": 2400013,
+      "actions": [
+        50,
+        51,
+        52
+      ],
+      "win_shares": [
+        0.6666666666666666,
+        0.5,
+        0.8333333333333334
+      ],
+      "continuations": 36
+    },
+    {
+      "position": 21,
+      "game_seed": 2400014,
+      "actions": [
+        13,
+        66
+      ],
+      "win_shares": [
+        0.0625,
+        0.5
+      ],
+      "continuations": 24
+    },
+    {
+      "position": 22,
+      "game_seed": 2400014,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.13194444444444445,
+        0.6666666666666666
+      ],
+      "continuations": 24
+    },
+    {
+      "position": 23,
+      "game_seed": 2400015,
+      "actions": [
+        2,
+        28,
+        55,
+        75,
+        80,
+        81
+      ],
+      "win_shares": [
+        0.041666666666666664,
+        0.08333333333333333,
+        0.041666666666666664,
+        0.041666666666666664,
+        0.08333333333333333,
+        0.08333333333333333
+      ],
+      "continuations": 72
+    },
+    {
+      "position": 24,
+      "game_seed": 2400015,
+      "actions": [
+        50,
+        52
+      ],
+      "win_shares": [
+        0.0,
+        0.08333333333333333
+      ],
+      "continuations": 24
+    }
+  ],
+  "source_positions": [
+    {
+      "split": "train",
+      "seed": 2300000,
+      "seat": 1,
+      "round": 0,
+      "starting_dynamite": [
+        2,
+        2,
+        2,
+        1
+      ],
+      "scores": [
+        6,
+        0,
+        5,
+        0
+      ],
+      "dynamite": [
+        2,
+        2,
+        2,
+        1
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "train",
+      "seed": 2300000,
+      "seat": 1,
+      "round": 0,
+      "starting_dynamite": [
+        2,
+        2,
+        2,
+        1
+      ],
+      "scores": [
+        6,
+        0,
+        5,
+        0
+      ],
+      "dynamite": [
+        2,
+        2,
+        2,
+        1
+      ],
+      "own_pending": true
+    },
+    {
+      "split": "train",
+      "seed": 2300001,
+      "seat": 3,
+      "round": 3,
+      "starting_dynamite": [
+        6,
+        2,
+        0,
+        0
+      ],
+      "scores": [
+        0,
+        3,
+        0,
+        0
+      ],
+      "dynamite": [
+        7,
+        3,
+        1,
+        1
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "train",
+      "seed": 2300002,
+      "seat": 0,
+      "round": 0,
+      "starting_dynamite": [
+        2,
+        2,
+        2,
+        6
+      ],
+      "scores": [
+        3,
+        5,
+        6,
+        1
+      ],
+      "dynamite": [
+        2,
+        2,
+        2,
+        6
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "train",
+      "seed": 2300002,
+      "seat": 0,
+      "round": 0,
+      "starting_dynamite": [
+        2,
+        2,
+        2,
+        6
+      ],
+      "scores": [
+        3,
+        5,
+        6,
+        1
+      ],
+      "dynamite": [
+        2,
+        2,
+        2,
+        6
+      ],
+      "own_pending": true
+    },
+    {
+      "split": "train",
+      "seed": 2300003,
+      "seat": 0,
+      "round": 3,
+      "starting_dynamite": [
+        6,
+        0,
+        6,
+        6
+      ],
+      "scores": [
+        1,
+        6,
+        6,
+        9
+      ],
+      "dynamite": [
+        7,
+        0,
+        6,
+        8
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "train",
+      "seed": 2300003,
+      "seat": 0,
+      "round": 3,
+      "starting_dynamite": [
+        6,
+        0,
+        6,
+        6
+      ],
+      "scores": [
+        1,
+        6,
+        6,
+        9
+      ],
+      "dynamite": [
+        7,
+        0,
+        6,
+        8
+      ],
+      "own_pending": true
+    },
+    {
+      "split": "train",
+      "seed": 2300004,
+      "seat": 0,
+      "round": 0,
+      "starting_dynamite": [
+        0,
+        4,
+        0,
+        6
+      ],
+      "scores": [
+        3,
+        0,
+        0,
+        0
+      ],
+      "dynamite": [
+        0,
+        4,
+        0,
+        6
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "train",
+      "seed": 2300005,
+      "seat": 0,
+      "round": 3,
+      "starting_dynamite": [
+        6,
+        0,
+        6,
+        0
+      ],
+      "scores": [
+        1,
+        9,
+        1,
+        6
+      ],
+      "dynamite": [
+        7,
+        0,
+        8,
+        1
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "train",
+      "seed": 2300007,
+      "seat": 0,
+      "round": 3,
+      "starting_dynamite": [
+        4,
+        4,
+        1,
+        6
+      ],
+      "scores": [
+        3,
+        0,
+        0,
+        6
+      ],
+      "dynamite": [
+        4,
+        5,
+        4,
+        6
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "train",
+      "seed": 2300007,
+      "seat": 0,
+      "round": 3,
+      "starting_dynamite": [
+        4,
+        4,
+        1,
+        6
+      ],
+      "scores": [
+        3,
+        0,
+        0,
+        6
+      ],
+      "dynamite": [
+        4,
+        5,
+        4,
+        6
+      ],
+      "own_pending": true
+    },
+    {
+      "split": "train",
+      "seed": 2300008,
+      "seat": 2,
+      "round": 0,
+      "starting_dynamite": [
+        2,
+        0,
+        0,
+        2
+      ],
+      "scores": [
+        3,
+        0,
+        0,
+        0
+      ],
+      "dynamite": [
+        2,
+        0,
+        0,
+        2
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "train",
+      "seed": 2300009,
+      "seat": 0,
+      "round": 3,
+      "starting_dynamite": [
+        0,
+        4,
+        1,
+        6
+      ],
+      "scores": [
+        9,
+        12,
+        9,
+        7
+      ],
+      "dynamite": [
+        2,
+        7,
+        1,
+        6
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "train",
+      "seed": 2300010,
+      "seat": 1,
+      "round": 0,
+      "starting_dynamite": [
+        2,
+        6,
+        2,
+        0
+      ],
+      "scores": [
+        3,
+        0,
+        6,
+        5
+      ],
+      "dynamite": [
+        2,
+        6,
+        2,
+        0
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "train",
+      "seed": 2300010,
+      "seat": 1,
+      "round": 0,
+      "starting_dynamite": [
+        2,
+        6,
+        2,
+        0
+      ],
+      "scores": [
+        3,
+        0,
+        6,
+        5
+      ],
+      "dynamite": [
+        2,
+        6,
+        2,
+        0
+      ],
+      "own_pending": true
+    },
+    {
+      "split": "train",
+      "seed": 2300011,
+      "seat": 3,
+      "round": 3,
+      "starting_dynamite": [
+        6,
+        4,
+        0,
+        4
+      ],
+      "scores": [
+        6,
+        1,
+        4,
+        9
+      ],
+      "dynamite": [
+        7,
+        5,
+        1,
+        5
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "train",
+      "seed": 2300011,
+      "seat": 3,
+      "round": 3,
+      "starting_dynamite": [
+        6,
+        4,
+        0,
+        4
+      ],
+      "scores": [
+        6,
+        1,
+        4,
+        9
+      ],
+      "dynamite": [
+        7,
+        5,
+        1,
+        5
+      ],
+      "own_pending": true
+    },
+    {
+      "split": "train",
+      "seed": 2300012,
+      "seat": 0,
+      "round": 0,
+      "starting_dynamite": [
+        4,
+        6,
+        1,
+        2
+      ],
+      "scores": [
+        12,
+        9,
+        9,
+        7
+      ],
+      "dynamite": [
+        4,
+        6,
+        1,
+        2
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "train",
+      "seed": 2300012,
+      "seat": 0,
+      "round": 0,
+      "starting_dynamite": [
+        4,
+        6,
+        1,
+        2
+      ],
+      "scores": [
+        12,
+        9,
+        9,
+        7
+      ],
+      "dynamite": [
+        4,
+        6,
+        1,
+        2
+      ],
+      "own_pending": true
+    },
+    {
+      "split": "train",
+      "seed": 2300014,
+      "seat": 0,
+      "round": 0,
+      "starting_dynamite": [
+        2,
+        1,
+        6,
+        4
+      ],
+      "scores": [
+        3,
+        0,
+        6,
+        1
+      ],
+      "dynamite": [
+        2,
+        1,
+        6,
+        4
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "train",
+      "seed": 2300014,
+      "seat": 0,
+      "round": 0,
+      "starting_dynamite": [
+        2,
+        1,
+        6,
+        4
+      ],
+      "scores": [
+        3,
+        0,
+        6,
+        1
+      ],
+      "dynamite": [
+        2,
+        1,
+        6,
+        4
+      ],
+      "own_pending": true
+    },
+    {
+      "split": "train",
+      "seed": 2300015,
+      "seat": 1,
+      "round": 3,
+      "starting_dynamite": [
+        0,
+        0,
+        1,
+        2
+      ],
+      "scores": [
+        0,
+        3,
+        5,
+        6
+      ],
+      "dynamite": [
+        0,
+        1,
+        1,
+        4
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "train",
+      "seed": 2300016,
+      "seat": 2,
+      "round": 0,
+      "starting_dynamite": [
+        0,
+        0,
+        2,
+        2
+      ],
+      "scores": [
+        12,
+        7,
+        9,
+        4
+      ],
+      "dynamite": [
+        0,
+        0,
+        2,
+        2
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "train",
+      "seed": 2300016,
+      "seat": 2,
+      "round": 0,
+      "starting_dynamite": [
+        0,
+        0,
+        2,
+        2
+      ],
+      "scores": [
+        12,
+        7,
+        9,
+        4
+      ],
+      "dynamite": [
+        0,
+        0,
+        2,
+        2
+      ],
+      "own_pending": true
+    },
+    {
+      "split": "train",
+      "seed": 2300017,
+      "seat": 2,
+      "round": 3,
+      "starting_dynamite": [
+        4,
+        2,
+        1,
+        1
+      ],
+      "scores": [
+        4,
+        9,
+        6,
+        8
+      ],
+      "dynamite": [
+        5,
+        5,
+        2,
+        1
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "train",
+      "seed": 2300017,
+      "seat": 2,
+      "round": 3,
+      "starting_dynamite": [
+        4,
+        2,
+        1,
+        1
+      ],
+      "scores": [
+        4,
+        9,
+        6,
+        8
+      ],
+      "dynamite": [
+        5,
+        5,
+        2,
+        1
+      ],
+      "own_pending": true
+    },
+    {
+      "split": "train",
+      "seed": 2300018,
+      "seat": 2,
+      "round": 0,
+      "starting_dynamite": [
+        2,
+        1,
+        0,
+        6
+      ],
+      "scores": [
+        11,
+        7,
+        12,
+        7
+      ],
+      "dynamite": [
+        2,
+        1,
+        0,
+        6
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "train",
+      "seed": 2300021,
+      "seat": 0,
+      "round": 3,
+      "starting_dynamite": [
+        6,
+        1,
+        1,
+        6
+      ],
+      "scores": [
+        3,
+        6,
+        5,
+        5
+      ],
+      "dynamite": [
+        6,
+        4,
+        3,
+        6
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "train",
+      "seed": 2300021,
+      "seat": 0,
+      "round": 3,
+      "starting_dynamite": [
+        6,
+        1,
+        1,
+        6
+      ],
+      "scores": [
+        3,
+        6,
+        5,
+        5
+      ],
+      "dynamite": [
+        6,
+        4,
+        3,
+        6
+      ],
+      "own_pending": true
+    },
+    {
+      "split": "train",
+      "seed": 2300022,
+      "seat": 1,
+      "round": 0,
+      "starting_dynamite": [
+        2,
+        6,
+        2,
+        4
+      ],
+      "scores": [
+        0,
+        0,
+        3,
+        0
+      ],
+      "dynamite": [
+        2,
+        6,
+        2,
+        4
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "train",
+      "seed": 2300022,
+      "seat": 1,
+      "round": 0,
+      "starting_dynamite": [
+        2,
+        6,
+        2,
+        4
+      ],
+      "scores": [
+        0,
+        0,
+        3,
+        0
+      ],
+      "dynamite": [
+        2,
+        6,
+        2,
+        4
+      ],
+      "own_pending": true
+    },
+    {
+      "split": "train",
+      "seed": 2300023,
+      "seat": 0,
+      "round": 3,
+      "starting_dynamite": [
+        1,
+        0,
+        6,
+        1
+      ],
+      "scores": [
+        2,
+        0,
+        2,
+        3
+      ],
+      "dynamite": [
+        1,
+        2,
+        7,
+        2
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "train",
+      "seed": 2300024,
+      "seat": 2,
+      "round": 0,
+      "starting_dynamite": [
+        6,
+        2,
+        6,
+        1
+      ],
+      "scores": [
+        12,
+        9,
+        4,
+        7
+      ],
+      "dynamite": [
+        6,
+        2,
+        6,
+        1
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "train",
+      "seed": 2300025,
+      "seat": 0,
+      "round": 3,
+      "starting_dynamite": [
+        0,
+        2,
+        6,
+        2
+      ],
+      "scores": [
+        0,
+        3,
+        0,
+        2
+      ],
+      "dynamite": [
+        0,
+        4,
+        7,
+        2
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "train",
+      "seed": 2300026,
+      "seat": 3,
+      "round": 0,
+      "starting_dynamite": [
+        1,
+        2,
+        1,
+        6
+      ],
+      "scores": [
+        0,
+        0,
+        3,
+        0
+      ],
+      "dynamite": [
+        1,
+        2,
+        1,
+        6
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "train",
+      "seed": 2300027,
+      "seat": 2,
+      "round": 3,
+      "starting_dynamite": [
+        0,
+        2,
+        4,
+        0
+      ],
+      "scores": [
+        1,
+        1,
+        1,
+        6
+      ],
+      "dynamite": [
+        0,
+        3,
+        6,
+        2
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "train",
+      "seed": 2300027,
+      "seat": 2,
+      "round": 3,
+      "starting_dynamite": [
+        0,
+        2,
+        4,
+        0
+      ],
+      "scores": [
+        1,
+        1,
+        1,
+        6
+      ],
+      "dynamite": [
+        0,
+        3,
+        6,
+        2
+      ],
+      "own_pending": true
+    },
+    {
+      "split": "train",
+      "seed": 2300028,
+      "seat": 0,
+      "round": 0,
+      "starting_dynamite": [
+        6,
+        0,
+        6,
+        6
+      ],
+      "scores": [
+        6,
+        5,
+        1,
+        5
+      ],
+      "dynamite": [
+        6,
+        0,
+        6,
+        6
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "train",
+      "seed": 2300028,
+      "seat": 0,
+      "round": 0,
+      "starting_dynamite": [
+        6,
+        0,
+        6,
+        6
+      ],
+      "scores": [
+        6,
+        5,
+        1,
+        5
+      ],
+      "dynamite": [
+        6,
+        0,
+        6,
+        6
+      ],
+      "own_pending": true
+    },
+    {
+      "split": "train",
+      "seed": 2300029,
+      "seat": 1,
+      "round": 3,
+      "starting_dynamite": [
+        4,
+        6,
+        0,
+        0
+      ],
+      "scores": [
+        0,
+        3,
+        0,
+        0
+      ],
+      "dynamite": [
+        6,
+        6,
+        3,
+        0
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "train",
+      "seed": 2300029,
+      "seat": 1,
+      "round": 3,
+      "starting_dynamite": [
+        4,
+        6,
+        0,
+        0
+      ],
+      "scores": [
+        0,
+        3,
+        0,
+        0
+      ],
+      "dynamite": [
+        6,
+        6,
+        3,
+        0
+      ],
+      "own_pending": true
+    },
+    {
+      "split": "train",
+      "seed": 2300030,
+      "seat": 0,
+      "round": 0,
+      "starting_dynamite": [
+        0,
+        4,
+        6,
+        6
+      ],
+      "scores": [
+        8,
+        1,
+        9,
+        6
+      ],
+      "dynamite": [
+        0,
+        4,
+        6,
+        6
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "train",
+      "seed": 2300031,
+      "seat": 0,
+      "round": 3,
+      "starting_dynamite": [
+        1,
+        4,
+        6,
+        1
+      ],
+      "scores": [
+        4,
+        4,
+        4,
+        9
+      ],
+      "dynamite": [
+        1,
+        4,
+        7,
+        3
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "train",
+      "seed": 2300033,
+      "seat": 2,
+      "round": 3,
+      "starting_dynamite": [
+        1,
+        4,
+        2,
+        4
+      ],
+      "scores": [
+        0,
+        3,
+        0,
+        0
+      ],
+      "dynamite": [
+        2,
+        5,
+        4,
+        5
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "train",
+      "seed": 2300033,
+      "seat": 2,
+      "round": 3,
+      "starting_dynamite": [
+        1,
+        4,
+        2,
+        4
+      ],
+      "scores": [
+        0,
+        3,
+        0,
+        0
+      ],
+      "dynamite": [
+        2,
+        5,
+        4,
+        5
+      ],
+      "own_pending": true
+    },
+    {
+      "split": "train",
+      "seed": 2300034,
+      "seat": 1,
+      "round": 0,
+      "starting_dynamite": [
+        1,
+        1,
+        1,
+        6
+      ],
+      "scores": [
+        0,
+        0,
+        3,
+        0
+      ],
+      "dynamite": [
+        1,
+        1,
+        1,
+        6
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "train",
+      "seed": 2300035,
+      "seat": 0,
+      "round": 3,
+      "starting_dynamite": [
+        2,
+        4,
+        2,
+        0
+      ],
+      "scores": [
+        5,
+        0,
+        5,
+        6
+      ],
+      "dynamite": [
+        2,
+        6,
+        3,
+        2
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "train",
+      "seed": 2300035,
+      "seat": 0,
+      "round": 3,
+      "starting_dynamite": [
+        2,
+        4,
+        2,
+        0
+      ],
+      "scores": [
+        5,
+        0,
+        5,
+        6
+      ],
+      "dynamite": [
+        2,
+        6,
+        3,
+        2
+      ],
+      "own_pending": true
+    },
+    {
+      "split": "held",
+      "seed": 2400000,
+      "seat": 2,
+      "round": 0,
+      "starting_dynamite": [
+        6,
+        2,
+        6,
+        2
+      ],
+      "scores": [
+        6,
+        1,
+        3,
+        3
+      ],
+      "dynamite": [
+        6,
+        2,
+        6,
+        2
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "held",
+      "seed": 2400000,
+      "seat": 2,
+      "round": 0,
+      "starting_dynamite": [
+        6,
+        2,
+        6,
+        2
+      ],
+      "scores": [
+        6,
+        1,
+        3,
+        3
+      ],
+      "dynamite": [
+        6,
+        2,
+        6,
+        2
+      ],
+      "own_pending": true
+    },
+    {
+      "split": "held",
+      "seed": 2400001,
+      "seat": 2,
+      "round": 3,
+      "starting_dynamite": [
+        2,
+        6,
+        0,
+        4
+      ],
+      "scores": [
+        8,
+        9,
+        6,
+        1
+      ],
+      "dynamite": [
+        3,
+        6,
+        1,
+        6
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "held",
+      "seed": 2400002,
+      "seat": 1,
+      "round": 0,
+      "starting_dynamite": [
+        0,
+        0,
+        0,
+        4
+      ],
+      "scores": [
+        0,
+        2,
+        3,
+        0
+      ],
+      "dynamite": [
+        0,
+        0,
+        0,
+        4
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "held",
+      "seed": 2400003,
+      "seat": 2,
+      "round": 3,
+      "starting_dynamite": [
+        2,
+        1,
+        6,
+        4
+      ],
+      "scores": [
+        1,
+        1,
+        8,
+        9
+      ],
+      "dynamite": [
+        3,
+        2,
+        8,
+        5
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "held",
+      "seed": 2400003,
+      "seat": 2,
+      "round": 3,
+      "starting_dynamite": [
+        2,
+        1,
+        6,
+        4
+      ],
+      "scores": [
+        1,
+        1,
+        8,
+        9
+      ],
+      "dynamite": [
+        3,
+        2,
+        8,
+        5
+      ],
+      "own_pending": true
+    },
+    {
+      "split": "held",
+      "seed": 2400004,
+      "seat": 1,
+      "round": 0,
+      "starting_dynamite": [
+        4,
+        6,
+        6,
+        0
+      ],
+      "scores": [
+        3,
+        0,
+        2,
+        2
+      ],
+      "dynamite": [
+        4,
+        6,
+        6,
+        0
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "held",
+      "seed": 2400004,
+      "seat": 1,
+      "round": 0,
+      "starting_dynamite": [
+        4,
+        6,
+        6,
+        0
+      ],
+      "scores": [
+        3,
+        0,
+        2,
+        2
+      ],
+      "dynamite": [
+        4,
+        6,
+        6,
+        0
+      ],
+      "own_pending": true
+    },
+    {
+      "split": "held",
+      "seed": 2400005,
+      "seat": 3,
+      "round": 3,
+      "starting_dynamite": [
+        2,
+        2,
+        2,
+        0
+      ],
+      "scores": [
+        0,
+        3,
+        0,
+        0
+      ],
+      "dynamite": [
+        2,
+        4,
+        3,
+        1
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "held",
+      "seed": 2400006,
+      "seat": 2,
+      "round": 0,
+      "starting_dynamite": [
+        1,
+        1,
+        6,
+        6
+      ],
+      "scores": [
+        9,
+        7,
+        12,
+        4
+      ],
+      "dynamite": [
+        1,
+        1,
+        6,
+        6
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "held",
+      "seed": 2400006,
+      "seat": 2,
+      "round": 0,
+      "starting_dynamite": [
+        1,
+        1,
+        6,
+        6
+      ],
+      "scores": [
+        9,
+        7,
+        12,
+        4
+      ],
+      "dynamite": [
+        1,
+        1,
+        6,
+        6
+      ],
+      "own_pending": true
+    },
+    {
+      "split": "held",
+      "seed": 2400007,
+      "seat": 2,
+      "round": 3,
+      "starting_dynamite": [
+        0,
+        2,
+        4,
+        6
+      ],
+      "scores": [
+        8,
+        1,
+        6,
+        9
+      ],
+      "dynamite": [
+        0,
+        4,
+        5,
+        8
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "held",
+      "seed": 2400007,
+      "seat": 2,
+      "round": 3,
+      "starting_dynamite": [
+        0,
+        2,
+        4,
+        6
+      ],
+      "scores": [
+        8,
+        1,
+        6,
+        9
+      ],
+      "dynamite": [
+        0,
+        4,
+        5,
+        8
+      ],
+      "own_pending": true
+    },
+    {
+      "split": "held",
+      "seed": 2400008,
+      "seat": 0,
+      "round": 0,
+      "starting_dynamite": [
+        4,
+        0,
+        6,
+        1
+      ],
+      "scores": [
+        6,
+        5,
+        0,
+        3
+      ],
+      "dynamite": [
+        4,
+        0,
+        6,
+        1
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "held",
+      "seed": 2400009,
+      "seat": 0,
+      "round": 3,
+      "starting_dynamite": [
+        2,
+        0,
+        4,
+        6
+      ],
+      "scores": [
+        0,
+        3,
+        2,
+        2
+      ],
+      "dynamite": [
+        4,
+        1,
+        5,
+        6
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "held",
+      "seed": 2400010,
+      "seat": 2,
+      "round": 0,
+      "starting_dynamite": [
+        6,
+        6,
+        2,
+        0
+      ],
+      "scores": [
+        1,
+        1,
+        6,
+        0
+      ],
+      "dynamite": [
+        6,
+        6,
+        2,
+        0
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "held",
+      "seed": 2400010,
+      "seat": 2,
+      "round": 0,
+      "starting_dynamite": [
+        6,
+        6,
+        2,
+        0
+      ],
+      "scores": [
+        1,
+        1,
+        6,
+        0
+      ],
+      "dynamite": [
+        6,
+        6,
+        2,
+        0
+      ],
+      "own_pending": true
+    },
+    {
+      "split": "held",
+      "seed": 2400011,
+      "seat": 2,
+      "round": 3,
+      "starting_dynamite": [
+        0,
+        0,
+        1,
+        0
+      ],
+      "scores": [
+        0,
+        5,
+        1,
+        6
+      ],
+      "dynamite": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "held",
+      "seed": 2400013,
+      "seat": 3,
+      "round": 3,
+      "starting_dynamite": [
+        0,
+        6,
+        0,
+        6
+      ],
+      "scores": [
+        8,
+        9,
+        4,
+        6
+      ],
+      "dynamite": [
+        1,
+        8,
+        0,
+        6
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "held",
+      "seed": 2400013,
+      "seat": 3,
+      "round": 3,
+      "starting_dynamite": [
+        0,
+        6,
+        0,
+        6
+      ],
+      "scores": [
+        8,
+        9,
+        4,
+        6
+      ],
+      "dynamite": [
+        1,
+        8,
+        0,
+        6
+      ],
+      "own_pending": true
+    },
+    {
+      "split": "held",
+      "seed": 2400014,
+      "seat": 3,
+      "round": 0,
+      "starting_dynamite": [
+        2,
+        0,
+        2,
+        4
+      ],
+      "scores": [
+        9,
+        9,
+        12,
+        9
+      ],
+      "dynamite": [
+        2,
+        0,
+        2,
+        4
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "held",
+      "seed": 2400014,
+      "seat": 3,
+      "round": 0,
+      "starting_dynamite": [
+        2,
+        0,
+        2,
+        4
+      ],
+      "scores": [
+        9,
+        9,
+        12,
+        9
+      ],
+      "dynamite": [
+        2,
+        0,
+        2,
+        4
+      ],
+      "own_pending": true
+    },
+    {
+      "split": "held",
+      "seed": 2400015,
+      "seat": 2,
+      "round": 3,
+      "starting_dynamite": [
+        1,
+        6,
+        0,
+        2
+      ],
+      "scores": [
+        0,
+        0,
+        2,
+        3
+      ],
+      "dynamite": [
+        2,
+        6,
+        3,
+        4
+      ],
+      "own_pending": false
+    },
+    {
+      "split": "held",
+      "seed": 2400015,
+      "seat": 2,
+      "round": 3,
+      "starting_dynamite": [
+        1,
+        6,
+        0,
+        2
+      ],
+      "scores": [
+        0,
+        0,
+        2,
+        3
+      ],
+      "dynamite": [
+        2,
+        6,
+        3,
+        4
+      ],
+      "own_pending": true
+    }
+  ]
+}
