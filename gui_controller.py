@@ -63,6 +63,9 @@ TRAINING_CACHE_DIR = Path(__file__).with_name(".training_cache")
 CHECKPOINT_DIR = Path(__file__).with_name("checkpoints")
 NEURAL_PREFIX = "neural:"
 NEURAL_TEMPERATURE = 0.7
+# The row-0 home-Gem exposure guard is part of the default interactive neural
+# policy; direct NeuralAgent users can still opt out.
+NEURAL_ROW0_GEM_GUARD = True
 
 
 # ---------------------------------------------------------------------------
@@ -306,6 +309,7 @@ class GameController:
             seed=self.seed,
             temperature=NEURAL_TEMPERATURE,
             deterministic=self.deterministic,
+            avoid_exposed_row0_gem=NEURAL_ROW0_GEM_GUARD,
         )
         if self.all_seats:
             for seat in range(1, self.env.n_players):
@@ -314,6 +318,7 @@ class GameController:
                     seed=self.seed + 101 * seat,
                     temperature=NEURAL_TEMPERATURE,
                     deterministic=self.deterministic,
+                    avoid_exposed_row0_gem=NEURAL_ROW0_GEM_GUARD,
                 )
 
     def ensure_training_ready(self, progress_callback: Callable[[str], None] | None = None) -> None:
@@ -716,7 +721,13 @@ class GameController:
         ctx = self.env.player_action_context(seat)
         if not ctx.legal_actions:
             return []
-        mask = action_mask(ctx)
+        agent = self.agents[seat] if seat < len(self.agents) else None
+        mask = action_mask(
+            ctx,
+            avoid_exposed_row0_gem=bool(
+                getattr(agent, "avoid_exposed_row0_gem", False)
+            ),
+        )
         if not mask.any():
             return []
         probs = net.masked_probs(

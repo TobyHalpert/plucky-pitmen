@@ -14,7 +14,7 @@ import json
 import numpy as np
 import pytest
 
-from features import N_INPUT_FEATURES, join_action
+from features import N_INPUT_FEATURES, action_mask, join_action
 from gui_controller import (
     GameController,
     agent_policies,
@@ -97,6 +97,51 @@ def test_all_seats_neural_plays_itself(tiny_net):
     steps = play_to_the_end(controller)
     assert steps > 10
     assert controller.env.game_finished
+
+
+def test_default_selfplay4_seed7_avoids_exposed_row0_home_gem():
+    """The reported P3 choice must stay out of the row-0 own Gem in game 7."""
+    from game_env import GEM, MAX_COLUMNS
+
+    policy = "neural:selfplay4"
+    controller = GameController(3, policy, seed=7)
+    controller.reset(3, policy, seed=7, all_seats=True, advance=False)
+
+    # Replay the same opening through P4, P1 and P2, stopping at P3's
+    # problematic haul-1, planning-round-0 decision.
+    for _ in range(3):
+        controller.step_one_player_auto()
+    assert controller.env.haul == 1
+    assert controller.env.round == 0
+    assert controller.env.planning_player == 2
+    assert all(agent.avoid_exposed_row0_gem for agent in controller.agents)
+
+    ctx = controller.env.player_action_context(2)
+    assert all(opponent.planned for opponent in ctx.opponents)
+    row0_home_gem = ctx.player_index
+    assert ctx.public_rows[0][2][0] == GEM
+    assert row0_home_gem in ctx.legal_actions
+
+    # The known-Gem heuristic must leave safer deeper lanes available even
+    # though every rival has already planned once; the default controller guard
+    # then excludes the exposed home Gem from both the viewer and the sampler.
+    unguarded = action_mask(ctx)
+    guarded = action_mask(ctx, avoid_exposed_row0_gem=True)
+    assert unguarded[row0_home_gem]
+    assert not guarded[row0_home_gem]
+    assert any(
+        guarded[action]
+        for action in ctx.legal_actions
+        if action // MAX_COLUMNS >= 1
+    )
+    assert row0_home_gem not in {
+        action for action, _probability in controller.policy_snapshot(seat=2)
+    }
+
+    controller.step_one_player_auto()
+    assert controller.last_choice_seat == 2
+    assert controller.last_choice is not None
+    assert int(controller.last_choice.action) != row0_home_gem
 
 
 def test_the_viewer_names_who_plays_each_seat(tiny_net):

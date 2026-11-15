@@ -141,10 +141,17 @@ def knowledge_text(ctx) -> str:
     )
 
 
-def probabilities(net: PolicyNet, ctx) -> np.ndarray | None:
+def probabilities(
+    net: PolicyNet,
+    ctx,
+    *,
+    avoid_exposed_row0_gem: bool = False,
+) -> np.ndarray | None:
     if net is None or not ctx.legal_actions:
         return None
-    mask = action_mask(ctx)
+    mask = action_mask(
+        ctx, avoid_exposed_row0_gem=avoid_exposed_row0_gem
+    )
     if not mask.any():
         return None
     return net.masked_probs(
@@ -180,7 +187,18 @@ def transcript(
             controller.step_one_player_auto()
             continue
         owned = seat < len(controller.agents) and controller.agents[seat] is not None
-        probs = probabilities(net, ctx) if owned else None
+        agent = controller.agents[seat] if owned else None
+        probs = (
+            probabilities(
+                net,
+                ctx,
+                avoid_exposed_row0_gem=bool(
+                    getattr(agent, "avoid_exposed_row0_gem", False)
+                ),
+            )
+            if owned
+            else None
+        )
         before = [len(player.collected_cards) for player in env.players]
         state = (board_text(env), positions_text(env))
         haul_before, round_before = env.haul, env.round

@@ -587,9 +587,14 @@ The full write-up, with confidence intervals and reproduction commands, is in
   Win-rate changes were −0.6 pp vs neural controls, −0.4 pp vs rule agents, and
   +5.8 pp vs always-pushers (the last paired 95% CI: +2.3 to +9.3 pp). The
   optional `NeuralAgent(..., avoid_exposed_row0_gem=True)` guard does not change
-  engine legality or the checkpoint weights; no retraining was needed. Full
-  denominators, Wilson intervals, paired per-game changes and seed examples are
-  in [ROW0_GEM_EXPOSURE_AUDIT.md](ROW0_GEM_EXPOSURE_AUDIT.md) and its JSON data.
+  engine legality or the checkpoint weights; no retraining was needed. The GUI
+  controller now enables the guard for neural seats by default. A game-7
+  regression also keeps deeper foreign alternatives open when the known-Gem
+  heuristic would otherwise leave only the exposed row-0 Gem. The paired figures
+  above and in the audit file describe the earlier guard version; rerun the probe
+  for performance estimates of the current default. Full denominators, Wilson
+  intervals, paired per-game changes and seed examples are in
+  [ROW0_GEM_EXPOSURE_AUDIT.md](ROW0_GEM_EXPOSURE_AUDIT.md) and its JSON data.
 * **Dragon signals are cue-specific; hard dodging has no measured edge yet.**
   Across 600 forced-policy calibration games, the owner-in-cage cue matched a
   dragon on 2,496/2,756 observed cards (90.6%). The voluntary walk-off cue had

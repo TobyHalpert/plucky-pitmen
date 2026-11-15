@@ -608,6 +608,21 @@ def _opponent_movement_depth(opp: object) -> int:
     return pos
 
 
+def _active_deeper_rival_remains(ctx: PlayerActionContext) -> bool:
+    """Whether an active rival can still reach row 0 in a later planning turn.
+
+    ``planned`` only says a player has already acted in this planning cycle; it
+    does not commit the figure while the round remains open. A deeper rival can
+    get another decision before the chosen card is revealed.
+    """
+    return any(
+        not opponent.escaped
+        and not opponent.dead
+        and _opponent_movement_depth(opponent) > 0
+        for opponent in ctx.opponents
+    )
+
+
 def action_features(
     ctx: PlayerActionContext,
     action: int,
@@ -1568,7 +1583,11 @@ def exposed_own_gem_actions(ctx: PlayerActionContext) -> set[int]:
     return exposed
 
 
-def digs_past_a_known_gem(ctx: PlayerActionContext) -> set[int]:
+def digs_past_a_known_gem(
+    ctx: PlayerActionContext,
+    *,
+    avoid_exposed_row0_gem: bool = False,
+) -> set[int]:
     """Face-down digs that a secure gem the seat can see makes pointless.
 
     A front of the seat's **own** column is information the rest of the table
@@ -1576,14 +1595,16 @@ def digs_past_a_known_gem(ctx: PlayerActionContext) -> set[int]:
     down card may be a dragon, so a secure known gem usually dominates it. But
     "known" does not mean "guaranteed to collect": an unsettled rival may still
     reach the selected row and displace the seat before the card is revealed.
-    If every legal own-column gem is exposed that way, deeper foreign lanes stay
-    available as alternatives instead of being hidden by this policy heuristic.
+    For the optional row-0 guard, a deeper active rival can also raid after its
+    first move, so keep deeper foreign lanes available even if that rival has
+    already planned once. If every legal own-column gem is exposed, these lanes
+    are not hidden by the usual known-Gem preference.
 
-    This is deliberately not a hard ban on taking the gem. The action feature
-    prices the exposure and self-play decides whether the safer lane is worth
-    the dragon risk. With no exposed own gem, the usual comparison still holds:
-    a hidden card that becomes a gem ties the known gem, dynamite is not scored,
-    and a dragon can end the haul.
+    This is deliberately not a hard ban on taking a gem unless the caller
+    enables ``avoid_exposed_row0_gem``. Without that guard, the learned policy
+    decides whether the safer lane is worth the dragon risk. With no exposed
+    own gem, the usual comparison still holds: a hidden card that becomes a gem
+    ties the known gem, dynamite is not scored, and a dragon can end the haul.
     """
     own_gem_actions = {
         int(action)
@@ -1598,10 +1619,23 @@ def digs_past_a_known_gem(ctx: PlayerActionContext) -> set[int]:
         return set()
 
     exposed_gems = exposed_own_gem_actions(ctx)
-    has_secure_gem = bool(own_gem_actions - exposed_gems)
+    row0_action = int(ctx.player_index)
+    exposed_row0_gem = (
+        avoid_exposed_row0_gem
+        and row0_action in own_gem_actions
+        and _active_deeper_rival_remains(ctx)
+    )
+    secure_gems = own_gem_actions - exposed_gems
+    if exposed_row0_gem:
+        # The ordinary exposure signal counts rivals who have not yet moved.
+        # Row 0 is different: after our move, any deeper active rival gets a
+        # later planning turn and can still raid it, even if they already moved.
+        secure_gems.discard(row0_action)
+    has_secure_gem = bool(secure_gems)
     allow_foreign_alternatives = (
         _exposed_own_row0_gem_unsettled(ctx) >= 2
         or (bool(exposed_gems) and not has_secure_gem)
+        or (exposed_row0_gem and not has_secure_gem)
     )
 
     hidden: set[int] = set()
@@ -1972,7 +2006,13 @@ def action_mask(
         for primitive in ranked:
             mask[primitive] = False
             mask[join_action(primitive, True)] = False
-    lottery = {action for action in digs_past_a_known_gem(ctx) if mask[int(action)]}
+    lottery = {
+        action
+        for action in digs_past_a_known_gem(
+            ctx, avoid_exposed_row0_gem=avoid_exposed_row0_gem
+        )
+        if mask[int(action)]
+    }
     if lottery:
         trial = mask.copy()
         for primitive in lottery:
@@ -2016,14 +2056,9 @@ def action_mask(
         # Row 0 is the last step before the lorry: after a same-card push the
         # victim cannot move to another card, only cage or lorry. A rival can
         # still get a chance to push even if it has already planned once, so
-        # this stricter experimental guard checks every active rival's movement
-        # depth rather than only ``exposed_own_gem_actions``' unsettled subset.
-        deeper_rival_remains = any(
-            not opponent.escaped
-            and not opponent.dead
-            and _opponent_movement_depth(opponent) > 0
-            for opponent in ctx.opponents
-        )
+        # this guard checks every active rival's movement depth rather than only
+        # ``exposed_own_gem_actions``' unsettled subset.
+        deeper_rival_remains = _active_deeper_rival_remains(ctx)
         row0_action = int(ctx.player_index)
         row0_card = (
             ctx.public_rows[0][ctx.player_index]
