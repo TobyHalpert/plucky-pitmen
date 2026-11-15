@@ -1423,6 +1423,15 @@ def action_reason(ctx: PlayerActionContext, action: int) -> str:
             refusal = "lorry, refuses the dragon I can see"
         elif own_card_is_signalled_dragon(ctx):
             refusal = "lorry, refuses the signalled dragon"
+        elif (
+            ctx.public_rows
+            and len(ctx.public_rows[0]) > ctx.player_index
+            and ctx.public_rows[0][ctx.player_index] is not None
+            and ctx.public_rows[0][ctx.player_index][0] == GEM
+            and int(ctx.player_index) in {int(a) for a in ctx.legal_actions}
+            and _active_deeper_rival_remains(ctx)
+        ):
+            refusal = "lorry, avoids the exposed home Gem"
         else:
             refusal = "lorry"
         return refusal + suffix
@@ -1597,8 +1606,10 @@ def digs_past_a_known_gem(
     reach the selected row and displace the seat before the card is revealed.
     For the optional row-0 guard, a deeper active rival can also raid after its
     first move, so keep deeper foreign lanes available even if that rival has
-    already planned once. If every legal own-column gem is exposed, these lanes
-    are not hidden by the usual known-Gem preference.
+    already planned once. If row 0 is the only reachable row, keep its foreign
+    cells available too rather than leaving only the exposed home Gem. If every
+    legal own-column gem is exposed, these lanes are not hidden by the usual
+    known-Gem preference.
 
     This is deliberately not a hard ban on taking a gem unless the caller
     enables ``avoid_exposed_row0_gem``. Without that guard, the learned policy
@@ -1637,6 +1648,15 @@ def digs_past_a_known_gem(
         or (bool(exposed_gems) and not has_secure_gem)
         or (exposed_row0_gem and not has_secure_gem)
     )
+    has_deeper_legal_card = any(
+        0 <= int(action) < PIT_CAGE
+        and int(action) // MAX_COLUMNS >= 1
+        for action in ctx.legal_actions
+    )
+    allow_row0_foreign_alternatives = (
+        exposed_row0_gem
+        and not has_deeper_legal_card
+    )
 
     hidden: set[int] = set()
     for action in ctx.legal_actions:
@@ -1651,7 +1671,11 @@ def digs_past_a_known_gem(
             continue
         if _occupant(ctx, row, column) is not None:
             continue
-        if allow_foreign_alternatives and row >= 1 and column != ctx.player_index:
+        if (
+            allow_foreign_alternatives
+            and column != ctx.player_index
+            and (row >= 1 or allow_row0_foreign_alternatives)
+        ):
             continue
         hidden.add(primitive)
     return hidden
@@ -2077,6 +2101,15 @@ def action_mask(
             trial = mask.copy()
             trial[row0_action] = False
             trial[join_action(row0_action, True)] = False
+            if not trial.any():
+                # The Gem can be the only move left after the ordinary policy
+                # rules, even though the engine still offers a retreat. Keep
+                # the exposed Gem blocked and use the lorry (stay in the haul)
+                # before the cage (leave it) as a last-resort fallback.
+                for fallback in (int(LORRY), int(PIT_CAGE)):
+                    if fallback in ctx.legal_actions:
+                        trial[fallback] = True
+                        break
             if trial.any():
                 mask = trial
                 # Do not turn an avoided, exposed Gem into a no-card lorry

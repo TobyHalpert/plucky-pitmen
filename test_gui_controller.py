@@ -182,6 +182,48 @@ def test_seed7_guard_does_not_fall_back_to_lorry_over_a_deeper_dig():
     assert int(controller.last_choice.action) == deeper_dig
 
 
+def test_viewer_seed7_opens_row0_foreign_cards_instead_of_lorry():
+    """P1 can choose a foreign row-0 card when no deeper card is reachable."""
+    from game_env import GEM, LORRY, MAX_COLUMNS
+
+    policy = "neural:selfplay4"
+    controller = GameController(3, policy, seed=7)
+    controller.reset(3, policy, seed=7, advance=False)
+
+    steps = 0
+    while True:
+        assert steps < 100
+        if (
+            controller.env.haul == 1
+            and controller.env.round == 0
+            and controller.env.planning_player == 0
+        ):
+            ctx = controller.env.player_action_context(0)
+            if getattr(ctx, "own_displaced", False) and ctx.own_position == 1:
+                break
+        controller.step_one_player_auto()
+        steps += 1
+
+    assert controller.agents[0].avoid_exposed_row0_gem
+    assert ctx.public_rows[0][0][0] == GEM
+    assert 0 in ctx.legal_actions
+    guarded = action_mask(ctx, avoid_exposed_row0_gem=True)
+    assert not guarded[0]
+    foreign_row0 = [
+        action
+        for action in ctx.legal_actions
+        if 0 <= action < MAX_COLUMNS and action % MAX_COLUMNS != ctx.player_index
+    ]
+    assert foreign_row0
+    assert all(guarded[action] for action in foreign_row0)
+    assert not guarded[int(LORRY)]
+
+    controller.step_one_player_auto()
+    assert controller.last_choice_seat == 0
+    assert controller.last_choice is not None
+    assert int(controller.last_choice.action) == 1
+
+
 def test_the_viewer_names_who_plays_each_seat(tiny_net):
     """"P3 walks to the cage" is unreadable unless the table says who P3 is.
 

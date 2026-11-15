@@ -6861,5 +6861,5 @@
       }
     }
   },
-  "implementation_note": "Historical: these paired figures evaluate the earlier row-0 guard. The current GameController enables an updated guard that opens deeper foreign alternatives in the game-7 late-planning case before masking the exposed Gem, and suppresses a no-score lorry fallback when a policy-approved dig remains. Rerun probe_row0_gem_exposure.py for estimates of the current default."
+  "implementation_note": "Historical: these paired figures evaluate the earlier row-0 guard. The current GameController enables an updated guard that opens deeper foreign alternatives in the game-7 late-planning case, also opens foreign row-0 cells if no deeper row is reachable, masks the exposed Gem, and suppresses a no-score lorry fallback when a policy-approved dig remains. Rerun probe_row0_gem_exposure.py for estimates of the current default."
 }
