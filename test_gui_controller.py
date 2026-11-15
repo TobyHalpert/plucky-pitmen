@@ -114,7 +114,7 @@ def test_default_selfplay4_seed7_avoids_exposed_row0_home_gem():
     assert controller.env.haul == 1
     assert controller.env.round == 0
     assert controller.env.planning_player == 2
-    assert all(agent.avoid_exposed_row0_gem for agent in controller.agents)
+    assert all(agent.avoid_contestable_home_row0 for agent in controller.agents)
 
     ctx = controller.env.player_action_context(2)
     assert all(opponent.planned for opponent in ctx.opponents)
@@ -126,7 +126,7 @@ def test_default_selfplay4_seed7_avoids_exposed_row0_home_gem():
     # though every rival has already planned once; the default controller guard
     # then excludes the exposed home Gem from both the viewer and the sampler.
     unguarded = action_mask(ctx)
-    guarded = action_mask(ctx, avoid_exposed_row0_gem=True)
+    guarded = action_mask(ctx, avoid_contestable_home_row0=True)
     assert unguarded[row0_home_gem]
     assert not guarded[row0_home_gem]
     assert any(
@@ -146,68 +146,308 @@ def test_default_selfplay4_seed7_avoids_exposed_row0_home_gem():
 
 def test_seed7_guard_does_not_fall_back_to_lorry_over_a_deeper_dig():
     """P1 should keep digging after the row-0 guard blocks the exposed Gem."""
-    from features import own_card_is_signalled_dragon
-    from game_env import GEM, LORRY, MAX_COLUMNS
+    from game_env import GEM, LORRY, MAX_COLUMNS, PIT_CAGE
 
     policy = "neural:selfplay4"
     controller = GameController(3, policy, seed=7)
     controller.reset(3, policy, seed=7, all_seats=True, advance=False)
 
-    steps = 0
-    while not (
-        controller.env.haul == 1
-        and controller.env.round == 1
-        and controller.env.planning_player == 0
-    ):
+    ctx = None
+    deeper_digs = []
+    for _ in range(100):
+        env = controller.env
+        if (
+            env.haul == 1
+            and env.round == 0
+            and env.planning_player == 0
+        ):
+            candidate = env.player_action_context(0)
+            if (
+                candidate.public_rows[0][0] is not None
+                and candidate.public_rows[0][0][0] == GEM
+                and 0 in candidate.legal_actions
+            ):
+                guarded = action_mask(
+                    candidate, avoid_contestable_home_row0=True
+                )
+                deeper = [
+                    action
+                    for action in candidate.legal_actions
+                    if 0 <= action < PIT_CAGE
+                    and action // MAX_COLUMNS >= 1
+                    and guarded[action]
+                ]
+                if deeper:
+                    ctx, deeper_digs = candidate, deeper
+                    break
         controller.step_one_player_auto()
-        steps += 1
-        assert steps < 400
-    # P1 takes the r3c2 card; P3 then signals its own-column Dragon by caging.
-    for _ in range(4):
-        controller.step_one_player_auto()
-    assert controller.env.planning_player == 0
-    ctx = controller.env.player_action_context(0)
-    assert own_card_is_signalled_dragon(ctx)
-    assert ctx.private_cards and any(front == GEM for front, _back in ctx.private_cards)
-
-    guarded = action_mask(ctx, avoid_exposed_row0_gem=True)
+    assert ctx is not None, "seed-7 P1 exposed-Gem/deeper-dig decision not reproduced"
+    assert controller.agents[0].avoid_contestable_home_row0
+    guarded = action_mask(ctx, avoid_contestable_home_row0=True)
     assert not guarded[ctx.player_index]  # the exposed home Gem
     assert not guarded[int(LORRY)]  # no empty lorry retreat while a dig remains
-    deeper_dig = 2 * MAX_COLUMNS + 2
-    assert guarded[deeper_dig]
+    assert deeper_digs
+    snapshot = dict(controller.policy_snapshot(seat=0, limit=56))
+    assert int(LORRY) not in snapshot
+    assert ctx.player_index not in snapshot
 
     controller.step_one_player_auto()
     assert controller.last_choice_seat == 0
     assert controller.last_choice is not None
-    assert int(controller.last_choice.action) == deeper_dig
+    assert int(controller.last_choice.action) in deeper_digs
 
 
-def test_viewer_seed7_opens_row0_foreign_cards_instead_of_lorry():
-    """P1 can choose a foreign row-0 card when no deeper card is reachable."""
-    from game_env import GEM, LORRY, MAX_COLUMNS
+def test_default_selfplay4_seed7_protects_p4_from_row0_dynamite_raid():
+    """Reproduce P4's seed-7 choice, its displacement, and the default fix.
+
+    Replay the baseline actions up to P4's second decision in haul 1, planning
+    phase 2. With the guard off, the shipped net nearly certainly chooses its
+    own row-0 Dynamite and a later P2 move displaces P4 there. Replaying that
+    same prefix through the default GUI controller then verifies that the
+    generalized guard offers another card and prevents the displacement.
+    """
+    import features
+    from game_env import DYNAMITE, LORRY, MAX_COLUMNS, PASS, PIT_CAGE
+
+    policy = "neural:selfplay4"
+    target = 3  # P4's own r0c3 Dynamite
+    # Baseline seed-7 planning prefix through P3's row-1 move. Keep it explicit
+    # and legal so this reaches the originally reported decision, not a merely
+    # similar board shape. Only the target decision below is policy-selected.
+    prefix = (
+        2 * MAX_COLUMNS + 1,  # P4: r2c1
+        2 * MAX_COLUMNS + 2,  # P1: r2c2
+        1 * MAX_COLUMNS + 3,  # P2: r1c3
+        2 * MAX_COLUMNS + 3,  # P3: r2c3
+        PASS,                 # P4
+        1 * MAX_COLUMNS + 0,  # P1: r1c0
+        PASS,                 # P2
+        PASS,                 # P3
+        PASS,                 # P4: resolves planning phase 1
+        3 * MAX_COLUMNS + 2,  # P1: r3c2
+        3 * MAX_COLUMNS + 3,  # P2: r3c3
+        PIT_CAGE,             # P3
+        PIT_CAGE,             # P4
+        2 * MAX_COLUMNS + 2,  # P1: r2c2
+        1 * MAX_COLUMNS + 1,  # P2: r1c1
+        1 * MAX_COLUMNS + 1,  # P3 displaces P2
+    )
+
+    def replay_to_p4_decision():
+        replay = GameController(3, policy, seed=7, all_seats=True)
+        replay.reset(3, policy, seed=7, all_seats=True, advance=False)
+        for action in prefix:
+            env = replay.env
+            seat = env.planning_player
+            assert action in env.legal_actions(seat)
+            _obs, _reward, terminated, _truncated, _info = env.step_one_player(
+                action, force_action=True
+            )
+            assert not terminated
+        return replay, replay.env.player_action_context(3)
+
+    # First reproduce the actual failure path without the guard and verify the
+    # engine event: P4 chooses the target, then P2 takes it and displaces P4.
+    baseline, baseline_ctx = replay_to_p4_decision()
+    assert baseline.env.haul == 1 and baseline.env.round == 1
+    assert baseline.env.planning_player == 3
+    assert baseline_ctx.own_position == PIT_CAGE and baseline_ctx.own_planned
+    assert baseline_ctx.public_rows[0][3] is not None
+    assert baseline_ctx.public_rows[0][3][0] == DYNAMITE
+    assert target in baseline_ctx.legal_actions
+    assert features._active_rivals_able_to_reach(baseline_ctx, 0) >= 1
+    assert any(
+        opponent.planned
+        and not opponent.escaped
+        and not opponent.dead
+        and (
+            opponent.cage_index
+            if opponent.position == PIT_CAGE
+            else 0
+            if opponent.position == LORRY
+            else opponent.position
+        ) > 0
+        for opponent in baseline_ctx.opponents
+    )
+
+    p4_agent = baseline.agents[3]
+    assert p4_agent.avoid_contestable_home_row0
+    p4_agent.avoid_contestable_home_row0 = False
+    unguarded = action_mask(baseline_ctx)
+    unguarded_snapshot = dict(baseline.policy_snapshot(seat=3, limit=56))
+    assert unguarded[target]
+    assert unguarded_snapshot[target] > 0.99
+    baseline.step_one_player_auto()
+    assert baseline.last_choice_seat == 3
+    assert baseline.last_choice is not None
+    assert int(baseline.last_choice.action) == target
+    assert baseline.env.planning_player == 0
+    assert baseline.env.players[3].position == 0
+    assert not baseline.env.players[3].displaced
+
+    # Finish the unguarded replay with the same legal P1/P2 choices. The later
+    # P2 move is legal and confirms the row-zero displacement failure mode.
+    _obs, _reward, _terminated, _truncated, _info = baseline.env.step_one_player(
+        PIT_CAGE, force_action=True
+    )  # P1 leaves the mine
+    assert baseline.env.planning_player == 1
+    assert target in baseline.env.legal_actions(1)
+    baseline.env.step_one_player(target, force_action=True)
+    assert baseline.env.players[3].displaced
+    assert baseline.env.players[3].position == 0
+    assert baseline.env.players[3].column == 3
+    assert (3, 1) in baseline.env.displacement_events
+
+    controller, ctx = replay_to_p4_decision()
+    assert all(agent.avoid_contestable_home_row0 for agent in controller.agents)
+    assert ctx.own_position == PIT_CAGE and ctx.own_planned
+    assert ctx.public_rows[0][3] is not None
+    assert ctx.public_rows[0][3][0] == DYNAMITE
+    assert target in ctx.legal_actions
+
+    guarded = action_mask(ctx, avoid_contestable_home_row0=True)
+    assert not guarded[target]
+    alternatives = [
+        action
+        for action in ctx.legal_actions
+        if 0 <= action < PIT_CAGE and action != target and guarded[action]
+    ]
+    assert alternatives
+    assert not guarded[int(LORRY)]  # do not substitute a no-score retreat for a dig
+    guarded_snapshot = dict(controller.policy_snapshot(seat=3, limit=56))
+    assert target not in guarded_snapshot
+    assert int(LORRY) not in guarded_snapshot
+
+    controller.step_one_player_auto()
+    assert controller.last_choice_seat == 3
+    assert controller.last_choice is not None
+    assert int(controller.last_choice.action) in alternatives
+    # Follow the rest of this phase: P4 must never be displaced on its own
+    # row-zero card by the later move that caused the original report.
+    for _ in range(80):
+        env = controller.env
+        if env.haul != 1 or env.round != 1 or env.game_finished:
+            break
+        p4 = env.players[3]
+        assert not (p4.displaced and p4.position == 0 and p4.column == 3)
+        controller.step_one_player_auto()
+
+
+def test_default_all_seats_controller_guards_contestable_row0_dynamite():
+    """P4's default neural agent avoids a vulnerable own-row-zero Dynamite.
+
+    This recreates the reported decision point: P4 has already planned once,
+    sits in the cage with one Dynamite, and has a visible home-row-zero
+    Dynamite. Every deeper rival has also planned, but may still act again.
+    """
+    from game_env import DYNAMITE, GEM, LORRY, MAX_COLUMNS, PIT_CAGE
+
+    policy = "neural:selfplay4"
+    controller = GameController(3, policy, seed=7, all_seats=True)
+    controller.reset(3, policy, seed=7, all_seats=True, advance=False)
+    env = controller.env
+
+    for row in env.rows:
+        for column in range(len(row)):
+            row[column] = None
+    env.rows[0][3] = (DYNAMITE, 2)
+    env.rows[1][0] = (GEM, 0)
+    env.rows[1][1] = (DYNAMITE, 1)
+    env.rows[1][2] = (GEM, 2)
+
+    for seat in (0, 1, 2):
+        rival = env.players[seat]
+        rival.position, rival.column, rival.cage_index = 2, seat, None
+        rival.displaced, rival.escaped, rival.dead = False, False, False
+        rival.collected_cards = []
+        env.planned_players[seat] = True
+    p4 = env.players[3]
+    p4.position, p4.column, p4.cage_index = PIT_CAGE, None, 2
+    p4.displaced, p4.escaped, p4.dead = False, False, False
+    p4.collected_cards = [(DYNAMITE, 2)]
+    env.planned_players[3] = True
+    env.planning_player = 3
+    env.haul, env.round = 1, 1
+    env.consecutive_passes = 0
+    env.lorry_touched = [False] * env.n_players
+
+    ctx = env.player_action_context(3)
+    target = 0 * MAX_COLUMNS + 3  # P4's own r0c3 Dynamite
+    assert ctx.own_planned and all(opponent.planned for opponent in ctx.opponents)
+    assert ctx.public_rows[0][3][0] == DYNAMITE
+    assert target in ctx.legal_actions
+
+    unguarded = action_mask(ctx)
+    guarded = action_mask(ctx, avoid_contestable_home_row0=True)
+    assert unguarded[target]
+    assert not guarded[target]
+    alternatives = [
+        action
+        for action in ctx.legal_actions
+        if 0 <= action < PIT_CAGE and action != target and guarded[action]
+    ]
+    assert alternatives
+    assert not guarded[int(LORRY)]  # do not retreat while a dig remains
+    assert all(agent.avoid_contestable_home_row0 for agent in controller.agents)
+    snapshot = dict(controller.policy_snapshot(seat=3, limit=56))
+    assert target not in snapshot
+    assert int(LORRY) not in snapshot
+
+    controller.step_one_player_auto()
+    assert controller.last_choice_seat == 3
+    assert controller.last_choice is not None
+    assert int(controller.last_choice.action) in alternatives
+
+
+def test_default_viewer_controller_opens_row0_foreign_cards_instead_of_lorry():
+    """A displaced P1 keeps a row-0 alternative when no deeper card is reachable.
+
+    This valid seed-7 controller state is set up directly so the regression
+    remains stable while the broader policy changes its preceding sampled path.
+    The viewer's default is one neural P1 plus built-in opponents.
+    """
+    from game_env import DYNAMITE, GEM, LORRY, MAX_COLUMNS
 
     policy = "neural:selfplay4"
     controller = GameController(3, policy, seed=7)
     controller.reset(3, policy, seed=7, advance=False)
+    env = controller.env
 
-    steps = 0
-    while True:
-        assert steps < 100
-        if (
-            controller.env.haul == 1
-            and controller.env.round == 0
-            and controller.env.planning_player == 0
-        ):
-            ctx = controller.env.player_action_context(0)
-            if getattr(ctx, "own_displaced", False) and ctx.own_position == 1:
-                break
-        controller.step_one_player_auto()
-        steps += 1
+    # P1 is displaced on its own row-1 card. Every available dig is at row 0;
+    # the other active seats have already planned but can still make a later
+    # move before reveal.
+    for row in env.rows:
+        for column in range(len(row)):
+            row[column] = None
+    env.rows[0][0] = (GEM, 0)
+    env.rows[0][1] = (GEM, 1)
+    env.rows[0][2] = (DYNAMITE, 2)
+    env.rows[0][3] = (GEM, 0)
+    env.rows[1][0] = (DYNAMITE, 0)
+    p1 = env.players[0]
+    p1.position, p1.column, p1.cage_index = 1, 0, None
+    p1.displaced, p1.escaped, p1.dead = True, False, False
+    p1.collected_cards = []
+    p2 = env.players[1]
+    p2.position, p2.column, p2.cage_index = 1, 0, None
+    p2.displaced, p2.escaped, p2.dead = False, False, False
+    for seat in (2, 3):
+        rival = env.players[seat]
+        rival.position, rival.column, rival.cage_index = 2, seat, None
+        rival.displaced, rival.escaped, rival.dead = False, False, False
+    env.planned_players = [False, True, True, True]
+    env.planning_player = 0
+    env.haul, env.round = 1, 0
+    env.consecutive_passes = 0
+    env.lorry_touched = [False] * env.n_players
 
-    assert controller.agents[0].avoid_exposed_row0_gem
+    ctx = env.player_action_context(0)
+    assert controller.agents[0].avoid_contestable_home_row0
+    assert ctx.own_displaced and ctx.own_position == 1
+    assert all(opponent.planned for opponent in ctx.opponents)
     assert ctx.public_rows[0][0][0] == GEM
     assert 0 in ctx.legal_actions
-    guarded = action_mask(ctx, avoid_exposed_row0_gem=True)
+    guarded = action_mask(ctx, avoid_contestable_home_row0=True)
     assert not guarded[0]
     foreign_row0 = [
         action
@@ -221,7 +461,7 @@ def test_viewer_seed7_opens_row0_foreign_cards_instead_of_lorry():
     controller.step_one_player_auto()
     assert controller.last_choice_seat == 0
     assert controller.last_choice is not None
-    assert int(controller.last_choice.action) == 1
+    assert int(controller.last_choice.action) in foreign_row0
 
 
 def test_the_viewer_names_who_plays_each_seat(tiny_net):

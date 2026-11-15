@@ -63,9 +63,11 @@ TRAINING_CACHE_DIR = Path(__file__).with_name(".training_cache")
 CHECKPOINT_DIR = Path(__file__).with_name("checkpoints")
 NEURAL_PREFIX = "neural:"
 NEURAL_TEMPERATURE = 0.7
-# The row-0 home-Gem exposure guard is part of the default interactive neural
-# policy; direct NeuralAgent users can still opt out.
-NEURAL_ROW0_GEM_GUARD = True
+# Protect safe home-row-zero cards from a same-phase raid in the default
+# interactive neural policy; direct NeuralAgent users can still opt out.
+NEURAL_CONTESTABLE_HOME_ROW0_GUARD = True
+# Compatibility alias for callers that imported the original Gem-only guard.
+NEURAL_ROW0_GEM_GUARD = NEURAL_CONTESTABLE_HOME_ROW0_GUARD
 
 
 # ---------------------------------------------------------------------------
@@ -309,7 +311,7 @@ class GameController:
             seed=self.seed,
             temperature=NEURAL_TEMPERATURE,
             deterministic=self.deterministic,
-            avoid_exposed_row0_gem=NEURAL_ROW0_GEM_GUARD,
+            avoid_contestable_home_row0=NEURAL_CONTESTABLE_HOME_ROW0_GUARD,
         )
         if self.all_seats:
             for seat in range(1, self.env.n_players):
@@ -318,7 +320,7 @@ class GameController:
                     seed=self.seed + 101 * seat,
                     temperature=NEURAL_TEMPERATURE,
                     deterministic=self.deterministic,
-                    avoid_exposed_row0_gem=NEURAL_ROW0_GEM_GUARD,
+                    avoid_contestable_home_row0=NEURAL_CONTESTABLE_HOME_ROW0_GUARD,
                 )
 
     def ensure_training_ready(self, progress_callback: Callable[[str], None] | None = None) -> None:
@@ -724,8 +726,12 @@ class GameController:
         agent = self.agents[seat] if seat < len(self.agents) else None
         mask = action_mask(
             ctx,
-            avoid_exposed_row0_gem=bool(
-                getattr(agent, "avoid_exposed_row0_gem", False)
+            avoid_contestable_home_row0=bool(
+                getattr(
+                    agent,
+                    "avoid_contestable_home_row0",
+                    getattr(agent, "avoid_exposed_row0_gem", False),
+                )
             ),
         )
         if not mask.any():

@@ -585,17 +585,25 @@ The full write-up, with confidence intervals and reproduction commands, is in
   43/60, 57/60, and 43/60; the pusher took all 43 resolved displaced Gems.
   Across all three fields, the exact event fell by 0.086–0.134 per focal game.
   Win-rate changes were −0.6 pp vs neural controls, −0.4 pp vs rule agents, and
-  +5.8 pp vs always-pushers (the last paired 95% CI: +2.3 to +9.3 pp). The
-  optional `NeuralAgent(..., avoid_exposed_row0_gem=True)` guard does not change
-  engine legality or the checkpoint weights; no retraining was needed. The GUI
-  controller now enables the guard for neural seats by default. A game-7
-  regression also keeps foreign alternatives open when the known-Gem heuristic
-  would otherwise leave only the exposed row-0 Gem (including other row-0 cells
-  when no deeper row is reachable), and avoids falling back to the no-score lorry
-  when such a dig remains. The paired figures
-  above and in the audit file describe the earlier guard version; rerun the probe
-  for performance estimates of the current default. Full denominators, Wilson
-  intervals, paired per-game changes and seed examples are in
+  +5.8 pp vs always-pushers (the last paired 95% CI: +2.3 to +9.3 pp). Those
+  figures measure the earlier Gem-only guard, not today's policy. A seed-7 P4
+  replay exposed two gaps in that guard: the public `planned` flag marks only a
+  provisional move (a later card move resets the pass clock, giving that rival
+  another turn), and the Gem-only mask did not cover P4's own row-0 Dynamite.
+  The GUI's default neural path now uses active movement-depth reachability,
+  regardless of `planned`, to protect any known safe home-row-zero card (Gem or
+  Dynamite); a visible Dragon remains usable as bait. This is a policy-only
+  guard: engine legality and checkpoint feature semantics are unchanged.
+  `NeuralAgent(..., avoid_contestable_home_row0=True)` enables it, and the old
+  `avoid_exposed_row0_gem` keyword remains an alias. On the reproduced seed-7
+  decision, the guard removes P4's row-0 Dynamite while leaving other policy-
+  approved moves available; the same controller test follows the phase and
+  verifies P4 is not displaced there. The seed-7 regressions also keep foreign
+  alternatives open for a displaced P1 and avoid falling back to the no-score
+  lorry when a policy-approved deeper dig remains. The paired figures above and
+  in the audit file are historical; rerun the probe for performance estimates
+  of the generalized default. Full denominators, Wilson intervals, paired
+  per-game changes and seed examples are in
   [ROW0_GEM_EXPOSURE_AUDIT.md](ROW0_GEM_EXPOSURE_AUDIT.md) and its JSON data.
 * **Dragon signals are cue-specific; hard dodging has no measured edge yet.**
   Across 600 forced-policy calibration games, the owner-in-cage cue matched a

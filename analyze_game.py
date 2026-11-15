@@ -145,12 +145,17 @@ def probabilities(
     net: PolicyNet,
     ctx,
     *,
-    avoid_exposed_row0_gem: bool = False,
+    avoid_contestable_home_row0: bool = False,
+    avoid_exposed_row0_gem: bool | None = None,
 ) -> np.ndarray | None:
+    if avoid_exposed_row0_gem is not None:
+        avoid_contestable_home_row0 = bool(
+            avoid_contestable_home_row0 or avoid_exposed_row0_gem
+        )
     if net is None or not ctx.legal_actions:
         return None
     mask = action_mask(
-        ctx, avoid_exposed_row0_gem=avoid_exposed_row0_gem
+        ctx, avoid_contestable_home_row0=avoid_contestable_home_row0
     )
     if not mask.any():
         return None
@@ -192,8 +197,12 @@ def transcript(
             probabilities(
                 net,
                 ctx,
-                avoid_exposed_row0_gem=bool(
-                    getattr(agent, "avoid_exposed_row0_gem", False)
+                avoid_contestable_home_row0=bool(
+                    getattr(
+                        agent,
+                        "avoid_contestable_home_row0",
+                        getattr(agent, "avoid_exposed_row0_gem", False),
+                    )
                 ),
             )
             if owned

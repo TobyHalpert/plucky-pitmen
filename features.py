@@ -608,18 +608,38 @@ def _opponent_movement_depth(opp: object) -> int:
     return pos
 
 
-def _active_deeper_rival_remains(ctx: PlayerActionContext) -> bool:
-    """Whether an active rival can still reach row 0 in a later planning turn.
+def _active_rivals_able_to_reach(ctx: PlayerActionContext, row: int) -> int:
+    """Count living rivals who can reach ``row`` before this card resolves.
 
-    ``planned`` only says a player has already acted in this planning cycle; it
-    does not commit the figure while the round remains open. A deeper rival can
-    get another decision before the chosen card is revealed.
+    ``planned`` means a move has been announced, not that the figure is locked
+    for the phase. Any non-pass action resets the pass clock, so each active
+    rival gets another decision before the selected card is revealed. A rival
+    can therefore still push a card even if it has already planned once.
     """
-    return any(
-        not opponent.escaped
-        and not opponent.dead
-        and _opponent_movement_depth(opponent) > 0
+    return sum(
+        1
         for opponent in ctx.opponents
+        if not opponent.escaped
+        and not opponent.dead
+        and _opponent_movement_depth(opponent) > int(row)
+    )
+
+
+def _contestable_home_row0_safe_card(ctx: PlayerActionContext) -> bool:
+    """Whether a visible, non-dragon home card at row 0 can still be raided.
+
+    The row-0 Gem and dynamite are both vulnerable: if a deeper active rival
+    takes this card later in the same phase, its owner is displaced at the last
+    card row and has no card move left. A visible Dragon is different; it can be
+    used as bait, so the guard leaves that policy choice alone.
+    """
+    if not ctx.public_rows or len(ctx.public_rows[0]) <= ctx.player_index:
+        return False
+    entry = ctx.public_rows[0][ctx.player_index]
+    return bool(
+        entry is not None
+        and entry[0] in (GEM, DYNAMITE)
+        and _active_rivals_able_to_reach(ctx, 0) > 0
     )
 
 
@@ -1424,14 +1444,10 @@ def action_reason(ctx: PlayerActionContext, action: int) -> str:
         elif own_card_is_signalled_dragon(ctx):
             refusal = "lorry, refuses the signalled dragon"
         elif (
-            ctx.public_rows
-            and len(ctx.public_rows[0]) > ctx.player_index
-            and ctx.public_rows[0][ctx.player_index] is not None
-            and ctx.public_rows[0][ctx.player_index][0] == GEM
+            _contestable_home_row0_safe_card(ctx)
             and int(ctx.player_index) in {int(a) for a in ctx.legal_actions}
-            and _active_deeper_rival_remains(ctx)
         ):
-            refusal = "lorry, avoids the exposed home Gem"
+            refusal = "lorry, avoids the contestable home row-0 card"
         else:
             refusal = "lorry"
         return refusal + suffix
@@ -1520,13 +1536,12 @@ def strands_the_figure(ctx: PlayerActionContext) -> set[int]:
     return hidden
 
 
-def _exposed_own_row0_gem_unsettled(ctx: PlayerActionContext) -> int:
-    """Count unsettled/displaced rivals who can still push ``(0, own_col)`` on
-    Turn 1 when the seat's only legal own gem sits at row 0 and deeper cards
-    exist (0 when not applicable).
+def _active_pushers_for_row0_gem(ctx: PlayerActionContext) -> int:
+    """Count active rivals able to push the sole home-column Gem at row 0.
+
+    A planned move is not committed until reveal. This count therefore uses
+    active movement depth rather than treating ``planned`` as settled.
     """
-    if ctx.own_planned:
-        return 0
     has_row0_own_gem = False
     has_deeper_card = False
     for action in ctx.legal_actions:
@@ -1545,35 +1560,16 @@ def _exposed_own_row0_gem_unsettled(ctx: PlayerActionContext) -> int:
             has_row0_own_gem = True
     if not (has_row0_own_gem and has_deeper_card):
         return 0
-    return sum(
-        1
-        for o in ctx.opponents
-        if not o.escaped
-        and not o.dead
-        and (not o.planned or getattr(o, "displaced", False))
-        and _opponent_movement_depth(o) > 0
-    )
+    return _active_rivals_able_to_reach(ctx, 0)
 
 
 def exposed_own_gem_actions(ctx: PlayerActionContext) -> set[int]:
-    """Legal own-column gem moves an unsettled rival could reach and displace.
+    """Legal own-column Gems any active, deeper rival can still reach.
 
-    This is a policy signal, not a change to the printed legality of a move.
-    An opponent must still be active and able to reach a row closer to the
-    lorries; a rival already settled for the phase does not count. In the
-    opening, the still-unplanned seats are the ones that can immediately raid
-    the selected gem before it is revealed.
+    ``planned`` indicates a provisional move, not a committed position. If a
+    new card move resets the pass clock, that rival gets another decision
+    before reveal. This is a policy signal only; engine legality is unchanged.
     """
-    push_depths = [
-        _opponent_movement_depth(opponent)
-        for opponent in ctx.opponents
-        if not opponent.escaped
-        and not opponent.dead
-        and (not opponent.planned or getattr(opponent, "displaced", False))
-    ]
-    if not push_depths:
-        return set()
-
     exposed: set[int] = set()
     for action in ctx.legal_actions:
         primitive = int(action)
@@ -1586,7 +1582,7 @@ def exposed_own_gem_actions(ctx: PlayerActionContext) -> set[int]:
         if (
             entry is not None
             and entry[0] == GEM
-            and any(row < depth for depth in push_depths)
+            and _active_rivals_able_to_reach(ctx, row) > 0
         ):
             exposed.add(primitive)
     return exposed
@@ -1595,28 +1591,32 @@ def exposed_own_gem_actions(ctx: PlayerActionContext) -> set[int]:
 def digs_past_a_known_gem(
     ctx: PlayerActionContext,
     *,
-    avoid_exposed_row0_gem: bool = False,
+    avoid_contestable_home_row0: bool = False,
+    avoid_exposed_row0_gem: bool | None = None,
 ) -> set[int]:
     """Face-down digs that a secure gem the seat can see makes pointless.
 
     A front of the seat's **own** column is information the rest of the table
-    does not have: a card there is a gem or a dynamite, never a dragon. A face-
-    down card may be a dragon, so a secure known gem usually dominates it. But
-    "known" does not mean "guaranteed to collect": an unsettled rival may still
-    reach the selected row and displace the seat before the card is revealed.
-    For the optional row-0 guard, a deeper active rival can also raid after its
-    first move, so keep deeper foreign lanes available even if that rival has
-    already planned once. If row 0 is the only reachable row, keep its foreign
-    cells available too rather than leaving only the exposed home Gem. If every
-    legal own-column gem is exposed, these lanes are not hidden by the usual
-    known-Gem preference.
+    does not have: a card there is a Gem or a Dynamite, never a Dragon. A face-
+    down card may be a Dragon, so a secure known Gem usually dominates it. A Gem
+    is treated as exposed when any active rival has enough movement depth to
+    reach its row. ``planned`` is provisional, not settled: a later non-pass
+    move resets the pass clock and gives that rival another decision before
+    reveal. If all legal own-column Gems are exposed, foreign alternatives stay
+    open instead of being hidden by the usual known-Gem preference.
 
-    This is deliberately not a hard ban on taking a gem unless the caller
-    enables ``avoid_exposed_row0_gem``. Without that guard, the learned policy
-    decides whether the safer lane is worth the dragon risk. With no exposed
-    own gem, the usual comparison still holds: a hidden card that becomes a gem
-    ties the known gem, dynamite is not scored, and a dragon can end the haul.
+    The optional ``avoid_contestable_home_row0`` guard additionally masks a
+    known safe Gem or Dynamite in the last card row when any active deeper rival
+    can reach it. If that guard removes the row-0 Gem, this helper keeps
+    alternatives open. It is policy-only; the old ``avoid_exposed_row0_gem``
+    keyword remains an alias. With no exposed own Gem, the usual comparison
+    still holds: a hidden card that becomes a Gem ties the known Gem, Dynamite
+    is not scored, and a Dragon can end the haul.
     """
+    if avoid_exposed_row0_gem is not None:
+        avoid_contestable_home_row0 = bool(
+            avoid_contestable_home_row0 or avoid_exposed_row0_gem
+        )
     own_gem_actions = {
         int(action)
         for action in ctx.legal_actions
@@ -1632,19 +1632,19 @@ def digs_past_a_known_gem(
     exposed_gems = exposed_own_gem_actions(ctx)
     row0_action = int(ctx.player_index)
     exposed_row0_gem = (
-        avoid_exposed_row0_gem
+        avoid_contestable_home_row0
         and row0_action in own_gem_actions
-        and _active_deeper_rival_remains(ctx)
+        and _contestable_home_row0_safe_card(ctx)
     )
     secure_gems = own_gem_actions - exposed_gems
     if exposed_row0_gem:
-        # The ordinary exposure signal counts rivals who have not yet moved.
-        # Row 0 is different: after our move, any deeper active rival gets a
-        # later planning turn and can still raid it, even if they already moved.
+        # Row 0 has no card move left after a push. The broader exposure signal
+        # already counts planned rivals, but discard this Gem explicitly so the
+        # known-Gem preference cannot undo the guard.
         secure_gems.discard(row0_action)
     has_secure_gem = bool(secure_gems)
     allow_foreign_alternatives = (
-        _exposed_own_row0_gem_unsettled(ctx) >= 2
+        _active_pushers_for_row0_gem(ctx) >= 2
         or (bool(exposed_gems) and not has_secure_gem)
         or (exposed_row0_gem and not has_secure_gem)
     )
@@ -1706,7 +1706,7 @@ def takes_the_gem_over_the_dynamite(ctx: PlayerActionContext) -> set[int]:
     """
     gem_legal = False
     dynamite_digs: set[int] = set()
-    allow_deeper_dynamite = _exposed_own_row0_gem_unsettled(ctx) >= 1
+    allow_deeper_dynamite = _active_pushers_for_row0_gem(ctx) >= 1
     for action in ctx.legal_actions:
         primitive = int(action)
         if not 0 <= primitive < PIT_CAGE:
@@ -1882,17 +1882,20 @@ def action_mask(
     ctx: PlayerActionContext,
     *,
     force_signalled_dragon_dodge: bool = True,
-    avoid_exposed_row0_gem: bool = False,
+    avoid_contestable_home_row0: bool = False,
+    avoid_exposed_row0_gem: bool | None = None,
 ) -> np.ndarray:
     """Legal policy actions, including legal blast announcements.
 
     ``force_signalled_dragon_dodge`` defaults to the historical hard rule. It
     can be disabled by controlled probes that apply a soft, confidence-weighted
-    penalty to passing instead. ``avoid_exposed_row0_gem`` optionally masks a
-    row-0 home-column Gem while any active rival remains deeper, when another
-    policy action is available. If that leaves a policy-approved card dig, the
-    lorry is not kept as a no-card substitute. Neither setting changes engine
-    legality.
+    penalty to passing instead. ``avoid_contestable_home_row0`` masks a known
+    safe card in the home column at row 0 while any active rival can still reach
+    it. This includes already-planned rivals: their moves are provisional, and
+    a new card move gives them another turn. The old
+    ``avoid_exposed_row0_gem`` keyword remains as a compatibility alias. If the
+    guard leaves a policy-approved card dig, the lorry is not kept as a no-card
+    substitute. Neither setting changes engine legality.
 
     Eleven narrow rules ride on top of the legal moves, all of them policies rather
     than rules of the game, which is why they live here and not in the
@@ -1919,11 +1922,11 @@ def action_mask(
        first: the row a card is taken at is the cage index a raid would leave the
        figure with, and a shallow row leaves it nothing to step back onto.
        ``strands_the_figure``.
-    7. A face-down dig is normally dominated by a gem the seat can see in its
-       own column. Exception: if every legal own-column gem is exposed to a
-       reachable, unsettled rival, keep foreign alternatives open and let the
-       learned action feature price the displacement risk. This is a policy
-       heuristic, not a printed rule. ``digs_past_a_known_gem``.
+    7. A face-down dig is normally dominated by a Gem the seat can see in its
+       own column. If an active rival can still reach that Gem, keep foreign
+       alternatives available instead of treating it as guaranteed; ``planned``
+       rivals count because moves remain provisional until reveal. This is a
+       policy heuristic, not a printed rule. ``digs_past_a_known_gem``.
     8. A figure in a pit cage is already halfway out: whoever is still in a cage
        when the cards are turned leaves the mine.  So from a cage the lorry and
        the pass are one decision, not two — the escape is taken when it banks
@@ -1960,6 +1963,10 @@ def action_mask(
     every seat then reads the herd as danger, and a haul ends with the whole
     table in cages and nothing collected (seed 7 of the viewer, four nets).
     """
+    if avoid_exposed_row0_gem is not None:
+        avoid_contestable_home_row0 = bool(
+            avoid_contestable_home_row0 or avoid_exposed_row0_gem
+        )
     mask = np.zeros(N_ACTIONS, dtype=bool)
     own_dynamite = sum(1 for front, _ in ctx.private_cards if front == DYNAMITE)
     can_blast = own_dynamite >= 2 and not ctx.own_blast_pending
@@ -2035,7 +2042,7 @@ def action_mask(
     lottery = {
         action
         for action in digs_past_a_known_gem(
-            ctx, avoid_exposed_row0_gem=avoid_exposed_row0_gem
+            ctx, avoid_contestable_home_row0=avoid_contestable_home_row0
         )
         if mask[int(action)]
     }
@@ -2078,43 +2085,30 @@ def action_mask(
             trial[join_action(primitive, True)] = False
         if trial.any():  # a pass is always there to hold with, so this holds
             mask = trial
-    if avoid_exposed_row0_gem:
-        # Row 0 is the last step before the lorry: after a same-card push the
-        # victim cannot move to another card, only cage or lorry. A rival can
-        # still get a chance to push even if it has already planned once, so
-        # this guard checks every active rival's movement depth rather than only
-        # ``exposed_own_gem_actions``' unsettled subset.
-        deeper_rival_remains = _active_deeper_rival_remains(ctx)
+    if avoid_contestable_home_row0:
+        # Row 0 is the last card row before the lorry: after a same-card push,
+        # the victim cannot move to another card, only cage or lorry. A planned
+        # rival is still able to choose a push before reveal, so count every
+        # active rival with enough movement depth. Keep the engine move legal;
+        # this is only a conservative policy choice for the neural controller.
         row0_action = int(ctx.player_index)
-        row0_card = (
-            ctx.public_rows[0][ctx.player_index]
-            if ctx.public_rows
-            and len(ctx.public_rows[0]) > ctx.player_index
-            else None
-        )
-        if (
-            deeper_rival_remains
-            and row0_card is not None
-            and row0_card[0] == GEM
-            and mask[row0_action]
-        ):
+        if _contestable_home_row0_safe_card(ctx) and mask[row0_action]:
             trial = mask.copy()
             trial[row0_action] = False
             trial[join_action(row0_action, True)] = False
             if not trial.any():
-                # The Gem can be the only move left after the ordinary policy
-                # rules, even though the engine still offers a retreat. Keep
-                # the exposed Gem blocked and use the lorry (stay in the haul)
-                # before the cage (leave it) as a last-resort fallback.
+                # The safe card can be the only move left after the ordinary
+                # policy rules, even though the engine still offers a retreat.
+                # Use the lorry (stay in the haul) before the cage (leave it).
                 for fallback in (int(LORRY), int(PIT_CAGE)):
                     if fallback in ctx.legal_actions:
                         trial[fallback] = True
                         break
             if trial.any():
                 mask = trial
-                # Do not turn an avoided, exposed Gem into a no-card lorry
-                # retreat when a deeper policy-approved dig remains. The lorry
-                # is still available as the fallback if every card is excluded.
+                # Do not turn an avoided, contestable home card into a no-card
+                # lorry retreat when another policy-approved dig remains. The
+                # lorry remains the fallback if every card is excluded.
                 if mask[int(LORRY)] and any(
                     mask[int(action)]
                     for action in ctx.legal_actions

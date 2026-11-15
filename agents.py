@@ -1019,7 +1019,8 @@ class NeuralAgent(Agent):
         seed: int = 0,
         recorder: list | None = None,
         player: int | None = None,
-        avoid_exposed_row0_gem: bool = False,
+        avoid_contestable_home_row0: bool = False,
+        avoid_exposed_row0_gem: bool | None = None,
     ) -> None:
         self.net = net
         self.name = name or getattr(net, "name", "neural")
@@ -1029,7 +1030,22 @@ class NeuralAgent(Agent):
         self.rng = np.random.default_rng(seed)
         self.recorder = recorder
         self.player = player
-        self.avoid_exposed_row0_gem = bool(avoid_exposed_row0_gem)
+        # Keep the old keyword as a compatibility alias; the guard now covers
+        # every visible non-dragon card in the home column at row 0.
+        if avoid_exposed_row0_gem is not None:
+            avoid_contestable_home_row0 = bool(
+                avoid_contestable_home_row0 or avoid_exposed_row0_gem
+            )
+        self.avoid_contestable_home_row0 = bool(avoid_contestable_home_row0)
+
+    @property
+    def avoid_exposed_row0_gem(self) -> bool:
+        """Compatibility alias for the pre-generalization guard setting."""
+        return self.avoid_contestable_home_row0
+
+    @avoid_exposed_row0_gem.setter
+    def avoid_exposed_row0_gem(self, value: bool) -> None:
+        self.avoid_contestable_home_row0 = bool(value)
 
     def act(self, ctx: PlayerActionContext) -> int:
         choice = self.decide(ctx)
@@ -1040,7 +1056,7 @@ class NeuralAgent(Agent):
 
         mask = action_mask(
             ctx,
-            avoid_exposed_row0_gem=self.avoid_exposed_row0_gem,
+            avoid_contestable_home_row0=self.avoid_contestable_home_row0,
         )
         if not mask.any():
             return ActionChoice(int(PASS))

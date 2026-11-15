@@ -157,11 +157,12 @@ def test_turn1_last_chance_and_parachute_push_features():
     assert af_last[33] == 1.0
 
 
-def test_exposed_own_row0_unlocks_deeper_lanes_and_flags_lorry_trap():
-    """When a seat's only own gem sits at row 0 and unsettled rivals remain on
-    Turn 1, deeper foreign lanes and deeper own dynamite stay unmasked and
-    ``action_features[33]`` flags the exposed row-0 lorry trap; once no pushers
-    remain, ``action_features[33]`` drops to 0 and own row-0 gem dominates.
+def test_row0_guard_opens_lanes_when_only_planned_rivals_can_push():
+    """A planned move is provisional, so the default GUI guard keeps options.
+
+    The network's learned feature semantics stay intact; the policy's
+    reachability helper and last-row guard use movement depth instead of
+    treating already-planned rivals as settled.
     """
     env = MineEnv(opponents=3)
     env.reset(seed=9)
@@ -175,7 +176,7 @@ def test_exposed_own_row0_unlocks_deeper_lanes_and_flags_lorry_trap():
     assert row0_gem in ctx_exp.legal_actions
     assert mask_exp[row0_gem]  # default policy keeps this legal move available
     guarded_mask = features.action_mask(
-        ctx_exp, avoid_exposed_row0_gem=True
+        ctx_exp, avoid_contestable_home_row0=True
     )
     assert not guarded_mask[row0_gem]
     assert guarded_mask.any()  # another policy action remains available
@@ -185,29 +186,102 @@ def test_exposed_own_row0_unlocks_deeper_lanes_and_flags_lorry_trap():
     # Row-0 foreign free cards stay masked against an own row-0 gem:
     assert not any(mask_exp[0 * MAX_COLUMNS + c] for c in (1, 2, 3))
     af_exp = features.action_features(ctx_exp, 0 * MAX_COLUMNS + 0)
-    assert af_exp[33] < -1.0  # 3 unsettled rivals can push (0, 0) into lorry!
+    assert af_exp[33] < -1.0  # 3 active rivals can push (0, 0) into the lorry
 
-    # Once all 3 rivals have settled (0 unsettled pushers), (0, 0) is unpushable:
+    # All rivals have already planned and the focal seat has planned too, but
+    # their positions remain provisional. Each can still reach row 0 after a
+    # later non-pass move resets the pass clock. This count drives the GUI guard,
+    # not the historical learned signal used by unguarded policy consumers.
     for r_seat in (1, 2, 3):
         env.players[r_seat].position = 2
         env.players[r_seat].column = r_seat
         env.planned_players[r_seat] = True
-    ctx_safe = env.player_action_context(0)
-    af_safe = features.action_features(ctx_safe, 0 * MAX_COLUMNS + 0)
-    assert af_safe[33] == 0.0
-    safe_mask = features.action_mask(ctx_safe)
-    assert safe_mask[row0_gem]  # only the optional policy guard removes it
-    guarded_safe_mask = features.action_mask(
-        ctx_safe, avoid_exposed_row0_gem=True
+    env.planned_players[0] = True
+    ctx_planned = env.player_action_context(0)
+    assert ctx_planned.own_planned
+    assert features._active_rivals_able_to_reach(ctx_planned, 0) == 3
+    assert features.exposed_own_gem_actions(ctx_planned) == {row0_gem}
+    planned_mask = features.action_mask(ctx_planned)
+    assert planned_mask[row0_gem]  # the policy setting does not change legality
+    assert any(
+        planned_mask[2 * MAX_COLUMNS + c] for c in (1, 2, 3)
     )
-    assert not guarded_safe_mask[row0_gem]
-    assert guarded_safe_mask.any()
+    guarded_planned_mask = features.action_mask(
+        ctx_planned, avoid_contestable_home_row0=True
+    )
+    assert not guarded_planned_mask[row0_gem]
+    assert any(
+        guarded_planned_mask[2 * MAX_COLUMNS + c] for c in (1, 2, 3)
+    )
+
+
+def test_active_rival_reachability_uses_depth_not_planned_status():
+    """A planned rival can still reach any shallower row after another move."""
+    env = MineEnv(opponents=3)
+    env.reset(seed=31)
+    for row in range(len(env.rows)):
+        env.rows[row][0] = None
+    env.rows[1][0] = (DYNAMITE, 0)
+    env.players[0].position = 3
+    env.players[0].column = None
+    env.planned_players[0] = True
+    for seat in (1, 2, 3):
+        env.players[seat].position = 2
+        env.players[seat].column = seat
+        env.planned_players[seat] = True
+
+    ctx = env.player_action_context(0)
+    assert ctx.own_planned and all(opponent.planned for opponent in ctx.opponents)
+    assert features._active_rivals_able_to_reach(ctx, 1) == 3
+    env.players[3].position = 1
+    shallower = env.player_action_context(0)
+    assert features._active_rivals_able_to_reach(shallower, 1) == 2
+    env.players[2].dead = True
+    one_dead = env.player_action_context(0)
+    assert features._active_rivals_able_to_reach(one_dead, 1) == 1
+
+
+def test_contestable_home_row0_guard_covers_dynamite_after_everyone_planned():
+    """The same displacement rule applies to a visible row-0 Dynamite.
+
+    All rivals have provisional moves already, but a later card move resets the
+    pass clock and lets each deeper rival act again before reveal.
+    """
+    env = MineEnv(opponents=3)
+    env.reset(seed=41)
+    for row in env.rows:
+        for column in range(len(row)):
+            row[column] = None
+    env.rows[0][0] = (DYNAMITE, 0)
+    env.rows[1][1] = (GEM, 1)
+    env.players[0].position = 3
+    env.players[0].column = None
+    env.planned_players[0] = True
+    for seat in (1, 2, 3):
+        env.players[seat].position = 2
+        env.players[seat].column = seat
+        env.planned_players[seat] = True
+
+    ctx = env.player_action_context(0)
+    row0_dynamite = 0
+    alternative = MAX_COLUMNS + 1
+    assert ctx.own_planned
+    assert all(opponent.planned for opponent in ctx.opponents)
+    assert row0_dynamite in ctx.legal_actions
+    assert alternative in ctx.legal_actions
+
+    unguarded = features.action_mask(ctx)
+    guarded = features.action_mask(ctx, avoid_contestable_home_row0=True)
+    assert unguarded[row0_dynamite]
+    assert not guarded[row0_dynamite]
+    assert guarded[alternative]
+    # Historical spelling remains accepted while pointing to the same policy.
+    assert (features.action_mask(ctx, avoid_exposed_row0_gem=True) == guarded).all()
 
 
 def test_exposed_own_gems_keep_alternative_lanes_open():
-    """A known gem is not automatically dominant if an unsettled rival can
-    reach it; the policy keeps foreign alternatives available without changing
-    the engine's legal action set.
+    """A known Gem is not automatically dominant if an active rival can reach
+    it; the policy keeps foreign alternatives without changing engine legality.
     """
     env = MineEnv(opponents=3)
     env.reset(seed=17)
@@ -243,8 +317,8 @@ def test_exposed_own_gems_keep_alternative_lanes_open():
     assert raiding_ctx.own_column == 1
     assert 1 * MAX_COLUMNS in features.exposed_own_gem_actions(raiding_ctx)
 
-    # With all rivals settled at row 2, none can move to the Gem on that same
-    # row. The ordinary known-Gem preference masks the foreign lotteries again.
+    # Every rival is at row 2, but none has the depth to move onto a Gem on
+    # that same row. Reachability, not ``planned``, controls the exposure mask.
     for seat in (1, 2, 3):
         env.players[seat].position = 2
         env.players[seat].column = seat
