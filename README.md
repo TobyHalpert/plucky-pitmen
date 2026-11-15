@@ -590,7 +590,8 @@ The full write-up, with confidence intervals and reproduction commands, is in
   engine legality or the checkpoint weights; no retraining was needed. The GUI
   controller now enables the guard for neural seats by default. A game-7
   regression also keeps deeper foreign alternatives open when the known-Gem
-  heuristic would otherwise leave only the exposed row-0 Gem. The paired figures
+  heuristic would otherwise leave only the exposed row-0 Gem, and avoids falling
+  back to the no-score lorry when one of those digs remains. The paired figures
   above and in the audit file describe the earlier guard version; rerun the probe
   for performance estimates of the current default. Full denominators, Wilson
   intervals, paired per-game changes and seed examples are in

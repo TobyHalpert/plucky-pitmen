@@ -1866,7 +1866,9 @@ def action_mask(
     can be disabled by controlled probes that apply a soft, confidence-weighted
     penalty to passing instead. ``avoid_exposed_row0_gem`` optionally masks a
     row-0 home-column Gem while any active rival remains deeper, when another
-    policy action is available. Neither setting changes engine legality.
+    policy action is available. If that leaves a policy-approved card dig, the
+    lorry is not kept as a no-card substitute. Neither setting changes engine
+    legality.
 
     Eleven narrow rules ride on top of the legal moves, all of them policies rather
     than rules of the game, which is why they live here and not in the
@@ -2077,6 +2079,15 @@ def action_mask(
             trial[join_action(row0_action, True)] = False
             if trial.any():
                 mask = trial
+                # Do not turn an avoided, exposed Gem into a no-card lorry
+                # retreat when a deeper policy-approved dig remains. The lorry
+                # is still available as the fallback if every card is excluded.
+                if mask[int(LORRY)] and any(
+                    mask[int(action)]
+                    for action in ctx.legal_actions
+                    if 0 <= int(action) < PIT_CAGE
+                ):
+                    mask[int(LORRY)] = False
     return mask
 
 

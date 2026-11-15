@@ -144,6 +144,44 @@ def test_default_selfplay4_seed7_avoids_exposed_row0_home_gem():
     assert int(controller.last_choice.action) != row0_home_gem
 
 
+def test_seed7_guard_does_not_fall_back_to_lorry_over_a_deeper_dig():
+    """P1 should keep digging after the row-0 guard blocks the exposed Gem."""
+    from features import own_card_is_signalled_dragon
+    from game_env import GEM, LORRY, MAX_COLUMNS
+
+    policy = "neural:selfplay4"
+    controller = GameController(3, policy, seed=7)
+    controller.reset(3, policy, seed=7, all_seats=True, advance=False)
+
+    steps = 0
+    while not (
+        controller.env.haul == 1
+        and controller.env.round == 1
+        and controller.env.planning_player == 0
+    ):
+        controller.step_one_player_auto()
+        steps += 1
+        assert steps < 400
+    # P1 takes the r3c2 card; P3 then signals its own-column Dragon by caging.
+    for _ in range(4):
+        controller.step_one_player_auto()
+    assert controller.env.planning_player == 0
+    ctx = controller.env.player_action_context(0)
+    assert own_card_is_signalled_dragon(ctx)
+    assert ctx.private_cards and any(front == GEM for front, _back in ctx.private_cards)
+
+    guarded = action_mask(ctx, avoid_exposed_row0_gem=True)
+    assert not guarded[ctx.player_index]  # the exposed home Gem
+    assert not guarded[int(LORRY)]  # no empty lorry retreat while a dig remains
+    deeper_dig = 2 * MAX_COLUMNS + 2
+    assert guarded[deeper_dig]
+
+    controller.step_one_player_auto()
+    assert controller.last_choice_seat == 0
+    assert controller.last_choice is not None
+    assert int(controller.last_choice.action) == deeper_dig
+
+
 def test_the_viewer_names_who_plays_each_seat(tiny_net):
     """"P3 walks to the cage" is unreadable unless the table says who P3 is.
 
