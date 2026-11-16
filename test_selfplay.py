@@ -1689,7 +1689,11 @@ def test_the_action_mask_hides_a_visible_dragon_nobody_can_punish():
 
     # The seat stands on a dynamite it can see, so stepping one row up onto a gem
     # is a gain rule 9 still allows -- that is the "another move" it needs.
-    trap = _trap_context(dragon_row=1, own_row=5, opponents=(_rival(1, 0),))
+    trap = _trap_context(
+        dragon_row=1,
+        own_row=5,
+        opponents=(replaced(_rival(1, 0), planned=True),),
+    )
     ctx = replaced(
         trap,
         legal_actions=(1 * MAX_COLUMNS + 0, 4 * MAX_COLUMNS + 0, int(PASS)),
@@ -1735,7 +1739,10 @@ def test_a_dragon_you_can_see_is_a_waiting_square_on_the_first_decision():
     last = replaced(
         first,
         starting_player=1,
-        opponents=(_rival(1, 0), _rival(2, 0), _rival(3, 0)),
+        opponents=tuple(
+            replaced(_rival(index, 0), planned=True)
+            for index in (1, 2, 3)
+        ),
     )
     order = [1, 2, 3, 0]  # starting player 1, four seats, this seat is seat 0 -> last
     assert order[-1] == 0
@@ -2321,6 +2328,54 @@ def test_the_bait_on_a_visible_dragon_is_allowed_and_priced(monkeypatch):
     assert mask[int(LORRY)]
 
 
+@pytest.mark.parametrize("rival_planned", [False, True])
+def test_a_forced_displaced_rival_keeps_a_known_dragon_reversible(rival_planned):
+    """A displaced rival must move, even after the actor has already planned.
+
+    P3's Seed 7, haul-1, third planning round has exactly this clock: P3 has
+    already planned from a cage, but P4 is displaced and must make a non-Pass
+    move. That guarantees P3 another decision. A known Dragon is therefore a
+    safe staging card; after P4 moves, if no forced reply remains, P3 must step
+    off the Dragon rather than Pass on it.
+    """
+    from features import (
+        can_wait_on_a_dragon,
+        doomed_dragon_digs,
+        holds_a_known_dragon,
+    )
+
+    dragon = 3 * MAX_COLUMNS
+    safe = 2 * MAX_COLUMNS + 1
+    ctx = _board_context(
+        {(3, 0): (DRAGON, 1), (2, 1): (None, 0)},
+        legal=(dragon, safe, int(PASS)),
+        own_position=4,
+    )
+    displaced_rival = replaced(
+        _rival(1, 4), planned=rival_planned, displaced=True
+    )
+    ctx = replaced(ctx, own_planned=True, opponents=(displaced_rival,))
+
+    assert int(PASS) in ctx.legal_actions
+    assert can_wait_on_a_dragon(ctx)
+    assert dragon not in doomed_dragon_digs(ctx)
+    assert action_mask(ctx)[dragon]
+
+    on_dragon = replaced(ctx, own_position=3, own_column=0)
+    assert holds_a_known_dragon(on_dragon) == set()
+    assert action_mask(on_dragon)[int(PASS)], "the forced rival guarantees another turn"
+
+    # Once the rival has moved and is no longer displaced, the actor cannot
+    # assume another decision: it must leave instead of passing on the Dragon.
+    settled = replaced(
+        on_dragon,
+        opponents=(replaced(displaced_rival, planned=True, displaced=False),),
+    )
+    assert not can_wait_on_a_dragon(settled)
+    assert holds_a_known_dragon(settled) == {int(PASS)}
+    assert not action_mask(settled)[int(PASS)]
+
+
 def test_the_escape_stands_once_taken_is_measured_and_off(monkeypatch):
     """The stronger version of the cage rule, kept behind a flag.
 
@@ -2438,7 +2493,11 @@ def test_reachable_rival_does_not_make_a_last_chance_dragon_safe():
     assert action_mask(forced_ctx, avoid_contestable_home_row0=True)[PASS]
 
     # Also pin the general rule independently of the changed replay path.
-    trap = _trap_context(dragon_row=1, own_row=5, opponents=(_rival(1, 4),))
+    trap = _trap_context(
+        dragon_row=1,
+        own_row=5,
+        opponents=(replaced(_rival(1, 4), planned=True),),
+    )
     dragon = MAX_COLUMNS
     ctx = replaced(trap, legal_actions=(dragon, 4 * MAX_COLUMNS, int(PASS)),
                    private_cards=((DYNAMITE, 1), (DYNAMITE, 1)))

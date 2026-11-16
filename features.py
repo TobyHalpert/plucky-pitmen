@@ -1019,6 +1019,24 @@ def has_dragon_free_move(ctx: PlayerActionContext) -> bool:
     )
 
 
+def _forced_rival_move_remains(ctx: PlayerActionContext) -> bool:
+    """Whether an active rival still owes a non-Pass planning action.
+
+    An unplanned seat cannot Pass yet, and a displaced seat cannot Pass even if
+    it has already planned. Either state forces a non-Pass action, which resets
+    the pass clock and guarantees the current actor another turn.
+    """
+    return any(
+        not opponent.escaped
+        and not opponent.dead
+        and (
+            not opponent.planned
+            or getattr(opponent, "displaced", False)
+        )
+        for opponent in ctx.opponents
+    )
+
+
 def can_wait_on_a_dragon(ctx: PlayerActionContext) -> bool:
     """True when standing on a dragon the seat can see is a move it can take back.
 
@@ -1026,18 +1044,18 @@ def can_wait_on_a_dragon(ctx: PlayerActionContext) -> bool:
     (``MineEnv._execute_round``), so a visible dragon is not a trap in itself —
     it is a square the seat can stand on and step off at its next decision. The
     question is whether a next decision is guaranteed, and the engine answers it
-    exactly. A round resolves when ``n - 1`` consecutive passes accumulate, and a
-    pass is legal only *after* the seat has planned in that round
-    (``MineEnv._pass_threshold``, ``MineEnv._legal``). So if any seat that acts
-    after this one has not yet planned, it cannot pass, the streak cannot
-    complete, and this seat's next decision arrives. If every seat behind it has
-    planned, the other ``n - 1`` can pass in a row and the round ends with the
-    figure still on the dragon — this seat never gets to step off.
+    exactly. A round resolves when ``n - 1`` consecutive passes accumulate.
+    Any active rival that has not planned, or is displaced, cannot pass; its
+    forced non-Pass action resets the clock and guarantees this seat another
+    decision, even if this seat has already planned once. Otherwise, an
+    already-planned seat cannot count on another turn: the other ``n - 1`` can
+    pass in a row and the round ends with the figure still on the dragon.
 
-    That gives one exact condition: **this is the seat's first decision of the
-    round and it is not the last seat in the round's order.** On a first decision
-    everything behind it is still unplanned, so any position but last is safe; on
-    any later decision every seat has planned, so nothing is.
+    On a first decision with no rival owing a move, the starting order still
+    matters: if this seat is the last active seat, the others may pass before it
+    ever gets another decision. If it is not last, there is an unplanned rival
+    later in the order and that rival is already covered by the forced-move
+    check above.
 
     Worth being precise about, because the sketch version of this ("somebody else
     still has to move, so I always get another turn") is wrong: three consecutive
@@ -1045,13 +1063,12 @@ def can_wait_on_a_dragon(ctx: PlayerActionContext) -> bool:
     (order P4, P1, P2, P3): P4, P1 and P2 plan, then pass in a row, and P3 —
     last in the order — never gets a second decision at all.
     """
+    if _forced_rival_move_remains(ctx):
+        return True
     if int(PASS) in {int(action) for action in ctx.legal_actions}:
-        return False  # already planned this round: nothing behind us is forced to move
+        return False  # already planned; no rival is forced to reset the clock
     if getattr(ctx, "own_displaced", False):
-        return any(
-            not opponent.escaped and not opponent.dead and not opponent.planned
-            for opponent in ctx.opponents
-        )
+        return False
     active = {ctx.player_index}
     active |= {
         opponent.player_index
@@ -1082,9 +1099,10 @@ BAIT_IS_ALLOWED = True
 def doomed_dragon_digs(ctx: PlayerActionContext) -> set[int]:
     """Refuse known-dragon digs unless another decision is guaranteed.
 
-    A reachable rival is not a rescue: it can pass instead of pushing, closing
-    the phase before the dragon sitter acts again (seed 7, haul 1). Bait is only
-    permitted while the sitter can still take its own shelter decision.
+    A merely reachable rival is not a rescue if it has already planned: it can
+    pass instead of pushing and close the phase before the dragon sitter acts
+    again (seed 7, haul 1). An unplanned or displaced rival is different: it must
+    make a non-Pass move, which gives the sitter another decision before reveal.
     """
     if BAIT_IS_ALLOWED and can_wait_on_a_dragon(ctx):
         return set()
@@ -1220,10 +1238,7 @@ def holds_a_known_dragon(ctx: PlayerActionContext) -> set[int]:
         or not own_card_is_known_dragon(ctx)
     ):
         return set()
-    forced_rival_remains = any(
-        not opponent.escaped and not opponent.dead and not opponent.planned
-        for opponent in ctx.opponents
-    )
+    forced_rival_remains = _forced_rival_move_remains(ctx)
     return set() if forced_rival_remains else {int(PASS)}
 
 
