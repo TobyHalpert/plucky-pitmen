@@ -1486,6 +1486,68 @@ def test_one_rival_on_a_face_down_card_is_not_a_reason_to_leave_with_loot():
     assert not action_mask(ordinary)[int(PIT_CAGE)]
 
 
+def test_a_known_safe_move_removes_only_the_actors_current_cell_from_cage_risk():
+    """Do not cage just because the face-down card under us is risky if we can leave it safely.
+
+    The snapshot crosses the cage threshold only because the seat's current
+    unknown card is included. Moving to the known home-column Gem clears that
+    self-risk; a separate high external risk from rivals still keeps the cage
+    available.
+    """
+    from game_env import BACKSIDE_A, BACKSIDE_B
+    from features import (
+        CAGE_ANSWERS_A_HAZARD,
+        _external_round_hazard,
+        action_mask,
+        cage_banks_nothing,
+        figure_dragon_risk,
+        known_safe_card_available,
+        round_dragon_hazard,
+    )
+
+    ctx = _board_context(
+        {
+            (0, 0): (GEM, BACKSIDE_A),
+            (1, 0): (GEM, BACKSIDE_B),
+            (3, 0): (DYNAMITE, BACKSIDE_A),
+            (2, 2): (None, BACKSIDE_A),  # our current face-down card
+            (1, 2): (None, BACKSIDE_B),  # one rival's exposed card
+        },
+        legal=(1 * MAX_COLUMNS + 0, int(PIT_CAGE), int(PASS)),
+        own_position=2,
+    )
+    ctx = replaced(
+        ctx,
+        own_column=2,
+        private_cards=((GEM, BACKSIDE_A), (GEM, BACKSIDE_B)),
+        opponents=(
+            replaced(_rival(1, 1), position=1, column=2, planned=True),
+        ),
+    )
+
+    assert figure_dragon_risk(ctx, ctx.player_index) > 0.0
+    assert known_safe_card_available(ctx)
+    assert round_dragon_hazard(ctx) >= CAGE_ANSWERS_A_HAZARD
+    assert _external_round_hazard(ctx) < CAGE_ANSWERS_A_HAZARD
+    assert cage_banks_nothing(ctx)
+    mask = action_mask(ctx)
+    assert mask[1 * MAX_COLUMNS + 0]
+    assert not mask[int(PIT_CAGE)]
+
+    # Add a second face-down raider: once the remaining external risk is itself
+    # above the threshold, stepping off our own tile is not enough to dismiss it.
+    rows = list(ctx.public_rows)
+    rows[0] = rows[0][:3] + ((None, BACKSIDE_A),) + rows[0][4:]
+    threatened = replaced(
+        ctx,
+        public_rows=tuple(rows),
+        opponents=ctx.opponents + (replaced(_rival(2, 0), column=3),),
+    )
+    assert _external_round_hazard(threatened) >= CAGE_ANSWERS_A_HAZARD
+    assert not cage_banks_nothing(threatened)
+    assert action_mask(threatened)[int(PIT_CAGE)]
+
+
 def test_the_mask_keeps_the_cage_when_something_can_blow():
     """Loot plus a board that is genuinely going up: that is an exit."""
     from features import (
@@ -2385,6 +2447,44 @@ def test_reachable_rival_does_not_make_a_last_chance_dragon_safe():
     assert not mask[dragon]
     assert not mask[dragon + N_BASE_ACTIONS]
     assert mask.any()
+
+
+def test_seed7_p2_steps_to_a_known_safe_card_instead_of_caging_for_own_cell_risk():
+    """A removable face-down position must not make a cage the preferred exit."""
+    from analyze_game import transcript
+    from features import (
+        CAGE_ANSWERS_A_HAZARD,
+        _external_round_hazard,
+        action_mask,
+        figure_dragon_risk,
+        known_safe_card_available,
+        round_dragon_hazard,
+    )
+
+    _controller, events = transcript(
+        7, 'neural:selfplay4', 3, False, all_seats=True
+    )
+    decision = next(
+        event
+        for event in events
+        if event['haul'] == 1
+        and event['round'] == 2
+        and event['seat'] == 1
+        and int(PIT_CAGE) in event['ctx'].legal_actions
+        and figure_dragon_risk(event['ctx'], event['seat']) > 0.0
+        and known_safe_card_available(event['ctx'])
+        and round_dragon_hazard(event['ctx']) >= CAGE_ANSWERS_A_HAZARD
+        and _external_round_hazard(event['ctx']) < CAGE_ANSWERS_A_HAZARD
+    )
+    ctx = decision['ctx']
+    mask = action_mask(ctx, avoid_contestable_home_row0=True)
+    assert not mask[int(PIT_CAGE)]
+    assert decision['action'] != int(PIT_CAGE)
+    assert mask[int(decision['action'])]
+    row, column = divmod(int(decision['action']), MAX_COLUMNS)
+    assert column == ctx.player_index
+    assert ctx.public_rows[row][column] is not None
+    assert ctx.public_rows[row][column][0] in (GEM, DYNAMITE)
 
 
 def test_same_card_displacement_policy_masks_and_dragon_bait_safety():

@@ -1351,11 +1351,13 @@ def cage_banks_nothing(ctx: PlayerActionContext) -> bool:
     escape either way). Something to escape from means a blast that is charged --
     it can end the haul whatever the board says -- a dragon the seat can see is
     about to be turned (the card under its own figure when no safe card or lorry
-    can refuse it, or a card in its column with a rival standing on it), or a
-    high snapshot of current raider exposure (``round_dragon_hazard`` above
-    ``CAGE_ANSWERS_A_HAZARD``, which a charged blast reads as 1.00). That
-    threshold is a policy trigger, not a prediction that no later move can avert
-    the dragon.
+    can refuse it, or a card in its column with a rival standing on it), or high
+    residual raider exposure. The raw ``round_dragon_hazard`` includes this
+    seat's current face-down card. If that card has nonzero estimated risk and a
+    known-safe own-column card is legal, the seat can step off it; the cage
+    trigger then uses the external hazard instead, while still counting every
+    risky rival card. A charged blast reads as 1.00. This threshold is a policy
+    trigger, not a prediction that no later move can avert the dragon.
 
     What is *not* a reason, and used to be one: the ordinary risk of a mine, or
     a visible dragon under the seat's own figure while every rival stands safely
@@ -1390,9 +1392,13 @@ def cage_banks_nothing(ctx: PlayerActionContext) -> bool:
                 return True
             if not ctx.own_blast_pending or blast_dragon_risk(ctx) >= 0.30:
                 return False
+        current_cell_risk = figure_dragon_risk(ctx, ctx.player_index)
+        can_clear_own_cell_risk = (
+            current_cell_risk > 0.0 and known_safe_card_available(ctx)
+        )
         hazard_if_staying = (
             ext_hazard
-            if on_dragon
+            if on_dragon or can_clear_own_cell_risk
             else round_dragon_hazard(ctx)
         )
         return not (
@@ -1942,8 +1948,9 @@ def action_mask(
     3. The lorry collects nothing and does not protect the figure, so it is only
        a way to refuse a dragon the seat can see under itself.
        ``lorry_skips_a_card_worth_taking``.
-    4. The pit cage is the only exit that banks loot before the cards are turned,
-       so an escape has to bank something or answer a visible threat.
+    4. The pit cage is the only exit that banks loot before the cards are turned.
+       Its escape check uses visible threats and residual hazard; a risky current
+       face-down card does not justify leaving if a known-safe card can clear it.
        ``cage_banks_nothing``.
     5. A card the seat can see is a gem beats one it can see is a dynamite: a
        gem is scored and a lone dynamite is inert. ``takes_the_gem_over_the_dynamite``.
