@@ -1204,6 +1204,29 @@ def holds_a_signalled_dragon(ctx: PlayerActionContext) -> set[int]:
     return set()
 
 
+def holds_a_known_dragon(ctx: PlayerActionContext) -> set[int]:
+    """Refuse to pass on a visible Dragon when no forced rival move remains.
+
+    A known-Dragon dig can be bait on an early decision: a later seat may push
+    the sitter into the cage, or a forced move may keep the phase open so the
+    sitter can step away. But once every active rival has planned, passing is
+    allowed to close the phase on the Dragon immediately. In that case the seat
+    must take a non-pass shelter action now. A displaced/unplanned rival cannot
+    pass on its upcoming turn, so it will reset the pass clock and give this
+    seat another decision first.
+    """
+    if (
+        int(PASS) not in {int(action) for action in ctx.legal_actions}
+        or not own_card_is_known_dragon(ctx)
+    ):
+        return set()
+    forced_rival_remains = any(
+        not opponent.escaped and not opponent.dead and not opponent.planned
+        for opponent in ctx.opponents
+    )
+    return set() if forced_rival_remains else {int(PASS)}
+
+
 def known_safe_card_available(ctx: PlayerActionContext) -> bool:
     """True when the seat can step onto a card it can see is not a dragon.
 
@@ -1910,7 +1933,9 @@ def action_mask(
        a dragon the seat can stand on and step off is a waiting square — the
        deepest square in the mine cannot be raided either. It is masked only when
        the seat cannot wait safely, or when no rival is deep enough to push the
-       bait into a cage. ``doomed_dragon_digs``, ``can_wait_on_a_dragon``.
+       bait into a cage. If it is still on a known Dragon at its last decision,
+       Pass is masked so it must step off or leave. ``doomed_dragon_digs``,
+       ``holds_a_known_dragon``, ``can_wait_on_a_dragon``.
     2. A face-down card that pays more than a deeper free card is dominated — the
        backside is the price and the position a round ends on buys nothing.
        ``walks_past_a_free_card``.
@@ -1991,9 +2016,10 @@ def action_mask(
         if force_signalled_dragon_dodge
         else set()
     )
-    if signalled:
+    dragon_holds = signalled | holds_a_known_dragon(ctx)
+    if dragon_holds:
         trial = mask.copy()
-        for primitive in signalled:
+        for primitive in dragon_holds:
             trial[primitive] = False
         if trial.any():
             mask = trial
@@ -2156,6 +2182,7 @@ __all__ = [
     "exposed_own_gem_actions",
     "figure_dragon_risk",
     "has_dragon_free_move",
+    "holds_a_known_dragon",
     "holds_a_signalled_dragon",
     "join_action",
     "known_safe_card_available",

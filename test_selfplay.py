@@ -2326,13 +2326,55 @@ def test_leader_only_does_not_attack_trailer_when_self_leads():
 def test_reachable_rival_does_not_make_a_last_chance_dragon_safe():
     from features import N_BASE_ACTIONS, action_mask, can_wait_on_a_dragon
     from analyze_game import transcript
-    from features import digs_face_up_dragon
+    from features import digs_face_up_dragon, own_card_is_known_dragon
 
     # A real seed-7 context, at the move that used to end haul 1 on our dragon.
     controller, events = transcript(7, 'neural:selfplay4', 3, False, all_seats=True)
     for event in events:
         if event['haul'] == 1 and digs_face_up_dragon(event['ctx'], event['action']):
             assert can_wait_on_a_dragon(event['ctx'])
+            assert action_mask(event['ctx'])[event['action']], "bait remains legal when reversible"
+
+    # P3 can take the own-column Dragon while the phase is still open, but on
+    # the next decision all other active seats have planned or left. Passing now
+    # closes the phase on the Dragon, so the mask must make P3 leave instead.
+    last_stand = next(
+        event
+        for event in events
+        if event['haul'] == 1
+        and event['round'] == 3
+        and event['seat'] == 2
+        and own_card_is_known_dragon(event['ctx'])
+        and PASS in event['ctx'].legal_actions
+    )
+    ctx_last_stand = last_stand['ctx']
+    assert not can_wait_on_a_dragon(ctx_last_stand)
+    assert all(
+        opponent.escaped or opponent.dead or opponent.planned
+        for opponent in ctx_last_stand.opponents
+    )
+    last_mask = action_mask(ctx_last_stand, avoid_contestable_home_row0=True)
+    assert not last_mask[PASS]
+    assert any(
+        last_mask[action]
+        for action in ctx_last_stand.legal_actions
+        if action != PASS
+    )
+    assert last_stand['action'] != PASS
+
+    # If a displaced/unplanned rival still has to act, that non-pass move resets
+    # the clock and P3 will get another chance, so holding the Dragon is reversible.
+    forced_ctx = replaced(
+        ctx_last_stand,
+        opponents=tuple(
+            replaced(opponent, planned=False)
+            if opponent.player_index == 0
+            else opponent
+            for opponent in ctx_last_stand.opponents
+        ),
+    )
+    assert action_mask(forced_ctx, avoid_contestable_home_row0=True)[PASS]
+
     # Also pin the general rule independently of the changed replay path.
     trap = _trap_context(dragon_row=1, own_row=5, opponents=(_rival(1, 4),))
     dragon = MAX_COLUMNS
