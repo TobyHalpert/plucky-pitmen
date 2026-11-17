@@ -382,6 +382,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
 
         self.consecutive_passes = 0
         self.planning_turns = 0
+        self.planned_players = [False] * self.n_players
         self.lorry_touched = [False] * self.n_players
         for p in self.players:
             p.displaced = False

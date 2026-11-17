@@ -118,6 +118,20 @@ def test_passing_is_not_allowed_on_first_planning_turn():
     assert env._legal(PASS)
 
 
+def test_legacy_step_resets_planned_players_after_a_continuing_round():
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    env.planned_players = [True] * env.n_players
+    env.consecutive_passes = env._pass_threshold() - 1
+
+    _observation, _reward, terminated, _truncated, info = env.step(PASS)
+
+    assert not terminated
+    assert info["outcome"] == "continued"
+    assert env.planned_players == [False] * env.n_players
+    assert not env._legal(PASS)
+
+
 def test_row_zero_allows_pit_cage_lorry_and_pass_choices():
     env = MineEnv(opponents=2)
     env.reset(seed=4)
