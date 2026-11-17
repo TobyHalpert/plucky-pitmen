@@ -628,6 +628,20 @@ def test_the_command_line_accepts_a_checkpoint_that_exists(tiny_net):
     assert parse_policy("simple") == "simple"
 
 
+def test_gui_defaults_to_selfplay4_in_every_seat_and_keeps_cli_overrides():
+    from mine_gui import build_argument_parser
+
+    parser = build_argument_parser()
+    defaults = parser.parse_args([])
+    assert defaults.policy == "neural:selfplay4"
+    assert defaults.all_seats is True
+
+    human_seat = parser.parse_args(["--policy", "simple", "--no-all-seats"])
+    assert human_seat.policy == "simple"
+    assert human_seat.all_seats is False
+    assert parser.parse_args(["--all-seats"]).all_seats is True
+
+
 def test_the_command_line_explains_a_missing_checkpoint_instead_of_listing_names(tmp_path):
     """"invalid choice: neural:selfplay4" is the message this replaces."""
     with pytest.raises(argparse.ArgumentTypeError) as caught:
@@ -935,6 +949,76 @@ def test_dropdown_labels_a_legal_push_as_a_push(tmp_path):
     )
     MineViewer._action_label_selected(viewer, None)
     assert viewer.action_var.get() == action
+
+
+def test_gui_renderer_emphasizes_the_current_planning_player():
+    from game_env import LORRY
+    from mine_gui import LAYOUT, PLAYER_COLORS, MineRenderer
+
+    class FakeCanvas:
+        def __init__(self, width=640, height=520):
+            self.width = width
+            self.height = height
+            self.ovals = []
+            self.texts = []
+            self.rects = []
+
+        def delete(self, _tag):
+            self.ovals.clear()
+            self.texts.clear()
+            self.rects.clear()
+
+        def winfo_width(self):
+            return self.width
+
+        def winfo_height(self):
+            return self.height
+
+        def create_rectangle(self, *coords, **kwargs):
+            self.rects.append((coords, kwargs))
+
+        def create_oval(self, *coords, **kwargs):
+            self.ovals.append((coords, kwargs))
+
+        def create_text(self, *coords, **kwargs):
+            self.texts.append((coords, kwargs))
+
+    controller = GameController(3, "simple", seed=1)
+    controller.reset(3, "simple", seed=1, advance=False)
+    env = controller.env
+    for player in env.players:
+        player.position = LORRY
+        player.column = None
+        player.escaped = False
+        player.dead = False
+        player.displaced = False
+        player.blast_pending = False
+
+    canvas = FakeCanvas()
+    renderer = MineRenderer(canvas)
+
+    def token_radius(seat):
+        color = PLAYER_COLORS[seat]
+        coords, kwargs = next(
+            (coords, kwargs) for coords, kwargs in canvas.ovals
+            if kwargs.get("fill") == color
+        )
+        return {"coords": coords, **kwargs}
+
+    env.planning_player = 0
+    renderer.render(env)
+    active_p1 = token_radius(0)
+    idle_p2 = token_radius(1)
+    assert active_p1["outline"] == "#fff4c2"
+    assert active_p1["width"] == 4
+    assert (active_p1["coords"][2] - active_p1["coords"][0]) / 2 == LAYOUT.active_token_radius
+    assert idle_p2["outline"] == "#101820"
+    assert (idle_p2["coords"][2] - idle_p2["coords"][0]) / 2 == LAYOUT.token_radius
+
+    env.planning_player = 1
+    renderer.render(env)
+    assert (token_radius(0)["coords"][2] - token_radius(0)["coords"][0]) / 2 == LAYOUT.token_radius
+    assert (token_radius(1)["coords"][2] - token_radius(1)["coords"][0]) / 2 == LAYOUT.active_token_radius
 
 
 def test_gui_renderer_draws_displacer_and_displaced_opponent_on_same_card():

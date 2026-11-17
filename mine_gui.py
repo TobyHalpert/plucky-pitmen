@@ -40,6 +40,7 @@ SPECIAL_ACTION_LABELS = {
 PLAYER_COLORS = ("#f5c451", "#e05a5a", "#4d8fe8", "#55b979", "#f5f5f5")
 BACKSIDE_SYMBOLS = {BACKSIDE_A: "o", BACKSIDE_B: "v", BACKSIDE_C: "~"}
 FRONT_LABELS = {GEM: "GEM", DRAGON: "DRAGON", DYNAMITE: "DYNAMITE"}
+DEFAULT_POLICY = "neural:selfplay4"
 POLICIES = agent_policies()
 BLAST_ACTION_PREFIX = "Blast: "
 # The action space is the base primitives plus one "and announce a blast" copy
@@ -95,6 +96,7 @@ class Layout:
     card_pad_top: int = 27
     card_pad_bottom: int = 9
     token_radius: int = 11
+    active_token_radius: int = 16
     blast_radius: int = 16
     exit_offset: int = 12
     exit_token_offset: int = 36
@@ -220,7 +222,7 @@ class MineRenderer:
         card until their turn. Grouping co-located card tokens and spreading
         them horizontally keeps both tokens visible side by side inside the
         card, with the active claimant on the left and displaced token(s) on
-        the right.
+        the right. The planning player's larger radius is included in spacing.
         """
         card_groups: dict[tuple[int, int], list[int]] = {}
         for i, player in enumerate(env.players):
@@ -238,9 +240,38 @@ class MineRenderer:
             members.sort(key=lambda idx: (env.players[idx].displaced, idx))
 
         card_width = max(
-            2 * LAYOUT.token_radius + 4.0,
+            2 * LAYOUT.active_token_radius + 4.0,
             column_width - 2 * LAYOUT.card_pad_x,
         )
+        card_token_x: dict[int, float] = {}
+        for cell, members in card_groups.items():
+            center_x, _center_y = card_centers[cell]
+            if len(members) == 1:
+                card_token_x[members[0]] = center_x
+                continue
+
+            radii = [
+                LAYOUT.active_token_radius
+                if index == env.planning_player
+                else LAYOUT.token_radius
+                for index in members
+            ]
+            desired_steps = [
+                radii[slot] + radii[slot + 1] + 6.0
+                for slot in range(len(members) - 1)
+            ]
+            desired_span = sum(desired_steps)
+            available_span = max(
+                0.0, card_width - radii[0] - radii[-1] - 4.0
+            )
+            compression = min(1.0, available_span / desired_span)
+            actual_span = desired_span * compression
+            x = center_x - (actual_span + radii[-1] - radii[0]) / 2.0
+            for slot, member in enumerate(members):
+                card_token_x[member] = x
+                if slot < len(desired_steps):
+                    x += desired_steps[slot] * compression
+
         positions: dict[int, tuple[float, float]] = {}
         for i, player in enumerate(env.players):
             if player.escaped:
@@ -260,17 +291,7 @@ class MineRenderer:
             ):
                 cell = (player.position, player.column)
                 cx, cy = card_centers[cell]
-                members = card_groups[cell]
-                if len(members) == 1:
-                    x, y = cx, cy
-                else:
-                    slot = members.index(i)
-                    max_step = (
-                        card_width - 2 * LAYOUT.token_radius - 4.0
-                    ) / (len(members) - 1)
-                    step_x = min(2 * LAYOUT.token_radius + 6.0, max(14.0, max_step))
-                    x = cx + (slot - (len(members) - 1) / 2.0) * step_x
-                    y = cy
+                x, y = card_token_x[i], cy
             else:
                 y = (
                     (LAYOUT.lorry_y1 + LAYOUT.lorry_y2) / 2
@@ -296,13 +317,17 @@ class MineRenderer:
         for i, (x, y) in positions.items():
             player = env.players[i]
             color = PLAYER_COLORS[i]
-            r = LAYOUT.token_radius
+            is_active = i == env.planning_player
+            r = LAYOUT.active_token_radius if is_active else LAYOUT.token_radius
             self.canvas.create_oval(
                 x - r, y - r, x + r, y + r,
-                fill=color, outline="#101820", width=2,
+                fill=color,
+                outline="#fff4c2" if is_active else "#101820",
+                width=4 if is_active else 2,
             )
             self.canvas.create_text(
-                x, y, text=str(i + 1), fill="#101820", font=ui_font(9, "bold"),
+                x, y, text=str(i + 1), fill="#101820",
+                font=ui_font(11 if is_active else 9, "bold"),
             )
             if player.displaced:
                 dr = r + 3
@@ -311,7 +336,7 @@ class MineRenderer:
                     outline="#ff9f43", width=2, dash=(3, 2),
                 )
             if player.blast_pending:
-                br = LAYOUT.blast_radius
+                br = max(LAYOUT.blast_radius, r + 5)
                 self.canvas.create_oval(
                     x - br, y - br, x + br, y + br,
                     outline="#ff6b6b", width=3,
@@ -348,7 +373,7 @@ class MineViewer:
         opponents: int,
         policy: str,
         seed: int,
-        all_seats: bool = False,
+        all_seats: bool = True,
         deterministic: bool = False,
     ) -> None:
         self.root = root
@@ -854,22 +879,32 @@ class MineViewer:
 # Entry point
 # ---------------------------------------------------------------------------
 
-def main() -> None:
+def build_argument_parser() -> argparse.ArgumentParser:
+    """Build the GUI CLI parser, including the interactive startup defaults."""
     parser = argparse.ArgumentParser(description="View MineEnv player progression.")
     parser.add_argument("--opponents", type=int, choices=(2, 3, 4), default=3)
     parser.add_argument(
         "--policy",
         type=parse_policy,
-        default="simple",
+        default=DEFAULT_POLICY,
         help="scripted policy, or neural:<checkpoint> from checkpoints/ "
         f"(available now: {', '.join(POLICIES)})",
     )
     parser.add_argument("--seed", type=int, default=7)
-    parser.add_argument(
+    seats = parser.add_mutually_exclusive_group()
+    seats.add_argument(
         "--all-seats",
+        dest="all_seats",
         action="store_true",
         help="let the chosen policy (usually neural:<checkpoint>) play every seat",
     )
+    seats.add_argument(
+        "--no-all-seats",
+        dest="all_seats",
+        action="store_false",
+        help="leave Player 1 as the human seat",
+    )
+    parser.set_defaults(all_seats=True)
     parser.add_argument(
         "--deterministic",
         action="store_true",
@@ -879,7 +914,11 @@ def main() -> None:
                         help="open directly with enough dynamite to blast")
     parser.add_argument("--tie-break-test", action="store_true",
                         help="open directly at a tie-break scenario")
-    args = parser.parse_args()
+    return parser
+
+
+def main() -> None:
+    args = build_argument_parser().parse_args()
     root = tk.Tk()
     viewer = MineViewer(
         root,
