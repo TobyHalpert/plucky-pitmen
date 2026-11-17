@@ -512,7 +512,7 @@ class GameController:
         outcome = info.get("outcome", "continued")
         msg = f"Round {info.get('round', self.env.round)}: {outcome}. Reward {reward:+.2f}."
         dragon_player = info.get("dragon_player")
-        if outcome == "dragon" and dragon_player is not None:
+        if outcome in {"dragon", "blast_dragon"} and dragon_player is not None:
             msg += f" Player {dragon_player + 1} awakened the dragon."
         msg += self._consume_displacement_messages()
         return msg

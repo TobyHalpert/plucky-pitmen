@@ -285,6 +285,75 @@ def test_blast_choice_draw_and_resolution_are_limited_to_three_cards():
     assert env.players[0].collected_cards[-2:] == [chosen, second]
 
 
+def test_short_deck_blast_still_awakens_a_drawn_dragon():
+    env = MineEnv(opponents=2)
+    env.reset(seed=5)
+    env.haul = 3
+    env.players[0].score = 10
+    for player in env.players:
+        player.position = LORRY
+        player.column = None
+    env.players[0].collected_cards = [
+        (DYNAMITE, BACKSIDE_A),
+        (DYNAMITE, BACKSIDE_B),
+    ]
+    env.players[1].collected_cards = [
+        (DYNAMITE, BACKSIDE_A),
+        (DYNAMITE, BACKSIDE_B),
+    ]
+    env.begin_blast(0)
+    env.begin_blast(1)
+    env.cards_remaining = [
+        (DRAGON, BACKSIDE_A),
+        (GEM, BACKSIDE_B),
+    ]
+
+    reward, info = env._execute_round()
+
+    assert info["outcome"] == "blast_dragon"
+    assert info["dragon_player"] == 0
+    assert env.players[0].collected_cards == [
+        (DRAGON, BACKSIDE_A),
+        (GEM, BACKSIDE_B),
+    ]
+    assert all(player.dead for player in env.players)
+    assert all(not player.blast_pending for player in env.players)
+    assert all(not player.blast_cards for player in env.players)
+
+    reward, terminated = env._finish_round(reward, info)
+    assert terminated
+    assert env.game_finished
+    assert info["winner"] == 0
+
+
+def test_short_deck_blast_without_a_dragon_takes_all_remaining_cards():
+    env = MineEnv(opponents=2)
+    env.reset(seed=5)
+    for player in env.players:
+        player.position = LORRY
+        player.column = None
+    env.players[0].collected_cards = [
+        (DYNAMITE, BACKSIDE_A),
+        (DYNAMITE, BACKSIDE_B),
+    ]
+    env.begin_blast(0)
+    env.cards_remaining = [
+        (GEM, BACKSIDE_A),
+        (DYNAMITE, BACKSIDE_B),
+    ]
+
+    _reward, info = env._execute_round()
+
+    assert info["outcome"] == "continued"
+    assert env.players[0].collected_cards == [
+        (GEM, BACKSIDE_A),
+        (DYNAMITE, BACKSIDE_B),
+    ]
+    assert all(not player.dead for player in env.players)
+    assert not env.players[0].blast_pending
+    assert not env.players[0].blast_cards
+
+
 def test_blast_announcement_survives_a_turn_that_reaches_execution():
     env = MineEnv(opponents=2)
     env.reset(seed=5)

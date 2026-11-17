@@ -1252,7 +1252,9 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             info["outcome"] = "continued"
 
         if info["outcome"] != "dragon":
-            self._prepare_blasts()
+            blast_info = self._prepare_blasts()
+            if blast_info is not None:
+                info.update(blast_info)
         return reward, info
 
     def _all_remaining_on_lorry(self) -> bool:
@@ -1301,6 +1303,18 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         player.blast_cards = []
         player.blast_pending = True
 
+    def _trigger_blast_dragon(self, player_index: int) -> dict[str, Any]:
+        """End the haul after a blast reveals a Dragon."""
+        for remaining_index, player in enumerate(self.players):
+            if not player.escaped:
+                player.dead = True
+                self._cancel_blast(remaining_index)
+        return {
+            "outcome": "blast_dragon",
+            "dragon_player": player_index,
+            "home_column_dragon": False,
+        }
+
     def resolve_blast(self, player_index: int, choice_index: int) -> tuple[int, int]:
         """Choose one of the blast cards kept after execution."""
         if not 0 <= player_index < self.n_players:
@@ -1313,21 +1327,8 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
 
         chosen_card = player.blast_cards.pop(choice_index)
         if chosen_card[0] == DRAGON:
-            # Blast failed (dragon). All survivors inside the mine die.
-            for remaining_player in self.players:
-                if not remaining_player.escaped:
-                    remaining_player.dead = True
-            player.blast_cards = []
-            player.blast_pending = False
-            
-            # Since a dragon was drawn, the haul ends immediately.
-            # We call the central finish handler with the dragon outcome.
-            info = {
-                "outcome": "blast_dragon",
-                "dragon_player": player_index,
-                "home_column_dragon": False
-            }
-            self._finish_round(0.0, info)
+            # Blast failed (dragon); all survivors inside the mine die.
+            self._finish_round(0.0, self._trigger_blast_dragon(player_index))
             return chosen_card
 
         # Safe card collected
@@ -1350,8 +1351,8 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         player.blast_pending = False
         player.blast_cards = []
 
-    def _prepare_blasts(self) -> None:
-        for player in self.players:
+    def _prepare_blasts(self) -> dict[str, Any] | None:
+        for player_index, player in enumerate(self.players):
             if not player.blast_pending:
                 continue
             dynamite_removed = 0
@@ -1368,9 +1369,14 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             player.blast_cards = self.cards_remaining[:draw_count]
             self.cards_remaining = self.cards_remaining[draw_count:]
             if draw_count < 3:
-                player.collected_cards.extend(player.blast_cards)
-                player.blast_cards = []
-                player.blast_pending = False
+                # The skipped choice still takes every remaining card, but a
+                # Dragon among them awakens the dragon just as in a full blast.
+                short_deck_cards = player.blast_cards
+                player.collected_cards.extend(short_deck_cards)
+                if any(card[0] == DRAGON for card in short_deck_cards):
+                    return self._trigger_blast_dragon(player_index)
+                self._cancel_blast(player_index)
+        return None
 
     # ------------------------------------------------------------------
     # Tie-breaker

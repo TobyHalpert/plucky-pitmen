@@ -72,14 +72,16 @@ class CountedMineEnv(MineEnv):
             self.blast_counts["cancelled"][player_index] += 1
         super()._cancel_blast(player_index)
 
-    def _prepare_blasts(self) -> None:
+    def _prepare_blasts(self) -> dict[str, Any] | None:
         pending = [player.blast_pending for player in self.players]
-        super()._prepare_blasts()
+        outcome = super()._prepare_blasts()
         for index, (was_pending, player) in enumerate(zip(pending, self.players)):
-            # A real blast needs three cards to be drawn. If the deck is short,
-            # the engine returns the available cards and does not resolve a blast.
-            if was_pending and player.blast_cards:
+            short_deck_dragon = (
+                outcome is not None and outcome.get("dragon_player") == index
+            )
+            if was_pending and (player.blast_cards or short_deck_dragon):
                 self.blast_counts["fired"][index] += 1
+        return outcome
 
 
 class BlastFrequencyAgent(NeuralAgent):
