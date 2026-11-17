@@ -951,7 +951,7 @@ def test_dropdown_labels_a_legal_push_as_a_push(tmp_path):
     assert viewer.action_var.get() == action
 
 
-def test_gui_renderer_emphasizes_the_current_planning_player():
+def test_gui_renderer_uses_token_size_without_an_active_highlight_ring():
     from game_env import LORRY
     from mine_gui import LAYOUT, PLAYER_COLORS, MineRenderer
 
@@ -1009,10 +1009,9 @@ def test_gui_renderer_emphasizes_the_current_planning_player():
     renderer.render(env)
     active_p1 = token_radius(0)
     idle_p2 = token_radius(1)
-    assert active_p1["outline"] == "#fff4c2"
-    assert active_p1["width"] == 4
+    assert active_p1["outline"] == idle_p2["outline"] == "#101820"
+    assert active_p1["width"] == idle_p2["width"] == 2
     assert (active_p1["coords"][2] - active_p1["coords"][0]) / 2 == LAYOUT.active_token_radius
-    assert idle_p2["outline"] == "#101820"
     assert (idle_p2["coords"][2] - idle_p2["coords"][0]) / 2 == LAYOUT.token_radius
 
     env.planning_player = 1

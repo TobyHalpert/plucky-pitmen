@@ -321,9 +321,7 @@ class MineRenderer:
             r = LAYOUT.active_token_radius if is_active else LAYOUT.token_radius
             self.canvas.create_oval(
                 x - r, y - r, x + r, y + r,
-                fill=color,
-                outline="#fff4c2" if is_active else "#101820",
-                width=4 if is_active else 2,
+                fill=color, outline="#101820", width=2,
             )
             self.canvas.create_text(
                 x, y, text=str(i + 1), fill="#101820",
