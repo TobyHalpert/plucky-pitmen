@@ -1,8 +1,10 @@
 """Last-haul tactical curriculum: varied scores, dynamite and late planning.
 
 Synthetic starting scores/retained dynamite are explicit scenario conditions.
-Late boards are produced by three complete safe execution rounds, not by merely
-changing the round counter. Seed 7 is excluded. Train/test game seeds are disjoint.
+Retained cards come from the physical 12-card Dynamite supply and are removed
+from the next haul's shuffled deck. Late boards are produced by three complete
+safe execution rounds, not by merely changing the round counter. Seed 7 is
+excluded. Train/test game seeds are disjoint.
 """
 from __future__ import annotations
 
@@ -15,7 +17,17 @@ import numpy as np
 
 from agents import NeuralAgent, ActionChoice
 from features import action_mask, own_card_is_known_dragon, split_action, state_action_matrix
-from game_env import MineEnv, DRAGON, DYNAMITE, GEM, PASS, PIT_CAGE, MAX_COLUMNS
+from game_env import (
+    DECK_SIZE,
+    DYNAMITES_PER_BACKSIDE,
+    MineEnv,
+    DRAGON,
+    DYNAMITE,
+    GEM,
+    PASS,
+    PIT_CAGE,
+    MAX_COLUMNS,
+)
 from learning import PolicyNet
 from selfplay import play_game, _choice_for
 from train_tactical import assess, candidates, sample_hidden
@@ -26,14 +38,31 @@ def scenario(seed: int, late_round: int):
     env = MineEnv(opponents=3)
     env.reset(seed=seed)
     env.haul = 3
-    for player in env.players:
-        count = int(rng.choice([0, 1, 2, 4, 6]))
-        # Retained dynamite is additional to the fresh haul deck, as in engine.
-        player.collected_cards = [(DYNAMITE, int(rng.integers(3))) for _ in range(count)]
-    env.tactical_retained_counts = [p.dynamite for p in env.players]
-    env.haul_retained_backsides = [
-        card[1] for player in env.players for card in player.collected_cards
+    retained_cap = min(
+        3 * DYNAMITES_PER_BACKSIDE,
+        max(0, DECK_SIZE - (3 + late_round) * env.n_players),
+    )
+    counts = []
+    while not counts or sum(counts) > retained_cap:
+        counts = [int(rng.choice([0, 1, 2, 4, 6])) for _ in env.players]
+    available_dynamite = [
+        (DYNAMITE, backside)
+        for backside in range(3)
+        for _ in range(DYNAMITES_PER_BACKSIDE)
     ]
+    rng.shuffle(available_dynamite)
+    cursor = 0
+    for player, count in zip(env.players, counts):
+        player.collected_cards = available_dynamite[cursor : cursor + count]
+        cursor += count
+    retained_cards = [
+        card for player in env.players for card in player.collected_cards
+    ]
+    env.tactical_retained_counts = [p.dynamite for p in env.players]
+    env.haul_retained_backsides = [card[1] for card in retained_cards]
+    env.cards_remaining = env._new_haul_deck(retained_cards)
+    env.rng.shuffle(env.cards_remaining)
+    env.rows = env._deal_next_rows(3)
     for _ in range(late_round):
         start_round = env.round
         while env.round == start_round and not env.game_finished:

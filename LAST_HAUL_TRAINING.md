@@ -13,9 +13,10 @@ The default net is not replaced automatically. The candidate is
 
 - A unique leading player on 3, 6, 9 or 12 total points; other players trail
   by 1, 3, 5 or 8 points, bounded below at zero.
-- Starting retained dynamite counts chosen from 0, 1, 2, 4 and 6 independently
-  per player, with varied backsides. Retained dynamite is additional to the
-  fresh haul deck, following the engine's next-haul construction.
+- The original checkpoint run chose starting retained dynamite counts from
+  0, 1, 2, 4 and 6 independently per player, with varied backsides. Those
+  scenarios reflected the engine's pre-conservation behavior and could include
+  extras beyond the physical 12 Dynamite cards.
 - Both round 0 and round 3 positions. Round 3 means **three execution rounds
   have already been played**, as in the zero-based viewer counter. Safe source
   moves are used to reach these boards with all players still active; these
@@ -32,6 +33,13 @@ Starting scores and retained hands are explicit synthetic conditions, not
 claimed replays of two earlier hauls. Source games have disjoint training and
 held-out seed ranges. Seed 7 is not used to select training positions or tune
 the model.
+
+**Conserved-deck update:** The existing checkpoint and measurements above are
+historical and were produced before the single-30-card rule was enforced. The
+current `train_last_haul.py` now samples retained cards from the physical 12-card
+Dynamite supply, caps the total carried cards accordingly, and removes them from
+the next haul's shuffled deck. This change does not retrain or reevaluate the
+historical checkpoint.
 
 ## Branch teacher and objective
 

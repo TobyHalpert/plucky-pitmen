@@ -119,13 +119,14 @@ def test_blast_dragon_risk_accounts_for_deck_vs_board_collected_and_retained():
     assert backside_stats(ctx_board)[3][0] == 0.0
     assert blast_dragon_risk(ctx_pile) < blast_dragon_risk(ctx_board) - 0.15
 
-    # Retained dynamite from a previous haul is additional to the 30-card haul deck
-    # and must not falsely deplete current-haul backside counts.
+    # Carried Dynamite are removed from the next haul's conserved deck.
     env_ret = MineEnv(opponents=3)
     env_ret.reset(seed=31)
     env_ret.players[0].collected_cards = [(DYNAMITE, 0)] * 4
+    env_ret.players[0].escaped = True
     env_ret._start_next_haul()
     ctx_ret = env_ret.player_action_context(0)
     assert len(ctx_ret.haul_retained_backsides) == 4
+    assert ctx_ret.cards_remaining_in_deck == 30 - 4 - 3 * env_ret.n_players
     total_in_deck = float(deck_backside_counts(ctx_ret).sum())
     assert total_in_deck == float(ctx_ret.cards_remaining_in_deck)

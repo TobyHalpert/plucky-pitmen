@@ -164,8 +164,8 @@ class PlayerActionContext:
     #: Public ``(round, column, row, backside, to_foreign_free)`` of unoccupied
     #: own-column cards a seat voluntarily hopped over during planning.
     hopped_cells: tuple[tuple[int, int, int, int, bool], ...] = ()
-    #: Public backsides of dynamite cards retained in players' hands from the
-    #: previous haul (additional to the current haul's 30-card deck).
+    #: Public backsides of Dynamite kept by escapees from previous hauls.
+    #: These cards are excluded from the current haul's shuffled inventory.
     haul_retained_backsides: tuple[int, ...] = ()
 
 
@@ -796,7 +796,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
     def _start_next_haul(self) -> None:
         retained_dynamite_cards = [
             [card for card in player.collected_cards if card[0] == DYNAMITE]
-            if not player.dead else []
+            if player.escaped and not player.dead else []
             for player in self.players
         ]
         scores = [player.score for player in self.players]
@@ -809,7 +809,12 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                 retained_dynamite_cards, scores, pushes
             )
         ]
-        self.cards_remaining = self._new_deck()
+        # All other cards return to the conserved set; carried Dynamite stay
+        # in escapees' hands and are removed from the stack before shuffling.
+        retained_cards = [
+            card for cards in retained_dynamite_cards for card in cards
+        ]
+        self.cards_remaining = self._new_haul_deck(retained_cards)
         self.rng.shuffle(self.cards_remaining)
         self.rows = self._deal_next_rows(3)
         self.round = 0
@@ -852,13 +857,29 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             )
         ]
 
+    def _new_haul_deck(
+        self, retained_dynamite_cards: list[tuple[int, int]],
+    ) -> list[tuple[int, int]]:
+        """Return the conserved deck minus Dynamite carried by escapees."""
+        deck = self._new_deck()
+        for card in retained_dynamite_cards:
+            if card[0] != DYNAMITE:
+                raise ValueError("only Dynamite may be retained between hauls")
+            try:
+                deck.remove(card)
+            except ValueError:
+                raise ValueError(
+                    f"retained Dynamite {card!r} exceeds the original deck inventory"
+                ) from None
+        return deck
+
     def _deal_rows(self, depth: int) -> list[list[tuple[int, int]]]:
         """Backwards-compatible name for :meth:`_deal_next_rows`.
 
         Deals from a fresh deck when the environment has not been reset yet,
         which keeps the deck-composition helper usable on a bare instance.
         """
-        if not self.cards_remaining:
+        if not self.cards_remaining and not self.players and not self.rows:
             self.cards_remaining = self._new_deck()
         return self._deal_next_rows(depth)
 
@@ -1377,25 +1398,13 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             return False
         self.tie_breaker_contenders = contenders
         # A tie-break eliminates one contender per dragon drawn, so it needs
-        # ``contenders - 1`` dragons to be able to finish: at most four.
-        # The card economy supplies far more than that. The deck is rebuilt to
-        # all 30 cards at the start of every haul and a haul ends the moment a
-        # dragon is drawn, so a haul spends exactly *one* dragon — the final
-        # tie-break therefore sees five dragons (six if the last haul ended
-        # another way), whatever happened in the hauls before it. The count can
-        # drop a little only through the short-deck branch of `_prepare_blasts`,
-        # which pushes leftover blast cards, dragons included, into a hand.
-        # Measured over 1260 games at 4 and 5 players (249 tie-breaks): five
-        # dragons in 219 cases, six in 26, four in 4 — never fewer than four,
-        # and never fewer than `contenders - 1`.
-        # So this is a guard, not a fix for an observed failure: it has never
-        # fired. It stays because a rules change (more players, fewer dragons
-        # per backside, a new way to lose cards) would make an out-of-cards
-        # tie-break raise instead of settle, and topping the deck up is cheap.
+        # ``contenders - 1`` dragons to be able to finish. If a malformed or
+        # synthetic state lacks enough, do not manufacture a replacement deck:
+        # leave the tie-break inactive and let the normal score ordering finish.
         if self._dragons_left_to_draw() < len(contenders) - 1:
-            self.cards_remaining = self._new_deck()
-            self.rng.shuffle(self.cards_remaining)
             self.tie_breaker_shortage = True
+            self.tie_breaker_contenders = []
+            return False
         first_contender = next(
             (self.starting_player + offset) % self.n_players
             for offset in range(self.n_players)

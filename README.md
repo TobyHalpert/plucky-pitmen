@@ -80,7 +80,7 @@ Now, the **scoring** takes place:
 *   A player's score cannot fall below -1 point.
 *   If a player awakens the dragon (-2 points) and nobody has left the mine, the other players receive +2 points instead of -1 point. The other players are allowed to keep their dynamite.
 
-A full game consists of **3 hauls**. If there is another haul to be played, all cards are collected, shuffled, and a new mine is set up. Players who successfully left the mine are allowed to keep their dynamite.
+A full game consists of **3 hauls**. If there is another haul to be played, all cards are collected and the conserved 30-card set is shuffled for the next mine. Players who successfully left the mine keep their Dynamite out of that shuffle; if they carry over *k* cards, the shuffled stack contains **30 − k cards**.
 
 
 ### End of the Game

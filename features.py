@@ -195,15 +195,16 @@ def _raw_backside_inventory(
         if 0 <= int(back) < 3:
             retained[int(back)] += 1.0
 
+    haul_inventory = np.maximum(0.0, TOTAL_PER_BACKSIDE - retained)
     max_safe_from_haul = np.maximum(
-        0.0, TOTAL_PER_BACKSIDE - DRAGONS_PER_BACKSIDE - own_col_safe
+        0.0, haul_inventory - DRAGONS_PER_BACKSIDE - own_col_safe
     )
     haul_collected_safe = np.clip(
         collected_and_used - retained, 0.0, max_safe_from_haul
     )
     known_safe = own_col_safe + haul_collected_safe
     unknown_raw = np.maximum(
-        0.0, TOTAL_PER_BACKSIDE - known_dragons - known_safe
+        0.0, haul_inventory - known_dragons - known_safe
     )
     return known_dragons, known_safe, unknown_raw, board_unknown
 
@@ -214,9 +215,10 @@ def backside_stats(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Return ``(known_dragons, known_safe, unknown, dragon_risk)`` per backside.
 
-    Combines face-up own-column cards, safe collected/blast-spent cards (adjusted
-    for dynamite retained from earlier hauls), and suspected opponent-column
-    dragons from voluntary walk-offs and repeated card-hopping.  ``dragon_risk``
+    Combines face-up own-column cards, safe collected/blast-spent cards (excluding
+    Dynamite retained outside the current haul's conserved inventory), and
+    suspected opponent-column dragons from voluntary walk-offs and repeated
+    card-hopping. ``dragon_risk``
     is the posterior dragon probability per non-suspected unknown card (including
     every card of that colour in the draw pile).
     """

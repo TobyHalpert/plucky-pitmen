@@ -441,7 +441,9 @@ def test_rushing_beats_camping_but_not_collecting():
     from agents import LeaverAgent, RusherAgent
 
     campers, collecting = [], []
-    for seed in range(40):
+    # The conserved haul stack changes multi-haul outcomes; use enough matched
+    # seeds to keep this qualitative comparison from hinging on a small sample.
+    for seed in range(80):
         result = play_game(
             [RusherAgent(), RuleAgent(), RuleAgent()], seed=seed
         )
@@ -652,13 +654,11 @@ def test_pending_blast_from_a_dead_or_escaped_player_does_not_block_the_haul():
 
 
 def test_a_tie_break_always_has_enough_dragons_to_finish():
-    """The card economy guarantees the tie-break can end, so nothing is topped up.
+    """Real games keep enough of the conserved deck's dragons for a tie-break.
 
-    Each haul starts from a fresh 30-card deck with six dragons and a haul ends
-    as soon as a dragon is drawn, so at most three are spent before the final
-    tie-break, while eliminating ``contenders - 1`` players needs at most four.
-    This checks the invariant on real games at both player counts instead of
-    trusting the argument, and pins down that the guard never has to fire.
+    Retained Dynamite are excluded from later haul stacks but do not remove any
+    dragons. Check the invariant on real games at both player counts rather
+    than relying on a fallback that manufactures replacement cards.
     """
     from agents import make_scripted_agent
 
@@ -696,12 +696,8 @@ def test_a_tie_break_always_has_enough_dragons_to_finish():
     assert all(have >= need for need, have in observed), observed
 
 
-def test_tie_breaker_guard_tops_up_the_deck_if_the_invariant_is_broken():
-    """Defensive only: an unreachable state must still settle instead of hanging.
-
-    Constructed by hand, never seen in a game — see the test above. If a rules
-    change ever leaves too few dragons, the tie-break must still terminate.
-    """
+def test_tie_breaker_shortage_does_not_create_cards():
+    """An impossible state must not be repaired by duplicating the deck."""
     from game_env import GEM
 
     env = MineEnv(opponents=2)
@@ -710,11 +706,16 @@ def test_tie_breaker_guard_tops_up_the_deck_if_the_invariant_is_broken():
         player.score = 4
     env.cards_remaining = [(GEM, 0)] * 10
     env.rows = [[(GEM, 0)] * 5 for _ in range(2)]
+    original_deck = list(env.cards_remaining)
+    original_rows = [list(row) for row in env.rows]
 
     assert env._dragons_left_to_draw() == 0
-    assert env._begin_tie_breaker() is True
+    assert env._begin_tie_breaker() is False
     assert env.tie_breaker_shortage is True
-    assert env._dragons_left_to_draw() >= len(env.tie_breaker_contenders) - 1
+    assert env.tie_breaker_contenders == []
+    assert env.cards_remaining == original_deck
+    assert env.rows == original_rows
+    assert env._dragons_left_to_draw() == 0
 
 
 def test_threat_agent_retreats_when_a_blast_is_pending():

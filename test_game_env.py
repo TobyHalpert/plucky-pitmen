@@ -806,22 +806,32 @@ def test_haul_scores_when_only_one_player_remains_for_next_planning_phase():
     assert env.haul == 2
 
 
-def test_surviving_players_keep_unused_dynamite_for_next_haul():
+def test_only_escapees_keep_dynamite_and_next_haul_conserves_the_deck():
     env = MineEnv(opponents=2)
     env.reset(seed=4)
     env.players[0].collected_cards = [
         (DYNAMITE, BACKSIDE_A),
         (GEM, BACKSIDE_B),
     ]
+    env.players[0].escaped = True
     env.players[1].collected_cards = [(DYNAMITE, BACKSIDE_C)]
+    env.players[1].escaped = True
+    # P3 did not escape, so its Dynamite returns to the shared deck.
     env.players[2].collected_cards = [(DYNAMITE, BACKSIDE_B)]
-    env.players[2].dead = True
 
     env._start_next_haul()
 
     assert env.players[0].collected_cards == [(DYNAMITE, BACKSIDE_A)]
     assert env.players[1].collected_cards == [(DYNAMITE, BACKSIDE_C)]
     assert env.players[2].collected_cards == []
+
+    cards_in_play = (
+        list(env.cards_remaining)
+        + [card for row in env.rows for card in row if card is not None]
+        + [card for player in env.players for card in player.collected_cards]
+    )
+    assert Counter(cards_in_play) == Counter(env._new_deck())
+    assert len(env.cards_remaining) == DECK_SIZE - 2 - 3 * env.n_players
 
 
 def test_collected_cards_disappear_and_new_row_requires_no_departure():
@@ -1078,6 +1088,15 @@ def test_deck_has_thirty_cards_with_three_backside_sets():
     for backside in (BACKSIDE_A, BACKSIDE_B, BACKSIDE_C):
         fronts = Counter(front for front, card_backside in deck if card_backside == backside)
         assert fronts == Counter({DRAGON: 2, GEM: 4, DYNAMITE: 4})
+
+
+def test_deal_rows_does_not_recreate_an_exhausted_live_deck():
+    env = MineEnv(opponents=2)
+    env.reset(seed=12)
+    env.cards_remaining.clear()
+
+    assert env._deal_rows(1) == [[]]
+    assert env.cards_remaining == []
 
 
 # ----------------------------------------------------------------------
