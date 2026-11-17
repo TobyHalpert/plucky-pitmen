@@ -1305,11 +1305,20 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         player.blast_pending = True
 
     def _trigger_blast_dragon(self, player_index: int) -> dict[str, Any]:
-        """End the haul after a blast reveals a Dragon."""
+        """End the haul after a blast reveals a Dragon.
+
+        Face-down cards that were not selected are returned to the bottom of the
+        draw pile. Once the first Dragon is revealed, no later blast choices are
+        made; their prepared cards must remain available for a tie-break.
+        """
+        unselected_cards = [
+            card for player in self.players for card in player.blast_cards
+        ]
+        self.cards_remaining.extend(unselected_cards)
         for remaining_index, player in enumerate(self.players):
             if not player.escaped:
                 player.dead = True
-                self._cancel_blast(remaining_index)
+            self._cancel_blast(remaining_index)
         return {
             "outcome": "blast_dragon",
             "dragon_player": player_index,
@@ -1370,12 +1379,25 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             player.blast_cards = self.cards_remaining[:draw_count]
             self.cards_remaining = self.cards_remaining[draw_count:]
             if draw_count < 3:
-                # The skipped choice still takes every remaining card, but a
-                # Dragon among them awakens the dragon just as in a full blast.
+                # With no choice, take safe cards in order and stop at the first
+                # Dragon. Cards after it were not drawn and stay at the deck's top.
                 short_deck_cards = player.blast_cards
-                player.collected_cards.extend(short_deck_cards)
-                if any(card[0] == DRAGON for card in short_deck_cards):
+                dragon_offset = next(
+                    (
+                        index for index, card in enumerate(short_deck_cards)
+                        if card[0] == DRAGON
+                    ),
+                    None,
+                )
+                if dragon_offset is not None:
+                    player.collected_cards.extend(short_deck_cards[:dragon_offset])
+                    player.blast_cards = []
+                    self.cards_remaining = (
+                        short_deck_cards[dragon_offset + 1:] + self.cards_remaining
+                    )
                     return self._trigger_blast_dragon(player_index)
+                player.collected_cards.extend(short_deck_cards)
+                player.blast_cards = []
                 self._cancel_blast(player_index)
         return None
 

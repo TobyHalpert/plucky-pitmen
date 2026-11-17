@@ -299,7 +299,31 @@ def test_blast_choice_draw_and_resolution_are_limited_to_three_cards():
     assert env.players[0].collected_cards[-2:] == [chosen, second]
 
 
-def test_short_deck_blast_still_awakens_a_drawn_dragon():
+def test_first_blast_dragon_returns_unselected_cards_for_a_five_way_tie_break():
+    env = MineEnv(opponents=4)
+    env.reset(seed=5)
+    env.haul = 3
+    dragons = [card for card in env._new_deck() if card[0] == DRAGON]
+    env.rows = [[*dragons[3:], None, None]]
+    env.cards_remaining = []
+    for player in env.players:
+        player.score = -1
+        player.position = LORRY
+        player.column = None
+    env.players[0].blast_pending = True
+    env.players[0].blast_cards = dragons[:3]
+
+    chosen = env.resolve_blast(0, 0)
+
+    assert chosen == dragons[0]
+    assert Counter(env.cards_remaining) == Counter(dragons[1:3])
+    assert env._dragons_left_to_draw() == 5
+    assert env.tie_breaker_contenders == list(range(5))
+    assert not env.tie_breaker_shortage
+    assert not env.game_finished
+
+
+def test_short_deck_blast_stops_at_the_first_dragon():
     env = MineEnv(opponents=2)
     env.reset(seed=5)
     env.haul = 3
@@ -326,10 +350,8 @@ def test_short_deck_blast_still_awakens_a_drawn_dragon():
 
     assert info["outcome"] == "blast_dragon"
     assert info["dragon_player"] == 0
-    assert env.players[0].collected_cards == [
-        (DRAGON, BACKSIDE_A),
-        (GEM, BACKSIDE_B),
-    ]
+    assert env.players[0].collected_cards == []
+    assert env.cards_remaining == [(GEM, BACKSIDE_B)]
     assert all(player.dead for player in env.players)
     assert all(not player.blast_pending for player in env.players)
     assert all(not player.blast_cards for player in env.players)
@@ -338,6 +360,32 @@ def test_short_deck_blast_still_awakens_a_drawn_dragon():
     assert terminated
     assert env.game_finished
     assert info["winner"] == 0
+
+
+def test_short_deck_blast_keeps_safe_cards_before_the_first_dragon():
+    env = MineEnv(opponents=2)
+    env.reset(seed=5)
+    for player in env.players:
+        player.position = LORRY
+        player.column = None
+    env.players[0].collected_cards = [
+        (DYNAMITE, BACKSIDE_A),
+        (DYNAMITE, BACKSIDE_B),
+    ]
+    env.begin_blast(0)
+    env.cards_remaining = [
+        (GEM, BACKSIDE_A),
+        (DRAGON, BACKSIDE_B),
+    ]
+
+    _reward, info = env._execute_round()
+
+    assert info["outcome"] == "blast_dragon"
+    assert env.players[0].collected_cards == [(GEM, BACKSIDE_A)]
+    assert env.cards_remaining == []
+    assert all(player.dead for player in env.players)
+    assert all(not player.blast_pending for player in env.players)
+    assert all(not player.blast_cards for player in env.players)
 
 
 def test_short_deck_blast_without_a_dragon_takes_all_remaining_cards():
