@@ -4,12 +4,13 @@ This project turns **Plucky Pitmen** into a Gymnasium environment for testing st
 
 **Feel free to contribute!** I appreciate your feedback.
 
-**Is the game balanced?** Mostly yes, and the interesting part is *why* it is
-hard to measure: leaving the mine early looks dominant against fixed bots, but
-is worth exactly zero against a player who collects loot and then leaves. The
-measurements, the confidence intervals and the reproduction commands are in
-**[BALANCE.md](BALANCE.md)**; the agents that produced them are in this
-repository and can play any of the rule variants.
+**What does the balance evidence show?** The current-rules screen is in
+`reports/current_rules_balance_study.md`: it compares trained bots against
+several scripted styles at three player counts, with confidence intervals. It is
+bot/self-play evidence, not a conclusion about human-game balance. **[BALANCE.md](BALANCE.md)**
+is a historical experimental record; its measurements should not be read as a
+current-rules estimate. Reproduce the current screen with
+`python current_rules_balance_study.py`.
 
 ## Rules
 
@@ -78,7 +79,7 @@ A haul **ends**
 *   if there are no treasures left in the mine.
 
 Now, the **scoring** takes place:
-*   Players who left the mine reveal their collected cards. The player with the **most gems** receives **+3 points** (+4 points in the final haul). If only one player has left the mine, they receive these points even without having any gems. In the event of a **tie** for gems, each player with the highest number of gems receives **+1 point**.
+*   Players who left the mine reveal their collected cards. **A sole escapee receives the haul bonus even with zero gems: +3 points in hauls 1–2 or +4 points in the final haul.** Otherwise, the player or players with the most gems receive the bonus; in the event of a **tie** for gems, each tied player receives **+1 point**.
 *   A player eliminated by a Dragon revealed in their **own column** receives **-2 points**. They do not score below -1, and remain eligible for the final tie-break.
 *   When a Dragon in another column ends the haul, its player receives **-2 points** and all other players still in the mine receive **-1 point**. An own-column Dragon player eliminated earlier is not affected again.
 *   A player's score cannot fall below -1 point.
@@ -238,7 +239,8 @@ the list says whether the plan currently standing is **locked** or still
 again before the phase ends. The panel is empty for scripted policies, during a
 tie-break, and while a blast is waiting on a card.
 
-What to look for, given the measurements in [BALANCE.md](BALANCE.md): it should
+For context, the following behavior notes come from historical bot measurements
+in [BALANCE.md](BALANCE.md), not the current-rules screen: the network should
 rarely blast (0.02-0.05 per game *fired*, for two reasons — it seldom holds two
 dynamite, and most blasts it announces are cancelled by its own next move, §5),
 it should walk to a pit cage as soon as it holds loot, and it *does* leave when
