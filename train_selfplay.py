@@ -125,7 +125,7 @@ def evaluate(
         policy_scores = game.scores_by_policy()
         learner_score = policy_scores[0]
         scores.append(learner_score)
-        wins += int(game.winner_policy() == 0)
+        wins += int(0 in game.winners_policy())
         top_scores += int(learner_score == max(policy_scores))
         ranks.append(1 + sum(1 for score in policy_scores if score > learner_score))
         dragons += game.result.dragons

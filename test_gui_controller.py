@@ -778,6 +778,22 @@ def test_tie_break_falls_back_when_the_requested_pile_is_empty(tiny_net):
     assert "tie-break" in result.message or result.game_over
 
 
+def test_tie_break_exhaustion_message_lists_every_shared_winner():
+    result = GameController._tie_break_message({
+        "player": 2,
+        "card": (1, 0),
+        "source": "deck",
+        "outcome": "dragon",
+        "winner": None,
+        "winners": [0, 1],
+        "all_survivors_win": True,
+        "game_over": True,
+    })
+
+    assert result.game_over
+    assert "Player 1, Player 2 share the win" in result.message
+
+
 def test_blaster_policy_announces_and_fires_blasts():
     """The viewer needs a baseline that actually blasts; the learner does not."""
     announced = fired = 0

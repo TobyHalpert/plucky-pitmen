@@ -511,9 +511,17 @@ class GameController:
     def _format_outcome(self, info: dict, reward: float) -> str:
         outcome = info.get("outcome", "continued")
         msg = f"Round {info.get('round', self.env.round)}: {outcome}. Reward {reward:+.2f}."
+        own_column_eliminations = info.get("own_column_eliminations", [])
+        if own_column_eliminations:
+            seats = ", ".join(str(index + 1) for index in own_column_eliminations)
+            msg += f" Own-column Dragon eliminated player(s) {seats}."
         dragon_player = info.get("dragon_player")
         if outcome in {"dragon", "blast_dragon"} and dragon_player is not None:
-            msg += f" Player {dragon_player + 1} awakened the dragon."
+            msg += f" Player {dragon_player + 1} awakened a mine-wide Dragon."
+        winners = info.get("winners", [])
+        if info.get("game_over") and len(winners) > 1:
+            seats = ", ".join(str(index + 1) for index in winners)
+            msg += f" Players {seats} share the win."
         msg += self._consume_displacement_messages()
         return msg
 
@@ -639,11 +647,14 @@ class GameController:
             source, row, column = agent.tie_break(ctx)
         else:
             options = self.tie_break_options()
-            source, row, column = (
-                options[0]
-                if len(options) == 1
-                else options[int(self.env.rng.integers(len(options)))]
-            )
+            if not options:
+                source, row, column = "deck", None, None
+            else:
+                source, row, column = (
+                    options[0]
+                    if len(options) == 1
+                    else options[int(self.env.rng.integers(len(options)))]
+                )
         try:
             result = self.env.resolve_tie_breaker(source, row, column)
         except ValueError:
@@ -808,15 +819,25 @@ class GameController:
 
     @staticmethod
     def _tie_break_message(result: dict) -> StepResult:
+        if result.get("all_survivors_win"):
+            survivors = ", ".join(
+                f"Player {index + 1}" for index in result.get("winners", [])
+            )
+            return StepResult(
+                f"The mine and draw pile are exhausted; {survivors} share the win.",
+                game_over=True,
+            )
+
         player_num = result["player"] + 1
         if result.get("game_over"):
+            winner = result.get("winner")
             return StepResult(
-                f"Player {player_num} drew a dragon and was eliminated from the tie-break. "
-                f"Player {result['winner'] + 1} wins the tie-break. Game over.",
+                f"Player {player_num} drew a Dragon and was eliminated from the tie-break. "
+                f"Player {winner + 1} wins the tie-break. Game over.",
                 game_over=True,
             )
         if result["outcome"] == "dragon":
             return StepResult(
-                f"Player {player_num} drew a dragon and was eliminated from the tie-break."
+                f"Player {player_num} drew a Dragon and was eliminated from the tie-break."
             )
         return StepResult(f"Player {player_num} drew a safe tie-break card.")

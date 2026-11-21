@@ -52,6 +52,7 @@ class HaulSummary:
     blasts: list[int] = field(default_factory=list)
     # Execution rounds played in this haul (more rounds = deeper mine = riskier).
     rounds: int = 0
+    own_column_eliminated: list[int] = field(default_factory=list)
 
 
 @dataclass
@@ -60,6 +61,8 @@ class GameResult:
     scores: list[int]
     winner: int | None
     turns: int
+    # More than one player can win if the tie-break runs out of cards.
+    winners: list[int] = field(default_factory=list)
     hauls: list[HaulSummary] = field(default_factory=list)
     blasts_announced: int = 0
     blast_choices: int = 0
@@ -212,6 +215,7 @@ def play_game(
     blast_choices = 0
     haul_blasts: dict[int, set[int]] = {}
     winner: int | None = None
+    winners: list[int] = []
     steps = 0
     aborted = False
     abort_reason = ""
@@ -234,6 +238,8 @@ def play_game(
             contenders = env.tie_breaker_contenders
             player_index = contenders[env.tie_breaker_turn % len(contenders)]
             outcome = _tie_break(env, agents[player_index], player_index)
+            if outcome.get("winners") is not None:
+                winners = [int(index) for index in outcome["winners"]]
             if outcome.get("winner") is not None:
                 winner = int(outcome["winner"])
             continue
@@ -308,6 +314,8 @@ def play_game(
         for decision in decisions[count_before:]:
             last_decision[decision.player] = decision
 
+        if "winners" in info:
+            winners = [int(index) for index in info["winners"]]
         if "winner" in info and info["winner"] is not None:
             winner = int(info["winner"])
 
@@ -343,25 +351,30 @@ def play_game(
             ],
         }
 
-    if env.game_finished and winner is None:
-        best = max(player.score for player in env.players)
-        leaders = [i for i, p in enumerate(env.players) if p.score == best]
-        winner = leaders[0] if len(leaders) == 1 else None
+    if env.game_finished:
+        if not winners:
+            winners = [int(index) for index in env.winners]
+        if not winners:
+            best = max(player.score for player in env.players)
+            winners = [
+                index for index, player in enumerate(env.players)
+                if player.score == best
+            ]
+        if winner is None and len(winners) == 1:
+            winner = winners[0]
+        elif len(winners) != 1:
+            winner = None
 
     if learning:
-        if winner is not None:
-            flush(winner, WIN_BONUS)
-        else:
-            best = max(player.score for player in env.players)
-            for index, player in enumerate(env.players):
-                if player.score == best:
-                    flush(index, WIN_BONUS)
+        for index in winners:
+            flush(index, WIN_BONUS)
 
     return GameResult(
         seed=-1 if seed is None else int(seed),
         scores=[player.score for player in env.players],
         winner=winner,
         turns=steps,
+        winners=winners,
         hauls=[
             HaulSummary(
                 haul=int(record["haul"]),
@@ -374,6 +387,9 @@ def play_game(
                 cards=list(record.get("cards", [])),
                 blasts=sorted(haul_blasts.get(int(record["haul"]), ())),
                 rounds=int(record.get("rounds", 0)),
+                own_column_eliminated=list(
+                    record.get("own_column_eliminated", [])
+                ),
             )
             for record in env.haul_history
         ],
@@ -404,9 +420,14 @@ class SeriesGame:
         return scores
 
     def winner_policy(self) -> int | None:
+        """Return the unique winning policy, or None for a shared win."""
         if self.result.winner is None:
             return None
         return self.policy_of_seat[self.result.winner]
+
+    def winners_policy(self) -> list[int]:
+        """Return every policy that won, including shared tie-break wins."""
+        return [self.policy_of_seat[seat] for seat in self.result.winners]
 
 
 def play_series(

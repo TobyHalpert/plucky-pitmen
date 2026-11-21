@@ -72,6 +72,67 @@ def test_tie_breaker_uses_turn_order_and_eliminates_dragon_drawers():
     assert second["game_over"] is True
 
 
+def test_tie_break_exhaustion_makes_all_remaining_contenders_winners():
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    for player in env.players:
+        player.score = 5
+    env.rows = [[None] * env.n_players]
+    env.cards_remaining = [(GEM, BACKSIDE_A), (GEM, BACKSIDE_B)]
+
+    assert env._begin_tie_breaker() is True
+    assert env.tie_breaker_shortage is True
+    first = env.resolve_tie_breaker("deck")
+    assert first["outcome"] == "safe"
+    assert env.tie_breaker_contenders
+    second = env.resolve_tie_breaker("deck")
+
+    assert second["winners"] == list(range(env.n_players))
+    assert second["winner"] is None
+    assert second["all_survivors_win"] is True
+    assert env.winners == list(range(env.n_players))
+    assert env.tie_breaker_contenders == []
+    assert env.game_finished
+
+
+def test_tie_break_exhaustion_after_a_dragon_awards_all_survivors():
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    for player in env.players:
+        player.score = 5
+    env.rows = [[None] * env.n_players]
+    env.cards_remaining = [(DRAGON, BACKSIDE_A)]
+
+    assert env._begin_tie_breaker() is True
+    eliminated = env.tie_breaker_contenders[env.tie_breaker_turn]
+    result = env.resolve_tie_breaker("deck")
+    survivors = [index for index in range(env.n_players) if index != eliminated]
+
+    assert result["outcome"] == "dragon"
+    assert result["winners"] == survivors
+    assert result["all_survivors_win"] is True
+    assert env.game_finished
+
+
+def test_tie_break_with_no_available_cards_immediately_shares_the_win():
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    env.haul = 3
+    for player in env.players:
+        player.score = 5
+    env.rows = [[None] * env.n_players]
+    env.cards_remaining = []
+
+    _reward, terminated = env._finish_round(
+        0.0, {"round": env.round, "outcome": "continued"}
+    )
+
+    assert terminated
+    assert env.game_finished
+    assert env.winners == list(range(env.n_players))
+    assert env.tie_breaker_contenders == []
+
+
 def test_seeded_reset_is_reproducible():
     first = MineEnv().reset(seed=12)[0]
     second = MineEnv().reset(seed=12)[0]
@@ -471,11 +532,13 @@ def test_opponent_passes_complete_the_pass_sequence():
     _observation, reward, terminated, truncated, info = env.step(PASS)
 
     assert env.players[0].dynamite == 1
-    assert info["outcome"] in {"continued", "escaped", "dragon"}
+    assert info["outcome"] in {
+        "continued", "escaped", "dragon", "own_column_dragon"
+    }
     assert reward != 0.0 or terminated or truncated
 
 
-def test_woken_dragon_kills_everyone_still_in_the_mine():
+def test_woken_foreign_column_dragon_kills_everyone_still_in_the_mine():
     env = MineEnv(opponents=2)
     env.reset(seed=4)
     env.rows[0][0] = (DRAGON, BACKSIDE_A)
@@ -484,11 +547,101 @@ def test_woken_dragon_kills_everyone_still_in_the_mine():
     for player_index, player in enumerate(env.players):
         player.position = 0
         player.column = player_index
+    # Player 2 raided Player 0's Dragon: it is foreign to the digger.
+    env.players[0].column = 1
+    env.players[1].column = 2
+    env.players[2].column = 0
 
     _reward, info = env._execute_round()
 
     assert info["outcome"] == "dragon"
+    assert info["dragon_player"] == 2
     assert all(player.dead for player in env.players)
+
+
+def test_own_column_dragon_eliminates_only_its_owner_and_resolution_continues():
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    env.starting_player = 0
+    env.rows[0][0] = (DRAGON, BACKSIDE_A)
+    env.rows[0][1] = (GEM, BACKSIDE_B)
+    env.rows[0][2] = (DYNAMITE, BACKSIDE_C)
+    for player_index, player in enumerate(env.players):
+        player.position = 0
+        player.column = player_index
+
+    reward, info = env._execute_round()
+
+    assert info["outcome"] == "own_column_dragon"
+    assert info["own_column_eliminations"] == [0]
+    assert env.players[0].dead
+    assert not env.players[1].dead and not env.players[2].dead
+    assert env.players[1].collected_cards == [(GEM, BACKSIDE_B)]
+    assert env.players[2].collected_cards == [(DYNAMITE, BACKSIDE_C)]
+    assert reward == -2.0
+    assert env._haul_over() is False
+
+
+def test_a_later_global_dragon_does_not_penalize_an_own_column_casualty_again():
+    env = MineEnv(opponents=3)
+    env.reset(seed=4)
+    env.starting_player = 0
+    for player in env.players:
+        player.score = 4
+        player.position = 0
+    env.players[0].column = 0
+    env.players[1].column = 3
+    env.players[2].column = 1
+    env.players[3].column = 2
+    env.rows[0][0] = (DRAGON, BACKSIDE_A)
+    env.rows[0][3] = (DRAGON, BACKSIDE_B)
+    env.rows[0][1] = (GEM, BACKSIDE_C)
+    env.rows[0][2] = (DYNAMITE, BACKSIDE_A)
+
+    reward, info = env._execute_round()
+    assert info["outcome"] == "dragon"
+    assert info["dragon_player"] == 1
+    assert info["own_column_eliminations"] == [0]
+    assert all(player.dead for player in env.players)
+    assert reward == -2.0
+
+    env._finish_round(reward, info)
+    assert info["scores"] == [2, 2, 3, 3]
+
+
+def test_an_own_column_dragon_casualty_remains_tie_break_eligible():
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    for player in env.players:
+        player.score = -1
+    env.players[0].dead = True
+    env.own_column_eliminated = {0}
+    env.rows = [[None] * env.n_players]
+    env.cards_remaining = [(GEM, BACKSIDE_A)]
+
+    assert env._begin_tie_breaker() is True
+    assert env.tie_breaker_contenders == list(range(env.n_players))
+
+
+def test_own_column_dragon_penalty_is_floored_and_old_plus_two_is_gone():
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    for player in env.players:
+        player.dead = True
+        player.score = 5
+    env.own_column_eliminated = {0}
+
+    env._score_haul({
+        "outcome": "dragon",
+        "dragon_player": 1,
+        "home_column_dragon": True,
+    })
+
+    assert [player.score for player in env.players] == [3, 3, 4]
+
+    env.players[0].score = -4
+    env._score_haul({"outcome": "own_column_dragon", "dragon_player": 0})
+    assert env.players[0].score == -1
 
 
 def test_player_can_displace_occupant_in_that_players_own_column(monkeypatch):

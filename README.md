@@ -14,7 +14,8 @@ repository and can play any of the rule variants.
 ## Rules
 
 The winner of a haul is the player who **leaves the mine with the most gems**.
-Everyone inside the mine when the dragon is awakened loses everything.
+A Dragon revealed outside the acting player's own column wipes out everyone still
+in the mine; a Dragon in that player's own column eliminates only its owner.
 The players must **cooperate** to avoid waking the dragon and **compete** to win the game.
 
 During a haul, **planning** and **execution phases** alternate.
@@ -50,7 +51,7 @@ For the options "free card", "pit cage", and "displace", the following rule appl
 
 All players who are in a **pit cage** at the beginning of the execution phase leave the mine and **are safe from the dragon**. They sit out for the rest of the haul, meaning they do not participate in any further planning or execution phases and only become active again for the final scoring.
 
-Beginning with the starting player, **everyone** who is still in the mine and not standing on a lorry **takes the card** beneath their figure and looks at it. If it is a **dragon**, the haul ends immediately—the dragon has been awakened. Otherwise, the player places the card face down in front of them. The player remains in the mine. The card backs of collected cards remain visible to everyone.
+Beginning with the starting player, **everyone** who is still in the mine and not standing on a lorry **takes the card** beneath their figure and looks at it. A Dragon in the acting player's **own column** eliminates only that player; execution continues in order for the other players whose choices were already locked. A Dragon in another column ends the haul immediately and eliminates everyone still in the mine. Otherwise, the player places the card face down in front of them. The player remains in the mine. The card backs of collected cards remain visible to everyone.
 
 If no one has left the mine so far: Beginning with the starting player, each player draws (if possible) a **card from the draw pile**, looks at it, and places it face down in their column of the newly created row at the bottom end of the mine (see Figure 2). If someone has left the mine: No cards are added.
 
@@ -67,7 +68,7 @@ In the **execution phase**, the player **receives the card as usual**. Additiona
 ### End of a Haul
 
 A haul **ends**
-*   immediately if the dragon is awakened.
+*   immediately if a Dragon outside the acting player's own column, or a blast Dragon, is awakened.
 *   if only one player remains in the mine after the execution phase. This player leaves the mine automatically.
 *   if a complete row cannot be formed after an execution phase. The remaining players leave the mine automatically.
 *   if there are no treasures left in the mine.
@@ -75,10 +76,9 @@ A haul **ends**
 
 Now, the **scoring** takes place:
 *   Players who left the mine reveal their collected cards. The player with the **most gems** receives **+3 points** (+4 points in the final haul). If only one player has left the mine, they receive these points even without having any gems. In the event of a **tie** for gems, each player with the highest number of gems receives **+1 point**.
-*   The player who **awakened the dragon** receives **-2 points**.
-*   All other players who **died in the mine** receive **-1 point**.
+*   A player eliminated by a Dragon revealed in their **own column** receives **-2 points**. They do not score below -1, and remain eligible for the final tie-break.
+*   When a Dragon in another column ends the haul, its player receives **-2 points** and all other players still in the mine receive **-1 point**. An own-column Dragon player eliminated earlier is not affected again.
 *   A player's score cannot fall below -1 point.
-*   If a player awakens the dragon (-2 points) and nobody has left the mine, the other players receive +2 points instead of -1 point. The other players are allowed to keep their dynamite.
 
 A full game consists of **3 hauls**. If there is another haul to be played, all cards are collected and the conserved 30-card set is shuffled for the next mine. Players who successfully left the mine keep their Dynamite out of that shuffle; if they carry over *k* cards, the shuffled stack contains **30 − k cards**.
 
@@ -87,7 +87,7 @@ A full game consists of **3 hauls**. If there is another haul to be played, all 
 
 The game ends after the third haul. The player with the most points wins.
 
-In the event of a **tie**, the contenders for victory take turns - starting with the starting player - drawing a card either from the mine or from the draw pile. Players who draw a dragon are eliminated. The last survivor wins.
+In the event of a **tie**, the contenders for victory take turns—starting with the starting player—drawing a card either from the mine or from the draw pile. Players who draw a Dragon are eliminated; a player eliminated by an own-column Dragon is still eligible to contend. The last survivor wins. If the mine and draw pile are exhausted while several contenders remain, all remaining contenders share the win.
 
 ## Open Questions
 
@@ -646,10 +646,10 @@ The full write-up, with confidence intervals and reproduction commands, is in
 * **An engine bug was silently scoring whole games as zero.** A player killed by
   a dragon while a blast was pending left the haul unable to finish, so the game
   was recorded `aborted` with every score at 0 (36 of 60 always-blaster games).
-  Fixed, and every report now prints how many games the engine abandoned. A
-  second bug reported alongside it — a tie-break with no dragons left to draw —
-  does not exist: the card economy always leaves enough, and
-  [BALANCE.md](BALANCE.md) §7 records the withdrawal.
+  Fixed, and every report now prints how many games the engine abandoned. The
+  tie-break exhaustion edge case is also defined rather than assumed away:
+  contenders draw only from the mine and stack, and any survivors left when both
+  are empty share the win.
 
 ### Testing the rules variants
 

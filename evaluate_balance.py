@@ -161,10 +161,10 @@ def summarise(series: Sequence[SeriesGame], name: str) -> PolicyStats:
         others = policy_scores[1:]
         scores.append(own)
         margins.append(own - float(np.mean(others)))
-        wins += int(game.winner_policy() == 0)
+        wins += int(0 in game.winners_policy())
         tops += int(own == max(policy_scores))
         ranks.append(1 + sum(1 for score in policy_scores if score > own))
-    win_flags = [1.0 if game.winner_policy() == 0 else 0.0 for game in series]
+    win_flags = [1.0 if 0 in game.winners_policy() else 0.0 for game in series]
 
     escapes = 0
     zero_gem_escapes = 0

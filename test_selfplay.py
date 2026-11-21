@@ -696,8 +696,8 @@ def test_a_tie_break_always_has_enough_dragons_to_finish():
     assert all(have >= need for need, have in observed), observed
 
 
-def test_tie_breaker_shortage_does_not_create_cards():
-    """An impossible state must not be repaired by duplicating the deck."""
+def test_tie_breaker_shortage_draws_existing_cards_then_shares_the_win():
+    """Do not invent Dragons; any contenders left after exhaustion all win."""
     from game_env import GEM
 
     env = MineEnv(opponents=2)
@@ -710,12 +710,28 @@ def test_tie_breaker_shortage_does_not_create_cards():
     original_rows = [list(row) for row in env.rows]
 
     assert env._dragons_left_to_draw() == 0
-    assert env._begin_tie_breaker() is False
+    assert env._begin_tie_breaker() is True
     assert env.tie_breaker_shortage is True
-    assert env.tie_breaker_contenders == []
+    assert env.tie_breaker_contenders == list(range(env.n_players))
     assert env.cards_remaining == original_deck
     assert env.rows == original_rows
-    assert env._dragons_left_to_draw() == 0
+
+    while env.tie_breaker_contenders:
+        if env.cards_remaining:
+            result = env.resolve_tie_breaker("deck")
+        else:
+            row, column = next(
+                (r, c)
+                for r, cards in enumerate(env.rows)
+                for c, card in enumerate(cards)
+                if card is not None
+            )
+            result = env.resolve_tie_breaker("mine", row, column)
+
+    assert result["all_survivors_win"] is True
+    assert env.winners == list(range(env.n_players))
+    assert env.cards_remaining == []
+    assert all(card is None for row in env.rows for card in row)
 
 
 def test_threat_agent_retreats_when_a_blast_is_pending():
@@ -1891,13 +1907,11 @@ def test_the_counter_does_not_take_a_card_it_has_not_seen():
     assert CounterAgent().act(unknown_only) == int(PIT_CAGE)
 
 
-def test_the_counter_banks_two_gems_and_hands_the_nets_a_losing_table(monkeypatch):
-    """The measured exploit, as pinned by the numbers in BALANCE.md.
+def test_the_counter_match_completes_under_own_column_rule(monkeypatch):
+    """Keep the old match as a smoke test, not a net-score acceptance test.
 
-    One counter against three copies of the historical pit-cage checkpoint wins about 56% of
-    games outright and takes +4.1 points a seat against their +1.1. The test uses
-    a short slice, and both sides are deterministic on the seed, so it is a
-    regression guard rather than a sample.
+    Its former score threshold described the old Dragon rule and is no longer
+    relevant to whether the own-column rule is implemented correctly.
     """
     import game_env
 
@@ -1929,15 +1943,15 @@ def test_the_counter_banks_two_gems_and_hands_the_nets_a_losing_table(monkeypatc
     from learning import PolicyNet
 
     net = PolicyNet.load(resolve_checkpoint("neural:selfplay4_pitcage"))
-    margins = []
+    results = []
     for seed in range(40):
         agents = [CounterAgent()] + [
             NeuralAgent(net, seed=seed * 31 + seat, temperature=0.7)
             for seat in (1, 2, 3)
         ]
-        scores = play_game(agents, seed=seed).scores
-        margins.append(scores[0] - float(np.mean(scores[1:])))
-    assert float(np.mean(margins)) > 1.5
+        results.append(play_game(agents, seed=seed))
+    assert len(results) == 40
+    assert all(not result.aborted for result in results)
 
 
 def test_the_counter_is_deterministic_and_never_displaces():

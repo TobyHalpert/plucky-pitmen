@@ -260,6 +260,11 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.haul = 1
         self.tie_breaker_contenders: list[int] = []
         self.tie_breaker_turn = 0
+        self.tie_breaker_shortage = False
+        self.winners: list[int] = []
+        # Players eliminated by a Dragon revealed in their own column do not
+        # end the haul for everyone else, and keep their separate -2 penalty.
+        self.own_column_eliminated: set[int] = set()
         self.used_blast_backsides: list[int] = []
         self.displacement_events: list[tuple[int, int]] = []
         self.vacated_events: list[tuple[int, int, int, int, int]] = []
@@ -292,6 +297,8 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.tie_breaker_contenders = []
         self.tie_breaker_turn = 0
         self.tie_breaker_shortage = False
+        self.winners = []
+        self.own_column_eliminated = set()
         self.used_blast_backsides = []
         self.displacement_events = []
         # Every voluntary departure from a card in the actor's own column.
@@ -560,6 +567,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                 "rounds": int(self.round),
                 "outcome": info.get("outcome", "unknown"),
                 "dragon_player": info.get("dragon_player"),
+                "own_column_eliminated": sorted(self.own_column_eliminated),
                 "scores": [player.score for player in self.players],
                 "gems": [player.gems for player in self.players],
                 "cards": [len(player.collected_cards) for player in self.players],
@@ -585,9 +593,16 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             info["tie_break_contenders"] = list(self.tie_breaker_contenders)
             return reward, False
 
+        if not self.winners:
+            self.winners = [self._leader()]
         self.game_finished = True
         info["game_over"] = True
-        info["winner"] = self._leader()
+        info["winners"] = list(self.winners)
+        info["winner"] = (
+            self.winners[0]
+            if len(self.winners) == 1
+            else None
+        )
         return self._game_reward(), True
 
     def _apply_action(self, player_index: int, action: int) -> None:
@@ -722,6 +737,8 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         )
 
     def _game_reward(self) -> float:
+        if self.winners:
+            return 1.0 if 0 in self.winners else 0.0
         highest_score = max(player.score for player in self.players)
         return 1.0 if self.players[0].score == highest_score else 0.0
 
@@ -773,19 +790,18 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                     player.score += 1
 
         dragon_player = info.get("dragon_player")
-        no_one_escaped = not escaped
-        home_column_dragon = info.get("home_column_dragon", False)
 
         for player_index, player in enumerate(self.players):
-            if dragon_player == player_index:
+            if player_index in self.own_column_eliminated:
+                # The own-column trigger is a personal -2, even if a later
+                # Dragon ends the haul. It is never scored again as a victim.
+                player.score -= 2
+            elif dragon_player == player_index:
                 player.score -= 2
             elif player.dead:
-                if no_one_escaped and home_column_dragon:
-                    player.score += 2
-                else:
-                    player.score -= 1
-            
-            # Bound the minimum score at -1
+                player.score -= 1
+
+            # -1 is the absolute floor, including for a -2 Dragon penalty.
             player.score = max(-1, player.score)
 
     def _return_used_blast_cards(self) -> None:
@@ -830,6 +846,8 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.tie_breaker_contenders = []
         self.tie_breaker_turn = 0
         self.tie_breaker_shortage = False
+        self.winners = []
+        self.own_column_eliminated = set()
         self.used_blast_backsides = []
         self.displacement_events = []
         # Every voluntary departure from a card in the actor's own column.
@@ -1204,7 +1222,8 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             if player.position == PIT_CAGE:
                 player.escaped = True
 
-        # Phase 2: reveal cards. A dragon ends the haul immediately.
+        # Phase 2: reveal cards. A foreign-column Dragon ends the haul; an
+        # own-column Dragon eliminates its owner but leaves this order running.
         for player_index in player_order:
             player = self.players[player_index]
             if player.escaped or player.dead or player.displaced:
@@ -1223,6 +1242,23 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
             player.collected_cards.append((card, backside))
 
             if card == DRAGON:
+                if player.column == player_index:
+                    # A Dragon in the actor's own column eliminates only that
+                    # player. The rest of the locked execution order continues.
+                    player.dead = True
+                    self.own_column_eliminated.add(player_index)
+                    self._cancel_blast(player_index)
+                    info.setdefault("own_column_eliminations", []).append(player_index)
+                    info.setdefault("dragon_player", player_index)
+                    info["home_column_dragon"] = True
+                    info["outcome"] = "own_column_dragon"
+                    if player_index == 0:
+                        reward -= 2.0
+                    continue
+
+                learner_is_victim = (
+                    not self.players[0].escaped and not self.players[0].dead
+                )
                 for remaining_index, remaining_player in enumerate(self.players):
                     if not remaining_player.escaped:
                         remaining_player.dead = True
@@ -1231,11 +1267,10 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                         self._cancel_blast(remaining_index)
                 info["outcome"] = "dragon"
                 info["dragon_player"] = player_index
-                info["home_column_dragon"] = (player.column == player_index)
+                info["home_column_dragon"] = False
                 if player_index == 0:
                     reward -= 2.0
-                elif self.players[0].dead:
-                    # The learner was still in the mine and died as well.
+                elif learner_is_victim:
                     reward -= 1.0
                 break
             if card == GEM:
@@ -1270,8 +1305,12 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
 
     def _haul_over(self) -> bool:
         """Return True when the current haul must stop."""
-        # A death ends the haul at once: nobody has to sit and wait.
-        if any(player.dead for player in self.players):
+        # A global Dragon ends the haul at once. An own-column Dragon is a
+        # personal elimination, so those deaths are deliberately ignored here.
+        if any(
+            player.dead and index not in self.own_column_eliminated
+            for index, player in enumerate(self.players)
+        ):
             return True
         active = [p for p in self.players if not p.escaped and not p.dead]
         if len(active) <= 1:
@@ -1417,6 +1456,8 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         return in_deck + in_mine
 
     def _begin_tie_breaker(self) -> bool:
+        self.winners = []
+        self.tie_breaker_shortage = False
         highest_score = max(player.score for player in self.players)
         contenders = [
             index for index, player in enumerate(self.players)
@@ -1425,15 +1466,20 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         if len(contenders) < 2:
             self.tie_breaker_contenders = []
             return False
+
         self.tie_breaker_contenders = contenders
-        # A tie-break eliminates one contender per dragon drawn, so it needs
-        # ``contenders - 1`` dragons to be able to finish. If a malformed or
-        # synthetic state lacks enough, do not manufacture a replacement deck:
-        # leave the tie-break inactive and let the normal score ordering finish.
-        if self._dragons_left_to_draw() < len(contenders) - 1:
-            self.tie_breaker_shortage = True
+        # A shortage of Dragons no longer cancels the tie-break. Players draw
+        # only from the remaining mine and stack; if those run out, every
+        # surviving contender wins.
+        self.tie_breaker_shortage = (
+            self._dragons_left_to_draw() < len(contenders) - 1
+        )
+        if not self.cards_remaining and not self._mine_has_cards():
+            self.winners = list(contenders)
             self.tie_breaker_contenders = []
+            self.tie_breaker_turn = 0
             return False
+
         first_contender = next(
             (self.starting_player + offset) % self.n_players
             for offset in range(self.n_players)
@@ -1445,9 +1491,26 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
     def resolve_tie_breaker(
         self, source: str, row: int | None = None, column: int | None = None,
     ) -> dict[str, Any]:
-        """Draw a tie-break card for the current contender."""
+        """Draw for the current contender; remaining contenders share after exhaustion."""
         if len(self.tie_breaker_contenders) < 2:
             raise ValueError("no tie-breaker is active")
+
+        if not self.cards_remaining and not self._mine_has_cards():
+            survivors = list(self.tie_breaker_contenders)
+            self.winners = survivors
+            self.tie_breaker_contenders = []
+            self.game_finished = True
+            return {
+                "player": None,
+                "card": None,
+                "source": None,
+                "outcome": "exhausted",
+                "winner": None,
+                "winners": survivors,
+                "all_survivors_win": True,
+                "game_over": True,
+            }
+
         player_index = self.tie_breaker_contenders[self.tie_breaker_turn]
         if source == "deck":
             if not self.cards_remaining:
@@ -1474,18 +1537,35 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         if card[0] == DRAGON:
             result["outcome"] = "dragon"
             self.tie_breaker_contenders.pop(self.tie_breaker_turn)
-            if len(self.tie_breaker_contenders) == 1:
-                result["winner"] = self.tie_breaker_contenders[0]
-                result["game_over"] = True
-                self.tie_breaker_contenders = []
-                self.game_finished = True
-                return result
-            self.tie_breaker_turn %= len(self.tie_breaker_contenders)
+            if self.tie_breaker_contenders:
+                self.tie_breaker_turn %= len(self.tie_breaker_contenders)
         else:
             self.players[player_index].collected_cards.append(card)
             self.tie_breaker_turn = (
                 (self.tie_breaker_turn + 1) % len(self.tie_breaker_contenders)
             )
+
+        if len(self.tie_breaker_contenders) == 1:
+            survivors = list(self.tie_breaker_contenders)
+            self.winners = survivors
+            result["winner"] = survivors[0]
+            result["winners"] = survivors
+            result["game_over"] = True
+            self.tie_breaker_contenders = []
+            self.game_finished = True
+            return result
+
+        if not self.cards_remaining and not self._mine_has_cards():
+            survivors = list(self.tie_breaker_contenders)
+            self.winners = survivors
+            result["winner"] = None
+            result["winners"] = survivors
+            result["all_survivors_win"] = True
+            result["game_over"] = True
+            self.tie_breaker_contenders = []
+            self.game_finished = True
+            return result
+
         return result
 
     # ------------------------------------------------------------------

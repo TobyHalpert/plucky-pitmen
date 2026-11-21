@@ -58,8 +58,9 @@ def test_a_pending_blast_is_never_drawn_against_the_card_you_stand_on():
 
     _reward, info = env._execute_round()
 
-    assert info["outcome"] == "dragon"
-    assert all(player.dead for player in env.players)
+    assert info["outcome"] == "own_column_dragon"
+    assert env.players[0].dead
+    assert not env.players[1].dead and not env.players[2].dead
     # The blast died with its owner: never drawn, never charged for.
     assert env.players[0].blast_pending is False
     assert env.players[0].blast_cards == []
@@ -123,8 +124,9 @@ def test_a_seat_that_does_not_act_again_dies_on_its_own_dragon():
 
     _reward, info = env._execute_round()
 
-    assert info["outcome"] == "dragon"
+    assert info["outcome"] == "own_column_dragon"
     assert env.players[0].dead is True
+    assert not env.players[1].dead and not env.players[2].dead
 
 
 def test_the_cage_still_ends_the_haul_for_a_seat_standing_on_its_dragon():
