@@ -1,0 +1,215 @@
+{
+  "checkpoint": "checkpoints/selfplay4_pushaware.npz",
+  "calibration_seed": 6100000,
+  "evaluation_seed": 7100000,
+  "calibration": {
+    "games": 600,
+    "prior": "Beta(2, 8)",
+    "walkoff": {
+      "unique_signalled_cards": 8,
+      "dragon_cards": 1,
+      "empirical_precision": 0.125,
+      "posterior_mean_confidence": 0.16666666666666666,
+      "signalled_decisions": 10
+    },
+    "owner_cage": {
+      "unique_signalled_cards": 2756,
+      "dragon_cards": 2496,
+      "empirical_precision": 0.9056603773584906,
+      "posterior_mean_confidence": 0.9031091829356471,
+      "signalled_decisions": 3734
+    },
+    "confidence_used": {
+      "walkoff": 0.16666666666666666,
+      "owner_cage": 0.9031091829356471
+    }
+  },
+  "comparisons": {
+    "neural": {
+      "opponents": "forced-policy neural controls",
+      "seed": 7100000,
+      "forced": {
+        "games": 400,
+        "win_rate": 0.265,
+        "top_score_rate": 0.3125,
+        "mean_score": 1.8,
+        "mean_rank": 2.27,
+        "mean_margin": 0.01333333333333334,
+        "dragons_per_game": 1.0175,
+        "unfinished": 0,
+        "signal_decisions": 624,
+        "signal_passes": 0,
+        "signal_dodges": 624,
+        "signal_pass_rate": 0.0,
+        "signal_decisions_by_source": {
+          "owner_cage": 622,
+          "walkoff": 2
+        },
+        "signal_passes_by_source": {},
+        "signal_dodges_by_source": {
+          "owner_cage": 622,
+          "walkoff": 2
+        }
+      },
+      "soft": {
+        "games": 400,
+        "win_rate": 0.2625,
+        "top_score_rate": 0.315,
+        "mean_score": 1.8,
+        "mean_rank": 2.265,
+        "mean_margin": 0.020833333333333322,
+        "dragons_per_game": 1.03,
+        "unfinished": 0,
+        "signal_decisions": 624,
+        "signal_passes": 9,
+        "signal_dodges": 615,
+        "signal_pass_rate": 0.014423076923076924,
+        "signal_decisions_by_source": {
+          "owner_cage": 622,
+          "walkoff": 2
+        },
+        "signal_passes_by_source": {
+          "owner_cage": 8,
+          "walkoff": 1
+        },
+        "signal_dodges_by_source": {
+          "owner_cage": 614,
+          "walkoff": 1
+        }
+      },
+      "paired_change": {
+        "win": {
+          "soft_minus_forced": -0.0025,
+          "paired_se": 0.004333742992010717,
+          "normal_95_ci": [
+            -0.010994136264341006,
+            0.0059941362643410045
+          ]
+        },
+        "top_score": {
+          "soft_minus_forced": 0.0025,
+          "paired_se": 0.004333742992010717,
+          "normal_95_ci": [
+            -0.0059941362643410045,
+            0.010994136264341006
+          ]
+        },
+        "score": {
+          "soft_minus_forced": 0.0,
+          "paired_se": 0.020025046972870355,
+          "normal_95_ci": [
+            -0.0392490920668259,
+            0.0392490920668259
+          ]
+        },
+        "rank": {
+          "soft_minus_forced": -0.005,
+          "paired_se": 0.00612628176962193,
+          "normal_95_ci": [
+            -0.017007512268458983,
+            0.007007512268458984
+          ]
+        },
+        "margin": {
+          "soft_minus_forced": 0.007500000000000002,
+          "paired_se": 0.022401078998458588,
+          "normal_95_ci": [
+            -0.03640611483697883,
+            0.05140611483697883
+          ]
+        }
+      }
+    },
+    "rule": {
+      "opponents": "rule agents",
+      "seed": 7200000,
+      "forced": {
+        "games": 400,
+        "win_rate": 0.665,
+        "top_score_rate": 0.7125,
+        "mean_score": 4.235,
+        "mean_rank": 1.47,
+        "mean_margin": 3.876666666666667,
+        "dragons_per_game": 2.1675,
+        "unfinished": 0,
+        "signal_decisions": 419,
+        "signal_passes": 0,
+        "signal_dodges": 419,
+        "signal_pass_rate": 0.0,
+        "signal_decisions_by_source": {
+          "owner_cage": 419
+        },
+        "signal_passes_by_source": {},
+        "signal_dodges_by_source": {
+          "owner_cage": 419
+        }
+      },
+      "soft": {
+        "games": 400,
+        "win_rate": 0.6625,
+        "top_score_rate": 0.7125,
+        "mean_score": 4.2375,
+        "mean_rank": 1.47,
+        "mean_margin": 3.8833333333333337,
+        "dragons_per_game": 2.175,
+        "unfinished": 0,
+        "signal_decisions": 416,
+        "signal_passes": 3,
+        "signal_dodges": 413,
+        "signal_pass_rate": 0.007211538461538462,
+        "signal_decisions_by_source": {
+          "owner_cage": 416
+        },
+        "signal_passes_by_source": {
+          "owner_cage": 3
+        },
+        "signal_dodges_by_source": {
+          "owner_cage": 413
+        }
+      },
+      "paired_change": {
+        "win": {
+          "soft_minus_forced": -0.0025,
+          "paired_se": 0.004333742992010717,
+          "normal_95_ci": [
+            -0.010994136264341006,
+            0.0059941362643410045
+          ]
+        },
+        "top_score": {
+          "soft_minus_forced": 0.0,
+          "paired_se": 0.0035399616270239435,
+          "normal_95_ci": [
+            -0.006938324788966929,
+            0.006938324788966929
+          ]
+        },
+        "score": {
+          "soft_minus_forced": 0.0025,
+          "paired_se": 0.00559577131784386,
+          "normal_95_ci": [
+            -0.008467711782973964,
+            0.013467711782973965
+          ]
+        },
+        "rank": {
+          "soft_minus_forced": 0.0,
+          "paired_se": 0.0035399616270239435,
+          "normal_95_ci": [
+            -0.006938324788966929,
+            0.006938324788966929
+          ]
+        },
+        "margin": {
+          "soft_minus_forced": 0.006666666666666667,
+          "paired_se": 0.010348965457882952,
+          "normal_95_ci": [
+            -0.013617305630783918,
+            0.026950638964117254
+          ]
+        }
+      }
+    }
+  },
+  "method": "One focal neural seat in forced or soft mode against three controls. The focal seat rotates; each forced/soft pair uses the same game seed and per-seat policy RNG seeds. Confidence is a disjoint forced-policy self-play calibration with Beta(2,8) smoothing. Soft probabilities are (1-q)*P_net + q*P_net(conditioned on not Pass)."
+}
