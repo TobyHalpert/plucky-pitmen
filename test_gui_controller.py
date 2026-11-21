@@ -499,8 +499,8 @@ def test_autoplay_picks_and_resolves_a_blast_card(tiny_net):
     assert len(player.blast_cards) == 3
     assert controller.pending_blast_seat() == 0
 
-    # A blast reveals its three cards one at a time (keep two, return the
-    # third), so the driver has to keep resolving until the blast is over.
+    # The three cards stay face down; reveal each selected card immediately,
+    # then request another choice only when it was safe.
     messages = []
     for _ in range(4):
         result = controller.step_one_player_auto()

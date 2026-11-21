@@ -548,8 +548,8 @@ def render(report: dict[str, Any]) -> str:
     lines.append(
         "The blaster seat runs the *same* movement policy as its opponents and "
         "differs only in announcing a blast whenever it holds two dynamite. "
-        "`peek` = the historical engine (the blaster sees all three draws); "
-        "`blind` = the printed rule (choose two, then look).\n"
+        "`peek` = the historical engine (all three fronts are visible before the first choice); "
+        "`blind` = the printed procedure (each chosen card is revealed before the next choice).\n"
     )
     lines.append(
         "| engine | blaster win % | blaster margin [95% CI] | blasts/game | "

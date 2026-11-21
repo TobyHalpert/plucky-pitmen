@@ -63,7 +63,7 @@ If a player has collected two dynamites, they can announce a blast during their 
 
 If it becomes the player's turn again during the planning phase, choosing any option other than "Pass" aborts the blast. In this case, they flip their two dynamite cards back face down and choose a different option instead. They may announce a blast on a different space. Used dynamite is consumed at the end of the planning phase.
 
-In the **execution phase**, the player **receives the card as usual**. Additionally, the player draws **three cards from the draw pile** and places them face down in front of themselves. They must choose **two of them**. They look at the two cards. If a dragon is among them, the round ends immediately—the dragon has been awakened; any cards still face down are returned to the bottom of the draw pile, and no later blast is resolved. Otherwise, they place the treasures face down in front of themselves. The third card is placed at the bottom of the draw pile. If fewer than three cards remain, the choice is skipped: the player takes safe cards in draw order, but stops at the first Dragon, which awakens the dragon and ends the haul. Any cards after the Dragon stay in the draw pile. If no Dragon appears, the player takes all remaining cards.
+In the **execution phase**, the player first **receives the card under their figure as usual**. If the haul continues, put the top **three cards from the draw pile** face down in front of the blaster. They choose one and turn it face up. If it is a Dragon, the haul ends immediately; all still-face-down cards—including cards prepared for later blasts—return to the bottom of the pile, and no later blast is resolved. If it is safe, the player keeps it, chooses one of the two remaining face-down cards, and turns that one face up. A second Dragon ends the haul in the same way. If the second card is safe, the player keeps it and returns the last card to the bottom of the pile. If fewer than three cards remain, no choice is made: take safe cards in draw order, stopping at the first Dragon, which awakens the Dragon and ends the haul; any cards after it stay in the pile. If no Dragon appears in the short stack, take all those cards.
 
 ### End of a Haul
 
@@ -346,7 +346,7 @@ Useful flags:
 | `--league-prob`, `--league-size` | how often opponents are older snapshots |
 | `--eval-opponent rule` | benchmark used during training |
 | `--no-solo-escape-bonus` | play the rules variant without the free bonus for a sole escapee with zero gems |
-| `--blind-blast-choice` / `--no-blind-blast-choice` | choose blast cards face down, as the printed rules say (default on) |
+| `--blind-blast-choice` / `--no-blind-blast-choice` | keep unchosen blast-card fronts hidden; reveal each selected card before the next choice (default on) |
 | `--pass-rule {n-1,n}` | play the "n passes" variant instead of the printed "n-1" |
 | `--league-blast-mode {never,rich,always}` | how the scripted league blasts (default `rich`) |
 | `--league-blast-prob` | fraction of that league that uses the blast mode in the chosen proportion (default 0.15; set `1.0 --league-blast-mode always` for a league that blasts on sight) |
@@ -431,10 +431,11 @@ The full write-up, with confidence intervals and reproduction commands, is in
   inverts. The report therefore always includes `rusher` and `leaver`, plus a
   "where the points come from" split, so a policy that farms opponents' mistakes
   is visible instead of looking skilful.
-* **Blasting is not too weak, but the engine was cheating.** The blast rule says
-  to draw three cards face down and choose two before looking. `MineEnv` showed
-  the chooser all three fronts, which makes blasting dominant (+1.71 points at
-  three players, +1.00 at four). With the printed rule (`--blind-blast-choice`)
+* **Blasting is not too weak, but the engine was cheating.** The printed
+  procedure reveals each selected card before the next choice. `MineEnv` showed
+  the chooser all three fronts before the first choice, which makes blasting
+  dominant (+1.71 points at three players, +1.00 at four). With the printed
+  rule (`--blind-blast-choice`)
   it is neutral (+0.39 at three players, +0.38 at four), a blast haul is worth
   the same as a normal one (+0.41 vs +0.40 points), and against a field that
   banks loot it is a losing move (-0.52).
@@ -682,7 +683,7 @@ switchable so you can measure them instead of guessing:
 | gap | behaviour | switch |
 | :-- | :-- | :-- |
 | free solo-escape bonus | +3/+4 for leaving alone with zero gems | `--no-solo-escape-bonus` |
-| blast peek | historical variant where the blaster sees all three draws before choosing | fixed to face-down by default (`--no-blind-blast-choice` reproduces historical peeking) |
+| blast peek | historical variant exposes all three fronts before the first selection | fixed to hiding unchosen fronts by default (`--no-blind-blast-choice` reproduces historical peeking) |
 | pass count | `step_one_player()` ignored `--pass-rule` and always used `n` | fixed; both variants now work |
 
 The lorry deadlock used to be patched with a `stall_rounds` valve, which paid the

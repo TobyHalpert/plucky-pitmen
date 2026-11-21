@@ -346,15 +346,21 @@ def test_blast_choice_draw_and_resolution_are_limited_to_three_cards():
 
     env._execute_round()
 
+    assert env.players[0].collected_cards == [(GEM, BACKSIDE_A)]
     assert len(env.players[0].blast_cards) == 3
     assert env.used_blast_backsides == [BACKSIDE_A, BACKSIDE_B]
     assert [card[1] for card in env.players[0].blast_cards] == [BACKSIDE_A, BACKSIDE_B, BACKSIDE_C]
     assert len(env.cards_remaining) == 3
 
+    # Reveal a chosen safe card now; it becomes visible in the player's hand
+    # before the player is asked to choose the second card.
     chosen = env.resolve_blast(0, 1)
 
-    assert chosen[1] == BACKSIDE_B
+    assert chosen == (DYNAMITE, BACKSIDE_B)
     assert env.players[0].blast_pending is True
+    after_first_choice = env.player_action_context(0)
+    assert chosen in after_first_choice.private_cards
+    assert len(after_first_choice.own_blast_cards) == 2
     second = env.resolve_blast(0, 0)
     assert env.players[0].blast_pending is False
     assert env.players[0].collected_cards[-2:] == [chosen, second]

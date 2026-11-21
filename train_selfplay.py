@@ -358,7 +358,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--blind-blast-choice",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="choose blast cards face down, as the printed rules say (default; --no-blind-blast-choice for historical peeking)",
+        help="hide unchosen blast fronts and reveal each selected card in turn (default; --no-blind-blast-choice for historical peeking)",
     )
     parser.add_argument("--pass-rule", choices=("n-1", "n"), default="n-1")
     parser.add_argument(

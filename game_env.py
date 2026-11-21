@@ -1365,7 +1365,7 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         }
 
     def resolve_blast(self, player_index: int, choice_index: int) -> tuple[int, int]:
-        """Choose one of the blast cards kept after execution."""
+        """Reveal one selected card; a safe first pick leaves a second choice."""
         if not 0 <= player_index < self.n_players:
             raise IndexError("player_index out of range")
         player = self.players[player_index]
