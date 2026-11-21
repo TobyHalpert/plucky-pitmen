@@ -55,11 +55,6 @@ HANG_BREAKER_TURNS = 64
 PIT_CAGE_REWARD = 0.0
 LORRY_REWARD = -0.05
 
-# After a player has occupied the lorry during a planning phase, it may not
-# return to a card that phase. From the lorry and cage it can still revise its
-# exit-zone choice; the no-card planning guard handles pathological loops.
-LORRY_COMMITS_THE_SEAT = True
-
 # Current displacement rule: the displaced opponent stays on the same card
 # until their turn, and on their turn has all regular options from that card's
 # row except Pass. Set False only when reproducing historical displacement
@@ -246,10 +241,6 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.planned_players: list[bool] = [False] * self.n_players
         #: Whether the player's latest planning decision in this phase was Pass.
         self.passed_players: list[bool] = [False] * self.n_players
-        #: Whether this seat has sat on its lorry at any point in the current
-        #: planning phase. Once set, the seat may not step back onto a card until
-        #: the round ends; it can still switch between the lorry and pit cage.
-        self.lorry_touched: list[bool] = [False] * self.n_players
         self.haul = 1
         self.tie_breaker_contenders: list[int] = []
         self.tie_breaker_turn = 0
@@ -303,7 +294,6 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.planning_player = self.starting_player
         self.planned_players = [False] * self.n_players
         self.passed_players = [False] * self.n_players
-        self.lorry_touched = [False] * self.n_players
         self.game_finished = False
         self.haul_history = []
         return self._observation(), {"round": self.round, "haul": self.haul}
@@ -400,7 +390,6 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.planning_turns = 0
         self.planned_players = [False] * self.n_players
         self.passed_players = [False] * self.n_players
-        self.lorry_touched = [False] * self.n_players
         for p in self.players:
             p.displaced = False
         reward, info = self._execute_round()
@@ -509,7 +498,6 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.planning_player = 0
         self.planned_players = [False] * self.n_players
         self.passed_players = [False] * self.n_players
-        self.lorry_touched = [False] * self.n_players
         for p in self.players:
             p.displaced = False
         reward, info = self._execute_round()
@@ -640,10 +628,6 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         player.displaced = False
         player.position = action
         player.column = None
-        if action == LORRY:
-            # "Sit on their lorry": from here the seat may only switch between
-            # the last pit cage and the lorry for the rest of the phase.
-            self.lorry_touched[player_index] = True
         if action == PIT_CAGE:
             if player.cage_index is None:
                 player.cage_index = (
@@ -853,7 +837,6 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         self.planning_player = self.starting_player
         self.planned_players = [False] * self.n_players
         self.passed_players = [False] * self.n_players
-        self.lorry_touched = [False] * self.n_players
         self.tie_breaker_contenders = []
         self.tie_breaker_turn = 0
         self.tie_breaker_shortage = False
@@ -1008,10 +991,6 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         if action < PIT_CAGE:
             if player.position == LORRY:
                 return False
-            if LORRY_COMMITS_THE_SEAT and self.lorry_touched[player_index]:
-                # It has sat on its lorry this phase: the printed rule leaves it
-                # the last pit cage and the lorry, nothing else.
-                return False
             row, column = divmod(action, MAX_COLUMNS)
             movement_depth = self._movement_depth(player)
             return (
@@ -1137,11 +1116,10 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                 self.players[occupant].cage_index = None
                 self.players[occupant].displaced = False
                 if landing is None:
-                    # It was standing on the last card: the lorry is next, which
-                    # commits it to the exit area, but does not remove its next decision.
+                    # It was standing on the last card: the lorry is next, but
+                    # the victim still gets its next decision.
                     self.players[occupant].position = LORRY
                     self.players[occupant].column = None
-                    self.lorry_touched[occupant] = True
                 else:
                     self.players[occupant].position = landing
                     self.players[occupant].column = column

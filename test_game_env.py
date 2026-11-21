@@ -1023,9 +1023,32 @@ def test_the_next_card_variant_puts_a_victim_off_the_last_card_on_the_lorry(monk
     assert env._legal(push), "row 0 is the last card before the lorries"
     env._apply_action(0, push)
 
-    assert env.players[column].position == LORRY
-    assert env.players[column].column is None
-    assert env.lorry_touched[column], "the lorry rule binds the phase for it too"
+    assert victim.position == LORRY
+    assert victim.column is None
+
+
+def test_returning_from_lorry_to_pit_cage_cannot_reenter_the_mine():
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    player = env.players[0]
+
+    # Start in a reachable position with ordinary card moves available.
+    assert any(env._legal(action) for action in range(PIT_CAGE))
+    assert env._legal(LORRY)
+    env._apply_action(0, LORRY)
+
+    assert player.position == LORRY
+    assert not any(env._legal(action) for action in range(PIT_CAGE))
+    assert env._legal(PIT_CAGE)
+
+    # The lorry can be revisited via the outermost pit cage, whose movement
+    # depth is zero, so the ordinary legality checks keep cards inaccessible.
+    env._apply_action(0, PIT_CAGE)
+    assert player.position == PIT_CAGE
+    assert player.cage_index == 0
+    assert env._movement_depth(player) == 0
+    assert not any(env._legal(action) for action in range(PIT_CAGE))
+    assert env._legal(LORRY)
 
 
 def test_the_next_card_variant_skips_an_empty_cell(monkeypatch):
@@ -1039,30 +1062,6 @@ def test_the_next_card_variant_skips_an_empty_cell(monkeypatch):
     assert target == row - 1
     env.rows[row - 1][column] = None  # the card was collected earlier
     assert env._next_card_towards_the_lorries(column, row, column) == row - 2
-
-
-def test_sitting_on_the_lorry_keeps_the_seat_out_of_the_mine_for_the_phase():
-    """README, "Sit on their lorry": lorry and last pit cage only, for the phase."""
-    import game_env
-
-    env = MineEnv(opponents=2)
-    env.reset(seed=4)
-    env.players[0].position = PIT_CAGE
-    env.players[0].cage_index = 2  # deep enough that the mine is still open
-
-    # With the rule lifted, the seat standing in the cage gets the mine back.
-    assert game_env.LORRY_COMMITS_THE_SEAT is True
-    try:
-        game_env.LORRY_COMMITS_THE_SEAT = False
-        cards_from_the_cage = [a for a in range(PIT_CAGE) if env._legal(a)]
-    finally:
-        game_env.LORRY_COMMITS_THE_SEAT = True
-    assert cards_from_the_cage
-
-    # Having sat on the lorry, it may only switch between cage and lorry.
-    env.lorry_touched[0] = True
-    assert not any(env._legal(a) for a in range(PIT_CAGE))
-    assert env._legal(LORRY)
 
 
 def test_forced_cage_displacement_keeps_normal_follow_up_options(monkeypatch):

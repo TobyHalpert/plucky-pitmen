@@ -249,7 +249,6 @@ def test_default_all_seats_controller_guards_contestable_row0_dynamite():
     env.planning_player = 3
     env.haul, env.round = 1, 1
     env.consecutive_passes = 0
-    env.lorry_touched = [False] * env.n_players
 
     ctx = env.player_action_context(3)
     target = 0 * MAX_COLUMNS + 3  # P4's own r0c3 Dynamite
@@ -319,7 +318,6 @@ def test_default_viewer_controller_opens_row0_foreign_cards_instead_of_lorry():
     env.planning_player = 0
     env.haul, env.round = 1, 0
     env.consecutive_passes = 0
-    env.lorry_touched = [False] * env.n_players
 
     ctx = env.player_action_context(0)
     assert controller.agents[0].avoid_contestable_home_row0
