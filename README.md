@@ -318,6 +318,30 @@ uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
 | `gui_controller.py` | Tk-free viewer logic: moves, blasts, tie-breaks, the AI POLICY snapshot |
 | `mine_gui.py` | the Tk viewer itself |
 
+### Training objective (design invariant)
+
+For a single game, the policy's objective is to maximize its probability of
+winning the **whole game**, after all three hauls and the final tie-break—not
+to maximize points or win an individual haul. **Second place has no positive
+value** unless a tournament format explicitly rewards placements; none is
+assumed here. Tournament points for runner-up finishes would change the
+incentives and create a different game psychology.
+
+Use the terminal winner as the primary training target (for example, win vs.
+non-win, with any rule-defined shared win handled explicitly). Cumulative
+end-game score, point margin, haul bonuses, and the sole-escape bonus remain
+part of the game rules and state; they are not goals to accumulate for their
+own sake. If intermediate point-based shaping is used to help learning, keep it
+auxiliary and ensure it does not override first-place utility. Select and
+compare checkpoints primarily by win rate or win share on held-out matchups,
+not by mean points or score margin.
+
+"All-in" does not mean choosing the riskiest move every time: protect a lead
+when that improves the chance of winning, and take higher-variance lines when
+that is the best route to first from behind. This is the intended objective for
+future training; it is **not** a claim that the current trainers already use a
+pure win-only reward, nor that bot results establish human-level strength.
+
 ### Train
 
 ```powershell
