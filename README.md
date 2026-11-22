@@ -76,7 +76,7 @@ A haul **ends**
 *   immediately if a Dragon outside the acting player's own column, or a blast Dragon, is awakened.
 *   if only one player remains in the mine after the execution phase. This player leaves the mine automatically.
 *   if a complete row cannot be formed after an execution phase. The remaining players leave the mine automatically.
-*   if there are no treasures left in the mine.
+*   if no cards remain in the mine.
 
 Now, the **scoring** takes place:
 *   Players who left the mine reveal their collected cards. **A sole escapee receives the haul bonus even with zero gems: +3 points in hauls 1–2 or +4 points in the final haul.** Otherwise, the player or players with the most gems receive the bonus; in the event of a **tie** for gems, each tied player receives **+1 point**.
