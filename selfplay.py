@@ -7,11 +7,13 @@ including blast announcements, blast draws and the tie-break, and records one
 
 Reward signal
 -------------
-Scores change only at the end of a haul, far too sparse for short games.  Each
-player therefore receives a small dense shaping reward for loot collected and
-for leaving the mine safely, plus the real score change and a terminal bonus
-for winning.  Shaping reads the true card fronts; that is a *training* signal
-only - the policy still sees nothing but the cheat-safe context.
+By default, players receive score changes, small dense shaping rewards for
+loot and safe exits, and a terminal winner bonus. Pass ``win_only_reward=True``
+to give no intermediate reward at all and train only from the final winner
+(after the tie-break). In that mode, use an undiscounted return (``gamma=1``)
+if the objective is the probability of winning the whole game. Dense shaping
+reads the true card fronts; it is a *training* signal only - the policy still
+sees nothing but the cheat-safe context.
 """
 
 from __future__ import annotations
@@ -109,8 +111,14 @@ def _snapshot(env: MineEnv) -> _Snapshot:
 
 
 def _reward_vector(
-    env: MineEnv, before: _Snapshot, escape_shaping: float = ESCAPE_SHAPING
+    env: MineEnv,
+    before: _Snapshot,
+    escape_shaping: float = ESCAPE_SHAPING,
+    *,
+    win_only_reward: bool = False,
 ) -> list[float]:
+    if win_only_reward:
+        return [0.0] * len(env.players)
     rewards = [0.0] * len(env.players)
     haul_changed = env.haul != before.haul
     for index, player in enumerate(env.players):
@@ -178,6 +186,7 @@ def play_game(
     decisions: list[Any] | None = None,
     reward_shaping: bool = True,
     escape_shaping: float = ESCAPE_SHAPING,
+    win_only_reward: bool = False,
     passes: str = "n-1",
     solo_escape_bonus: bool = True,
     blast_choice_sees_fronts: bool = False,
@@ -210,6 +219,7 @@ def play_game(
     if decisions is None:
         decisions = []
     last_decision: dict[int, Any] = {}
+    episode_id = object()
     blasts_announced = 0
     blast_choices = 0
     haul_blasts: dict[int, set[int]] = {}
@@ -260,7 +270,12 @@ def play_game(
             env.resolve_blast(player_index, choice)
             if learning:
                 for index, reward in enumerate(
-                    _reward_vector(env, before, escape_shaping)
+                    _reward_vector(
+                        env,
+                        before,
+                        escape_shaping,
+                        win_only_reward=win_only_reward,
+                    )
                 ):
                     flush(index, reward)
             continue
@@ -311,6 +326,7 @@ def play_game(
             blasts_announced += 1
 
         for decision in decisions[count_before:]:
+            decision.episode_id = episode_id
             last_decision[decision.player] = decision
 
         if "winners" in info:
@@ -320,7 +336,12 @@ def play_game(
 
         if learning:
             for index, reward in enumerate(
-                _reward_vector(env, before, escape_shaping)
+                _reward_vector(
+                    env,
+                    before,
+                    escape_shaping,
+                    win_only_reward=win_only_reward,
+                )
             ):
                 flush(index, reward)
 
@@ -364,9 +385,15 @@ def play_game(
         elif len(winners) != 1:
             winner = None
 
-    if learning:
+    if learning and winners:
+        if win_only_reward:
+            # A tied official win is one unit of win share, split among all
+            # declared winners. Runner-up seats receive exactly zero.
+            terminal_reward = WIN_BONUS / len(winners)
+        else:
+            terminal_reward = WIN_BONUS
         for index in winners:
-            flush(index, WIN_BONUS)
+            flush(index, terminal_reward)
 
     return GameResult(
         seed=-1 if seed is None else int(seed),

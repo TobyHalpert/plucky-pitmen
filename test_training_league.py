@@ -173,3 +173,49 @@ def test_pusher_match_curriculum_fills_nonlearner_seats(tmp_path, monkeypatch):
     assert len(observed) == 1
     assert sum(isinstance(agent, AlwaysDisplaceAgent) for agent in observed[0]) == 3
     assert sum(isinstance(agent, NeuralAgent) for agent in observed[0]) == 1
+
+
+def test_win_only_mode_passes_terminal_reward_and_undiscounted_returns(
+    tmp_path, monkeypatch
+):
+    observed = {}
+    original_play_game = trainer.play_game
+    original_fit = trainer.PolicyNet.fit
+
+    def record_reward_mode(agents, *args, **kwargs):
+        observed["win_only_reward"] = kwargs.get("win_only_reward", False)
+        return original_play_game(agents, *args, **kwargs)
+
+    def record_gamma(net, decisions, **kwargs):
+        observed["gamma"] = kwargs["gamma"]
+        return original_fit(net, decisions, **kwargs)
+
+    monkeypatch.setattr(trainer, "play_game", record_reward_mode)
+    monkeypatch.setattr(trainer.PolicyNet, "fit", record_gamma)
+    out = tmp_path / "win-only.npz"
+    args = trainer.build_parser().parse_args([
+        "--generations", "1",
+        "--games-per-generation", "1",
+        "--players", "3",
+        "--hidden", "8",
+        "--value-hidden", "4",
+        "--mirror-prob", "0",
+        "--league-prob", "0",
+        "--snapshot-every", "0",
+        "--save-every", "0",
+        "--eval-games", "0",
+        "--epsilon", "0",
+        "--gamma", "0.37",
+        "--win-only-reward",
+        "--seed", "23",
+        "--name", "win-only-test",
+        "--out", str(out),
+    ])
+    summary = trainer.train(args)
+
+    assert observed["win_only_reward"] is True
+    assert observed["gamma"] == 1.0
+    assert summary["objective"] == "terminal_win_share"
+    assert summary["gamma"] == 1.0
+    loaded = trainer.PolicyNet.load(out)
+    assert loaded.metadata["training_objective"] == "terminal_win_share"

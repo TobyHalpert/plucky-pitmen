@@ -118,7 +118,7 @@ To watch the players move through the mine in a graphical interface:
 python mine_gui.py --policy random
 ```
 
-Use **Take action** to choose the learner's destination, or **Autoplay** to run the simulation automatically. The viewer shows card backs only; opponent gems and dynamite remain hidden. The action menu is rebuilt from the current legal-action mask, so an occupied card appears only when it is a legal displacement, labelled **Displace Player N**; selecting it takes the move and any stale action is rejected before it can reach the engine.
+Use **Take action** to choose the learner's destination, or **Autoplay** to run the simulation automatically. Mine cards show their backs, with Player 1's column fronts also revealed for analysis—even in AI-in-every-seat spectator mode. Opponent columns and hands remain hidden; AI agents receive only their cheat-safe masked contexts. The action menu is rebuilt from the current legal-action mask, so an occupied card appears only when it is a legal displacement, labelled **Displace Player N**; selecting it takes the move and any stale action is rejected before it can reach the engine.
 
 ### Watching the trained agents
 
@@ -338,9 +338,10 @@ not by mean points or score margin.
 
 "All-in" does not mean choosing the riskiest move every time: protect a lead
 when that improves the chance of winning, and take higher-variance lines when
-that is the best route to first from behind. This is the intended objective for
-future training; it is **not** a claim that the current trainers already use a
-pure win-only reward, nor that bot results establish human-level strength.
+that is the best route to first from behind. The trainer's historical default
+still uses score and shaping rewards for reproducibility; pass
+`--win-only-reward` to train against the documented terminal win-share
+objective. Bot results do not establish human-relative strength.
 
 ### Train
 
@@ -351,10 +352,29 @@ python train_selfplay.py --generations 60 --games-per-generation 64
 
 This writes `checkpoints/selfplay.npz`, older snapshots to
 `checkpoints/league/`, and the learning curve to
-`checkpoints/selfplay.history.json`.
+`checkpoints/selfplay.history.json`. The historical default reward remains
+score-and-shaping based. To train for the documented win-first objective,
+resume a checkpoint and save to a **new** path:
 
-To train an existing network further, resume it and keep the old one for the
-comparison:
+```powershell
+python train_selfplay.py --players 4 --resume checkpoints/selfplay4.npz `
+    --win-only-reward --generations 60 --games-per-generation 64 `
+    --seed 7004 --out checkpoints/selfplay4_winfirst.npz
+```
+
+This mode gives one unit of terminal reward split among official co-winners,
+zero to every non-winner, no intermediate score/loot/escape/death rewards, and
+uses `gamma=1` so the win objective is not discounted. It does not overwrite
+the starting checkpoint. Compare the warm start and retrained policy on matched,
+seat-rotated held-out games with:
+
+```powershell
+python compare_win_first.py --baseline checkpoints/selfplay4_balance_s7003.npz `
+    --candidate checkpoints/selfplay4_winfirst_s8111.npz --games 180
+```
+
+To train an existing network further using the historical shaped objective,
+resume it and keep the old one for the comparison:
 
 ```powershell
 python train_selfplay.py --players 4 --resume checkpoints/selfplay4.npz `
@@ -370,6 +390,7 @@ Useful flags:
 | :-- | :-- |
 | `--players 3\|4\|5` | number of seats |
 | `--hidden 0` / `--hidden 64` | linear policy / one hidden layer |
+| `--win-only-reward` | use only terminal official win share; automatically sets `gamma=1` |
 | `--epochs`, `--batch-size`, `--lr` | optimisation budget |
 | `--mirror-prob` | fraction of games in which every seat is the current learner |
 | `--league-prob`, `--league-size` | how often opponents are older snapshots |

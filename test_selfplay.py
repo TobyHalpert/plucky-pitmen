@@ -217,6 +217,30 @@ def test_action_mask_never_widens_the_rules():
 # ----------------------------------------------------------------------
 # Learning
 # ----------------------------------------------------------------------
+def test_compute_returns_reset_at_episode_boundaries():
+    decisions = [
+        Decision(
+            player=0,
+            ctx=None,
+            state=np.zeros(1, dtype=np.float32),
+            action=0,
+            reward=0.0,
+            episode_id="game-one",
+        ),
+        Decision(
+            player=0,
+            ctx=None,
+            state=np.zeros(1, dtype=np.float32),
+            action=0,
+            reward=1.0,
+            episode_id="game-two",
+        ),
+    ]
+    compute_returns(decisions, gamma=1.0)
+    assert decisions[0].ret == 0.0
+    assert decisions[1].ret == 1.0
+
+
 def test_play_game_records_decisions_and_finite_returns():
     net = PolicyNet(hidden=16, seed=3)
     decisions: list[Decision] = []
@@ -1631,6 +1655,58 @@ def test_an_empty_handed_escape_is_not_paid_for():
     with_gem = _escape_reward(gems=1)
     assert empty == 0.0
     assert with_gem > 0.3, "the gem shaping and the escape shaping both apply"
+
+
+def test_win_only_reward_suppresses_score_and_all_intermediate_shaping():
+    from types import SimpleNamespace
+
+    from selfplay import _reward_vector, _snapshot
+
+    def player(score, held, gems, escaped, dead):
+        return SimpleNamespace(
+            score=score,
+            gems=gems,
+            collected_cards=[None] * held,
+            escaped=escaped,
+            dead=dead,
+        )
+
+    before_env = SimpleNamespace(
+        haul=1, players=[player(0, 0, 0, False, False)]
+    )
+    before = _snapshot(before_env)
+    after_env = SimpleNamespace(
+        haul=1, players=[player(5, 2, 2, True, False)]
+    )
+    assert _reward_vector(after_env, before, win_only_reward=True) == [0.0]
+
+
+def test_win_only_training_rewards_only_terminal_official_win_share():
+    from selfplay import play_game
+
+    net = PolicyNet(seed=31)
+    decisions = []
+    agents = [
+        NeuralAgent(net, seed=100 + seat, recorder=decisions)
+        for seat in range(3)
+    ]
+    result = play_game(
+        agents,
+        seed=482,
+        decisions=decisions,
+        win_only_reward=True,
+    )
+    assert not result.aborted, result.abort_reason
+    assert result.winners
+    rewards = {
+        seat: sum(d.reward for d in decisions if d.player == seat)
+        for seat in range(3)
+    }
+    assert sum(rewards.values()) == pytest.approx(1.0)
+    for seat, reward in rewards.items():
+        expected = 1.0 / len(result.winners) if seat in result.winners else 0.0
+        assert reward == pytest.approx(expected)
+    assert all(d.reward == 0.0 or d.player in result.winners for d in decisions)
 
 
 def _rival(player_index: int, position: int):

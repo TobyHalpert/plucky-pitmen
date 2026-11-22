@@ -271,3 +271,9 @@ reports/
 reports/*
 !reports/current_rules_balance_study.md
 !reports/current_rules_balance_study.json
+
+# Terminal win-share retraining checkpoint and matched held-out comparison.
+!checkpoints/selfplay4_winfirst_s8111.npz
+!checkpoints/selfplay4_winfirst_s8111.history.json
+!reports/win_first_retraining.md
+!reports/win_first_retraining.json

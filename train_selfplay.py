@@ -11,7 +11,9 @@ The learner is updated with REINFORCE + value baseline on the cheat-safe
 features from ``features.py``.
 
 Use ``--eval-games 0`` to skip the periodic benchmark, and ``--out`` to pick
-where the checkpoint and learning curve are written. ``--pusher-match-prob``
+where the checkpoint and learning curve are written. ``--win-only-reward``
+selects terminal official win share only and forces ``gamma=1``; without it,
+the historical score-and-shaping objective is retained. ``--pusher-match-prob``
 optionally reserves some non-mirror games for one learner against three
 always-pushing displacement opponents; the default is zero, preserving the
 historical league schedule.
@@ -116,6 +118,8 @@ def evaluate(
         blast_choice_sees_fronts=blast_choice_sees_fronts,
     )
     wins = 0
+    win_shares = []
+    unique_wins = 0
     top_scores = 0
     scores = []
     ranks = []
@@ -125,13 +129,23 @@ def evaluate(
         policy_scores = game.scores_by_policy()
         learner_score = policy_scores[0]
         scores.append(learner_score)
-        wins += int(0 in game.winners_policy())
+        winner_policies = game.winners_policy()
+        won = 0 in winner_policies
+        wins += int(won)
+        win_shares.append(
+            1.0 / len(winner_policies) if won and winner_policies else 0.0
+        )
+        unique_wins += int(won and len(winner_policies) == 1)
         top_scores += int(learner_score == max(policy_scores))
         ranks.append(1 + sum(1 for score in policy_scores if score > learner_score))
         dragons += game.result.dragons
-    stalls += game.result.lorry_standoffs
+        stalls += game.result.lorry_standoffs
     return {
+        # win_rate counts any official winner appearance; win_share splits a
+        # shared official win evenly, and unique_win_rate excludes shared wins.
         "win_rate": wins / games,
+        "win_share": float(np.mean(win_shares)),
+        "unique_win_rate": unique_wins / games,
         "top_score_rate": top_scores / games,
         "mean_score": float(np.mean(scores)),
         "mean_rank": float(np.mean(ranks)),
@@ -158,6 +172,23 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
             name=args.name,
         )
 
+    win_only_reward = bool(getattr(args, "win_only_reward", False))
+    training_gamma = 1.0 if win_only_reward else float(args.gamma)
+    objective = "terminal_win_share" if win_only_reward else "score_and_shaping"
+    net.metadata.update(
+        {
+            "training_objective": objective,
+            "training_gamma": training_gamma,
+            "training_seed": int(args.seed),
+            "training_generations_requested": int(args.generations),
+            "training_games_per_generation": int(args.games_per_generation),
+            "training_players": int(args.players),
+            "training_mirror_prob": float(args.mirror_prob),
+            "training_league_prob": float(args.league_prob),
+            "resumed_from": args.resume,
+        }
+    )
+
     league: list[dict[str, Any]] = []
     history: list[dict[str, Any]] = []
     out = Path(args.out)
@@ -169,6 +200,7 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
     for generation in range(1, args.generations + 1):
         decisions: list[Any] = []
         generation_results = []
+        generation_win_shares: list[float] = []
         generation_pusher_games = 0
         for game in range(args.games_per_generation):
             game_seed = args.seed * 1_000_003 + generation * 10_007 + game
@@ -225,9 +257,20 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
                 passes=args.pass_rule,
                 solo_escape_bonus=args.solo_escape_bonus,
                 escape_shaping=args.escape_shaping,
+                win_only_reward=win_only_reward,
                 blast_choice_sees_fronts=not args.blind_blast_choice,
             )
             generation_results.append(result)
+            if result.winners:
+                generation_win_shares.append(
+                    sum(
+                        1.0 / len(result.winners)
+                        for seat in learner_seats
+                        if seat in result.winners
+                    )
+                )
+            else:
+                generation_win_shares.append(0.0)
             decisions.extend(recorder)
             total_games += 1
 
@@ -235,7 +278,7 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
             decisions,
             epochs=args.epochs,
             batch_size=args.batch_size,
-            gamma=args.gamma,
+            gamma=training_gamma,
             entropy_coef=args.entropy_coef,
             value_coef=args.value_coef,
             rng=rng,
@@ -244,10 +287,13 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
 
         entry: dict[str, Any] = {
             "generation": generation,
+            "objective": objective,
+            "gamma": training_gamma,
             "games": total_games,
             "pusher_match_games": generation_pusher_games,
             "decisions": len(decisions),
             "mean_score": float(np.mean([np.mean(r.scores) for r in generation_results])),
+            "train_win_share": float(np.mean(generation_win_shares)),
             "dragons": float(np.mean([r.dragons for r in generation_results])),
             "blasts": float(np.mean([r.blasts_announced for r in generation_results])),
             "aborted": sum(r.aborted for r in generation_results),
@@ -272,6 +318,7 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
             print(
                 f"gen {generation:4d} | "
                 f"win {evaluation['win_rate']:.3f} | "
+                f"win-share {evaluation['win_share']:.3f} | "
                 f"top {evaluation['top_score_rate']:.3f} | "
                 f"score {evaluation['mean_score']:+.2f} | "
                 f"rank {evaluation['mean_rank']:.2f} | "
@@ -284,6 +331,7 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
         elif generation % max(1, args.log_every) == 0:
             print(
                 f"gen {generation:4d} | decisions {len(decisions)} | "
+                f"train win-share {entry['train_win_share']:.3f} | "
                 f"score {entry['mean_score']:+.2f} | "
                 f"entropy {stats['entropy']:.3f} | "
                 f"blasts {entry['blasts']:.2f}",
@@ -298,7 +346,7 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
         ):
             snapshot = net.clone(name=f"{args.name}-gen{generation}")
             snapshot.trained_generations = generation
-            snapshot.metadata = {"generation": generation}
+            snapshot.metadata = {**net.metadata, "generation": generation}
             directory = out.parent / "league"
             directory.mkdir(parents=True, exist_ok=True)
             path = directory / f"{args.name}-gen{generation:04d}.npz"
@@ -318,6 +366,8 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
     summary = {
         "checkpoint": str(out),
         "history": str(curve_path),
+        "objective": objective,
+        "gamma": training_gamma,
         "generations": net.trained_generations,
         "games": total_games,
         "pusher_match_games": pusher_match_games,
@@ -337,6 +387,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--value-hidden", type=int, default=32)
     parser.add_argument("--lr", type=float, default=5e-4)
     parser.add_argument("--gamma", type=float, default=0.99)
+    parser.add_argument(
+        "--win-only-reward",
+        action="store_true",
+        help=(
+            "train only on final official win share (no score/loot/escape "
+            "rewards); automatically uses gamma=1.0"
+        ),
+    )
     parser.add_argument("--entropy-coef", type=float, default=0.01)
     parser.add_argument("--value-coef", type=float, default=0.5)
     parser.add_argument("--epochs", type=int, default=1)

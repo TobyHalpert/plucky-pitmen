@@ -118,6 +118,7 @@ class MineRenderer:
         self.canvas = canvas
 
     def render(self, env: MineEnv) -> None:
+        """Draw the mine and expose Player 1's own column for analysis."""
         canvas = self.canvas
         canvas.delete("all")
         width = max(canvas.winfo_width(), LAYOUT.min_canvas_width)
@@ -194,8 +195,12 @@ class MineRenderer:
                     )
                     if col == 0:
                         self.canvas.create_text(
-                            card_left + 4, card_top + 8, text=FRONT_LABELS[card_entry[0]],
-                            anchor="w", fill="#f5c451", font=ui_font(7, "bold"),
+                            card_left + 4,
+                            card_top + 8,
+                            text=FRONT_LABELS[card_entry[0]],
+                            anchor="w",
+                            fill="#f5c451",
+                            font=ui_font(7, "bold"),
                         )
                     card_centers[(row_index, col)] = (x, (card_top + card_bottom) / 2)
 

@@ -916,6 +916,73 @@ def test_gui_renderer_uses_token_size_without_an_active_highlight_ring():
     assert (token_radius(1)["coords"][2] - token_radius(1)["coords"][0]) / 2 == LAYOUT.active_token_radius
 
 
+def test_spectator_viewer_shows_only_player_one_column_fronts():
+    from types import SimpleNamespace
+
+    from game_env import (
+        BACKSIDE_A,
+        BACKSIDE_B,
+        BACKSIDE_C,
+        DRAGON,
+        DYNAMITE,
+        GEM,
+        MineEnv,
+    )
+    from mine_gui import MineRenderer, MineViewer
+
+    class FakeCanvas:
+        def __init__(self):
+            self.width = 640
+            self.height = 520
+            self.texts = []
+
+        def delete(self, _tag):
+            self.texts.clear()
+
+        def winfo_width(self):
+            return self.width
+
+        def winfo_height(self):
+            return self.height
+
+        def create_rectangle(self, *coords, **kwargs):
+            pass
+
+        def create_oval(self, *coords, **kwargs):
+            pass
+
+        def create_text(self, *coords, **kwargs):
+            self.texts.append(kwargs.get("text"))
+
+    class Variable:
+        def set(self, _value):
+            pass
+
+    env = MineEnv(opponents=2)
+    env.reset(seed=1)
+    env.rows = [[
+        (GEM, BACKSIDE_A),
+        (DRAGON, BACKSIDE_B),
+        (DYNAMITE, BACKSIDE_C),
+    ]]
+    canvas = FakeCanvas()
+    viewer = MineViewer.__new__(MineViewer)
+    viewer.controller = SimpleNamespace(env=env, all_seats=True)
+    viewer.renderer = MineRenderer(canvas)
+    viewer.haul_var = Variable()
+    viewer.stack_var = Variable()
+    viewer._update_player_list = lambda: None
+    viewer._update_policy_panel = lambda: None
+
+    MineViewer.draw_scene(viewer)
+
+    revealed_fronts = [
+        text for text in canvas.texts if text in {"GEM", "DRAGON", "DYNAMITE"}
+    ]
+    assert revealed_fronts == ["GEM"]
+    assert any("o " in text or "v " in text or "~ " in text for text in canvas.texts)
+
+
 def test_gui_renderer_draws_displacer_and_displaced_opponent_on_same_card():
     """Headless canvas test: displaced opponent stays on the card side-by-side."""
     from game_env import BACKSIDE_A, GEM, MAX_COLUMNS
