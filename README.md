@@ -91,7 +91,7 @@ A full game consists of **3 hauls**. If there is another haul to be played, all 
 
 The game ends after the third haul. The player with the most points wins.
 
-In the event of a **tie**, the contenders for victory take turns—starting with the starting player—drawing a card either from the mine or from the draw pile. Players who draw a Dragon are eliminated; a player eliminated by an own-column Dragon is still eligible to contend. The last survivor wins. If the mine and draw pile are exhausted while several contenders remain, all remaining contenders share the win.
+In the event of a **tie**, contenders for victory take turns drawing a card either from the mine or from the draw pile, beginning with the first tied contender at or clockwise from the starting-player marker after it advances at the end of the final round. Players who draw a Dragon are eliminated; a player eliminated by an own-column Dragon is still eligible to contend. The last survivor wins. If the mine and draw pile are exhausted while several contenders remain, all remaining contenders share the win.
 
 The Gymnasium `MineEnv.step()` API includes the tie-break as a distinct phase. During that phase, a mine-cell action draws that card and `PASS` means draw from the deck; `action_mask()` and the four trailing observation values identify the phase, current contender, remaining contenders, and deck count. Built-in opponents draw automatically until player 0 is next or the game is decided, at which point `step()` returns `terminated=True`. The lower-level `step_one_player()` advances one tie-break draw at a time.
 
