@@ -17,12 +17,14 @@ from game_env import (
     MineEnv,
     PASS,
     PIT_CAGE,
+    TIE_BREAK_DECK,
 )
 
-# The observation is 15 state values, then one backside per mine cell, then one
-# front per cell. The mine block is sized by the deepest board a deck can build.
+# The observation is 15 planning-state values, then one backside per mine cell,
+# one front per cell, and four tie-break fields at the tail.
 CELLS = MAX_ROWS * MAX_COLUMNS
 FRONT_OFFSET = 15 + CELLS
+TIE_BREAK_OFFSET = FRONT_OFFSET + CELLS
 
 
 def test_random_game_terminates():
@@ -145,6 +147,116 @@ def test_tie_break_with_no_available_cards_immediately_shares_the_win():
     assert env.game_finished
     assert env.winners == list(range(env.n_players))
     assert env.tie_breaker_contenders == []
+
+
+def _final_tie_gym_env(scores=(0, 0, 0), deck=None, opponent_policy="simple"):
+    env = MineEnv(opponents=2, opponent_policy=opponent_policy)
+    env.reset(seed=12)
+    env.haul = 3
+    # The final action advances this to seat 0, who should start the tie-break.
+    env.starting_player = 2
+    env.planning_player = 0
+    env.rows = [[(GEM, BACKSIDE_A), None, None]]
+    env.cards_remaining = list(
+        deck if deck is not None else [(DRAGON, BACKSIDE_B)]
+    )
+    env.planned_players = [True, False, False]
+    env.passed_players = [False, False, False]
+    env.consecutive_passes = 0
+    env.planning_turns = 0
+    for player, score in zip(env.players, scores):
+        player.position = LORRY
+        player.column = None
+        player.score = score
+    return env
+
+
+def test_gym_step_integrates_final_tie_break_and_phase_actions():
+    env = _final_tie_gym_env()
+
+    observation, _reward, terminated, truncated, info = env.step(PASS)
+
+    assert not terminated and not truncated
+    assert info["phase"] == "tie_breaker"
+    assert info["tie_break_active"] is True
+    assert info["tie_breaker_current_player"] == 0
+    assert info["action_mask"] == env.action_mask().tolist()
+    assert env.action_mask()[0]  # draw this mine card
+    assert env.action_mask()[TIE_BREAK_DECK]  # or draw from the deck
+    assert not env.action_mask()[PIT_CAGE]
+    assert observation[TIE_BREAK_OFFSET:].tolist() == [1, 0, 0b111, 1]
+    assert env.observation_space.contains(observation)
+
+    _obs, _reward, terminated, _truncated, invalid = env.step(PIT_CAGE)
+    assert not terminated
+    assert invalid["illegal_action"] is True
+    assert env.tie_breaker_contenders == [0, 1, 2]
+
+    _obs, reward, terminated, truncated, info = env.step(0)
+    assert terminated and not truncated
+    assert reward == 1.0
+    assert info["phase"] == "terminal"
+    assert info["winners"] == [0, 2]
+    assert [draw["outcome"] for draw in info["tie_break_draws"]] == [
+        "safe",
+        "dragon",
+    ]
+    assert info["tie_break_draws"][0]["source"] == "mine"
+
+
+def test_gym_tie_break_pass_action_draws_from_the_deck():
+    env = _final_tie_gym_env()
+    env.step(PASS)
+
+    _observation, reward, terminated, truncated, info = env.step(TIE_BREAK_DECK)
+
+    assert terminated and not truncated
+    assert reward == 0.0
+    assert info["winners"] == [1, 2]
+    assert info["tie_break_draws"][0]["player"] == 0
+    assert info["tie_break_draws"][0]["source"] == "deck"
+    assert info["tie_break_draws"][0]["outcome"] == "dragon"
+
+
+def test_gym_step_auto_resolves_tie_when_player_zero_is_not_a_contender():
+    env = _final_tie_gym_env(
+        scores=(-1, 0, 0),
+        deck=[(GEM, BACKSIDE_B), (DRAGON, BACKSIDE_C)],
+    )
+
+    _observation, reward, terminated, truncated, info = env.step(PASS)
+
+    assert terminated and not truncated
+    assert reward == 0.0
+    assert info["phase"] == "terminal"
+    assert info["winners"] in ([1], [2])
+    assert info["tie_break_draws"]
+    assert all(
+        draw["outcome"] in ("safe", "dragon")
+        for draw in info["tie_break_draws"]
+    )
+
+
+def test_step_one_player_exposes_and_resolves_tie_break_actions():
+    env = _final_tie_gym_env()
+
+    _observation, _reward, terminated, _truncated, info = env.step_one_player(PASS)
+
+    assert not terminated
+    assert info["tie_break_active"] is True
+    assert info["tie_breaker_current_player"] == 0
+    assert env.action_mask()[0]
+
+    _observation, _reward, terminated, _truncated, info = env.step_one_player(
+        0, force_action=True
+    )
+    assert not terminated
+    assert info["tie_break_draw"]["source"] == "mine"
+
+    _observation, reward, terminated, _truncated, info = env.step_one_player()
+    assert terminated
+    assert reward == 1.0
+    assert info["winners"] == [0, 2]
 
 
 def test_seeded_reset_is_reproducible():

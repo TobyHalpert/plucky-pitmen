@@ -27,36 +27,62 @@ def select_action(env: MineEnv, q_table: QTable, epsilon: float, rng: np.random.
 
 
 def _advance_p1_turn(env: MineEnv, action: int) -> tuple[float, bool, bool, dict]:
-    """Play ``action`` for player 0, then let opponents act until it is our turn.
+    """Play ``action`` for player 0 and advance opponents to its next decision.
 
-    A player that has left the mine (or died) can no longer act, so its turn
-    ends the episode for the learner.
+    Tie-break draws are decisions too: opponent draws are advanced until player
+    0 is next, while player 0 remains eligible even after an own-column death.
     """
-    if env.players[0].escaped or env.players[0].dead:
+
+    def player0_is_next() -> bool:
+        if env.tie_breaker_contenders:
+            return env._current_tie_breaker() == 0
+        return env.planning_player == 0
+
+    def player0_can_act() -> bool:
+        return 0 in env.tie_breaker_contenders or not (
+            env.players[0].escaped or env.players[0].dead
+        )
+
+    if not player0_can_act():
         return 0.0, True, False, {"outcome": "ended"}
+
+    total_reward = 0.0
     guard = 0
-    while env.planning_player != 0:
-        _, _, terminated, truncated, info = env.step_one_player()
+    while not env.game_finished and not player0_is_next():
+        if not env.tie_breaker_contenders and not player0_can_act():
+            return total_reward, True, False, {"outcome": "ended"}
+        _obs, reward, terminated, truncated, info = env.step_one_player()
+        total_reward += reward
         if terminated or truncated:
-            return 0.0, terminated, truncated, info
-        if env.players[0].escaped or env.players[0].dead:
-            return 0.0, True, False, {"outcome": "ended"}
+            return total_reward, terminated, truncated, info
         guard += 1
         if guard >= MAX_EPISODE_STEPS:
-            return 0.0, True, False, {"outcome": "ended", "step_limit": True}
-    _, reward, terminated, truncated, info = env.step_one_player(action)
-    total_reward = reward
+            return total_reward, True, False, {"outcome": "ended", "step_limit": True}
+
+    if env.game_finished:
+        return total_reward, True, False, {
+            "game_over": True,
+            "winners": list(env.winners),
+        }
+
+    _obs, reward, terminated, truncated, info = env.step_one_player(action)
+    total_reward += reward
     guard = 0
-    while not terminated and not truncated and env.planning_player != 0:
-        if env.players[0].escaped or env.players[0].dead:
-            # The learner is out of the mine, but the haul continues without it.
+    while (
+        not terminated
+        and not truncated
+        and not env.game_finished
+        and not player0_is_next()
+    ):
+        if not env.tie_breaker_contenders and not player0_can_act():
+            # The learner is out of the mine, but a non-tie haul may continue.
             return total_reward, True, False, info
-        _, reward, terminated, truncated, info = env.step_one_player()
+        _obs, reward, terminated, truncated, info = env.step_one_player()
         total_reward += reward
         guard += 1
         if guard >= MAX_EPISODE_STEPS:
             return total_reward, True, False, {"outcome": "ended", "step_limit": True}
-    return total_reward, terminated, truncated, info
+    return total_reward, terminated or env.game_finished, truncated, info
 
 
 def train(episodes: int, opponents: int, policy: str, seed: int) -> QTable:

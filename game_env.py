@@ -47,6 +47,11 @@ PIT_CAGE = MAX_ROWS * MAX_COLUMNS
 LAST_PIT_CAGE_INDEX = 0
 LORRY = PIT_CAGE + 1
 PASS = LORRY + 1
+# During a tie-break, PASS is phase-overloaded to mean "draw from the deck";
+# card-cell actions select a card from the mine. The observation and info mark
+# the phase so a caller can distinguish this from an ordinary pass.
+TIE_BREAK_DECK = PASS
+TIE_BREAK_OBSERVATION_FIELDS = 4
 
 HAULS_PER_GAME = 3
 # Last-resort guard for a no-card planning loop (see _nobody_can_reach_a_card).
@@ -224,7 +229,12 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         # Observations are int8; the unbounded round/planning counters are
         # saturated at 127 when serialized so they stay inside this space.
         self.observation_space = spaces.Box(
-            0, 127, shape=(15 + max_visible_cards * 2,), dtype=np.int8
+            0,
+            127,
+            shape=(
+                15 + max_visible_cards * 2 + TIE_BREAK_OBSERVATION_FIELDS,
+            ),
+            dtype=np.int8,
         )
         self.rng = np.random.default_rng()
         self.players: list[Player] = []
@@ -302,11 +312,19 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
     # Stepping
     # ------------------------------------------------------------------
     def step(self, action: int):
+        """Advance player 0's turn through opponents to the next decision.
+
+        In a tie-break, a mine-cell action draws from that cell and ``PASS``
+        draws from the deck. Opponent draws are automatic until player 0 is up
+        again or the tie-break settles the game.
+        """
         action = int(action)
         if not self.action_space.contains(action):
             raise ValueError(f"invalid action: {action}")
         if self._game_over():
             return self._observation(), 0.0, True, False, {"game_over": True}
+        if self.tie_breaker_contenders:
+            return self._step_tie_breaker(action)
         if not self._legal(action, player_index=0):
             return self._observation(), -0.15, False, False, {"illegal_action": True}
 
@@ -405,6 +423,12 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         reward, terminated = self._finish_round(reward, info)
         if auto_passed:
             info["auto_passed"] = auto_passed
+        if self.tie_breaker_contenders:
+            automatic_draws = self._advance_tie_breaker_to_player0()
+            self._annotate_tie_break_info(info, automatic_draws)
+            if self.game_finished:
+                reward = self._game_reward()
+                terminated = True
         return self._observation(), reward, terminated, False, info
 
     def step_one_player(
@@ -414,15 +438,28 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         announce_blast: bool = False,
         force_action: bool = False,
     ):
-        """Advance exactly one player's planning decision.
+        """Advance one planning decision or one tie-break draw.
 
         Pass ``force_action=True`` to apply ``action`` for whichever seat is
-        currently planning.  This is what a multi-agent driver uses; the
-        default keeps the historical behaviour where ``action`` only belongs to
-        player 0 and every other seat plays its built-in policy.
+        currently planning. This is what a multi-agent driver uses; by default,
+        ``action`` belongs to player 0 and every other seat uses its built-in
+        policy. During a tie-break, a mine-cell action draws from that cell and
+        ``PASS`` draws from the deck.
         """
         if self._game_over():
             return self._observation(), 0.0, True, False, {"game_over": True}
+        if self.tie_breaker_contenders:
+            current = self._current_tie_breaker()
+            if force_action and action is not None:
+                tie_action = int(action)
+            elif current == 0 and action is not None:
+                tie_action = int(action)
+            else:
+                tie_action = self._choose_tie_break_action(
+                    current,
+                    use_opponent_policy=current != 0,
+                )
+            return self._step_one_tie_breaker_action(current, tie_action)
 
         active_players = [
             index for index, player in enumerate(self.players)
@@ -532,6 +569,156 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         info["player"] = player_index
         if auto_passed:
             info["auto_passed"] = auto_passed
+        if self.tie_breaker_contenders:
+            self._annotate_tie_break_info(info)
+        return self._observation(), reward, terminated, False, info
+
+    def _current_tie_breaker(self) -> int | None:
+        if not self.tie_breaker_contenders:
+            return None
+        return self.tie_breaker_contenders[
+            self.tie_breaker_turn % len(self.tie_breaker_contenders)
+        ]
+
+    @staticmethod
+    def _tie_break_choice_action(
+        choice: tuple[str, int | None, int | None] | None,
+    ) -> int | None:
+        if choice is None:
+            return None
+        try:
+            source, row, column = choice
+            if source == "deck":
+                return TIE_BREAK_DECK
+            if source == "mine" and row is not None and column is not None:
+                return int(row) * MAX_COLUMNS + int(column)
+        except (TypeError, ValueError):
+            return None
+        return None
+
+    def _choose_tie_break_action(
+        self, player_index: int, *, use_opponent_policy: bool
+    ) -> int | None:
+        legal = self.legal_actions(player_index)
+        if not legal:
+            return None
+
+        agent = self._agent_for(player_index)
+        chooser = getattr(agent, "tie_break", None)
+        if callable(chooser):
+            try:
+                context = self.player_action_context(player_index)
+                action = self._tie_break_choice_action(chooser(context))
+            except (AttributeError, TypeError, ValueError, IndexError):
+                action = None
+            if action in legal:
+                return action
+
+        if use_opponent_policy and self.opponent_policy == "random":
+            return int(self.rng.choice(legal))
+
+        # The built-in policies prefer a known-safe own-column card, falling
+        # back to the draw pile. Use the same cheat-safe rule as Agent.tie_break.
+        from agents import safe_tie_break
+
+        try:
+            context = self.player_action_context(player_index)
+            action = self._tie_break_choice_action(safe_tie_break(context))
+        except (AttributeError, TypeError, ValueError, IndexError):
+            action = None
+        if action in legal:
+            return action
+        return int(legal[0])
+
+    def _resolve_tie_break_action(
+        self, player_index: int, action: int
+    ) -> dict[str, Any]:
+        if not self._legal(action, player_index):
+            raise ValueError("illegal tie-break action")
+        if action == TIE_BREAK_DECK:
+            return self.resolve_tie_breaker("deck")
+        row, column = divmod(int(action), MAX_COLUMNS)
+        return self.resolve_tie_breaker("mine", row, column)
+
+    def _advance_tie_breaker_to_player0(self) -> list[dict[str, Any]]:
+        """Resolve built-in opponent draws until P0 is up or the game ends."""
+        draws: list[dict[str, Any]] = []
+        while self.tie_breaker_contenders and not self.game_finished:
+            player_index = self._current_tie_breaker()
+            if player_index == 0:
+                break
+            action = self._choose_tie_break_action(
+                player_index, use_opponent_policy=True
+            )
+            if action is None:
+                # resolve_tie_breaker settles the all-survivors case when both
+                # the draw pile and mine are exhausted.
+                result = self.resolve_tie_breaker("deck")
+            else:
+                result = self._resolve_tie_break_action(player_index, action)
+            draws.append(result)
+        return draws
+
+    def _annotate_tie_break_info(
+        self, info: dict[str, Any], draws: list[dict[str, Any]] | None = None
+    ) -> None:
+        active = bool(self.tie_breaker_contenders)
+        info["phase"] = "tie_breaker" if active else "terminal"
+        info["tie_break"] = True
+        info["tie_break_active"] = active
+        info["tie_break_contenders"] = list(self.tie_breaker_contenders)
+        info["tie_breaker_current_player"] = self._current_tie_breaker()
+        info["action_mask"] = self.action_mask(0).tolist()
+        if draws:
+            info["tie_break_draws"] = draws
+        if self.game_finished:
+            info["game_over"] = True
+            info["winners"] = list(self.winners)
+            info["winner"] = self.winners[0] if len(self.winners) == 1 else None
+
+    def _step_tie_breaker(self, action: int | None):
+        """Handle one P0 Gym choice plus automatic opponent tie-break turns."""
+        draws = self._advance_tie_breaker_to_player0()
+        if self.game_finished:
+            info: dict[str, Any] = {}
+            self._annotate_tie_break_info(info, draws)
+            return self._observation(), self._game_reward(), True, False, info
+
+        if action is None:
+            action = self._choose_tie_break_action(0, use_opponent_policy=False)
+        if action is None:
+            result = self.resolve_tie_breaker("deck")
+        elif not self._legal(action, player_index=0):
+            info = {}
+            self._annotate_tie_break_info(info, draws)
+            info["illegal_action"] = True
+            return self._observation(), -0.15, False, False, info
+        else:
+            result = self._resolve_tie_break_action(0, action)
+        draws.append(result)
+        draws.extend(self._advance_tie_breaker_to_player0())
+
+        terminated = self.game_finished
+        reward = self._game_reward() if terminated else 0.0
+        info = {"player": 0, "action": action, "tie_break_draw": result}
+        self._annotate_tie_break_info(info, draws)
+        return self._observation(), reward, terminated, False, info
+
+    def _step_one_tie_breaker_action(self, player_index: int, action: int | None):
+        """Advance exactly one tie-break draw for the current contender."""
+        if action is None:
+            result = self.resolve_tie_breaker("deck")
+        elif not self._legal(action, player_index):
+            info: dict[str, Any] = {"player": player_index, "illegal_action": True}
+            self._annotate_tie_break_info(info)
+            return self._observation(), -0.15, False, False, info
+        else:
+            result = self._resolve_tie_break_action(player_index, action)
+
+        terminated = self.game_finished
+        reward = self._game_reward() if terminated else 0.0
+        info = {"player": player_index, "action": action, "tie_break_draw": result}
+        self._annotate_tie_break_info(info, [result])
         return self._observation(), reward, terminated, False, info
 
     def _haul_just_ended(self, info: dict[str, Any]) -> bool:
@@ -983,6 +1170,23 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
         )
 
     def _legal(self, action: int, player_index: int = 0) -> bool:
+        if not 0 <= player_index < self.n_players:
+            return False
+        action = int(action)
+        if self.tie_breaker_contenders:
+            if player_index != self._current_tie_breaker():
+                return False
+            if action == TIE_BREAK_DECK:
+                return bool(self.cards_remaining)
+            if not 0 <= action < PIT_CAGE:
+                return False
+            row, column = divmod(action, MAX_COLUMNS)
+            return (
+                row < len(self.rows)
+                and column < len(self.rows[row])
+                and self.rows[row][column] is not None
+            )
+
         player = self.players[player_index]
         if player.dead:
             return False
@@ -1787,4 +1991,14 @@ class MineEnv(gym.Env[np.ndarray, np.int64]):
                         )
         values.extend(backside_values)
         values.extend(own_front_values)
+        contender_mask = sum(1 << seat for seat in self.tie_breaker_contenders)
+        current_tie_breaker = self._current_tie_breaker()
+        values.extend(
+            (
+                int(bool(self.tie_breaker_contenders)),
+                MAX_PLAYERS if current_tie_breaker is None else current_tie_breaker,
+                contender_mask,
+                min(len(self.cards_remaining), 127),
+            )
+        )
         return np.asarray(values, dtype=np.int8)
