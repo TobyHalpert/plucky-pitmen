@@ -40,8 +40,15 @@ from typing import Any
 
 import numpy as np
 
-from agents import NeuralAgent
-from features import N_ACTIONS, action_mask, join_action, split_action, state_action_matrix
+from agents import ActionChoice, NeuralAgent
+from features import (
+    N_ACTIONS,
+    action_mask,
+    digs_face_up_dragon,
+    join_action,
+    split_action,
+    state_action_matrix,
+)
 from game_env import PIT_CAGE, MineEnv
 from learning import PolicyNet
 from selfplay import play_game
@@ -134,11 +141,42 @@ def trigger_candidates(net: PolicyNet, ctx) -> list[int]:
     announce = [a for a in card_actions if split_action(a)[1]]
     if not plain or not announce:
         return []
-    best_plain = max(plain, key=lambda a: probs[a])
-    twin = join_action(best_plain, True)
-    if twin not in announce:
+    safe_plain = [
+        a
+        for a in plain
+        if not digs_face_up_dragon(ctx, a) and join_action(a, True) in announce
+    ]
+    pool = safe_plain if safe_plain else [a for a in plain if join_action(a, True) in announce]
+    if not pool:
         return []
+    best_plain = max(pool, key=lambda a: probs[a])
+    twin = join_action(best_plain, True)
     return [int(best_plain), int(twin)]
+
+
+class HoldRoundTeacher(NeuralAgent):
+    """Keep dynamite unspent for the remainder of the root planning phase."""
+
+    def __init__(self, net: PolicyNet, *, hold_haul: int, hold_round: int, **kwargs: Any) -> None:
+        super().__init__(net, **kwargs)
+        self.hold_haul = hold_haul
+        self.hold_round = hold_round
+
+    def decide(self, ctx):
+        if ctx.haul == self.hold_haul and ctx.round == self.hold_round:
+            mask = action_mask(ctx)
+            plain_mask = np.array(
+                [bool(mask[a]) and not split_action(a)[1] for a in range(len(mask))],
+                dtype=bool,
+            )
+            if plain_mask.any():
+                probs = self.net.masked_probs(
+                    state_action_matrix(ctx), plain_mask, temperature=self.temperature
+                )
+                chosen = int(self.rng.choice(len(probs), p=probs))
+                prim, bl = split_action(chosen)
+                return ActionChoice(prim, announce_blast=bl)
+        return super().decide(ctx)
 
 
 def label(net: PolicyNet, positions, samples: int, seed: int, *, blind: bool):
@@ -160,10 +198,20 @@ def label(net: PolicyNet, positions, samples: int, seed: int, *, blind: bool):
                     NeuralAgent(net, seed=rollout_seed * 31 + other, temperature=0.7)
                     for other in range(4)
                 ]
-                # Pass while the blast is pending: price a committed blast.
-                agents[seat] = BlastPlanTeacher(
-                    net, seed=rollout_seed * 31 + seat, temperature=0.7
-                )
+                if blast:
+                    # Pass while the blast is pending: price a committed blast.
+                    agents[seat] = BlastPlanTeacher(
+                        net, seed=rollout_seed * 31 + seat, temperature=0.7
+                    )
+                else:
+                    # Do not immediately re-announce on another card in the same round.
+                    agents[seat] = HoldRoundTeacher(
+                        net,
+                        hold_haul=source.haul,
+                        hold_round=source.round,
+                        seed=rollout_seed * 31 + seat,
+                        temperature=0.7,
+                    )
                 result = play_game(
                     agents, seed=rollout_seed, env=env,
                     blast_choice_sees_fronts=not blind,

@@ -33,7 +33,7 @@ from game_env import (
     PIT_CAGE,
     PlayerActionContext,
 )
-from features import backside_stats, round_dragon_hazard, split_action
+from features import backside_stats, blast_dragon_risk, round_dragon_hazard, split_action
 
 
 @dataclass(frozen=True)
@@ -109,10 +109,12 @@ def preferred_blast_choice(
 
     if ctx is None:
         return 0
-    _known_dragons, _known_safe, _unknown, risk = backside_stats(ctx)
+    _known_dragons, _known_safe, _unknown, risk = backside_stats(
+        ctx, trust_suspected=1.0
+    )
     return min(
         range(len(cards)),
-        key=lambda index: float(risk[cards[index][1]]),
+        key=lambda index: (float(risk[cards[index][1]]), int(cards[index][1])),
     )
 
 
@@ -408,12 +410,10 @@ class LeaverAgent(Agent):
         gems = sum(1 for front, _ in ctx.private_cards if front == GEM)
         if gems >= self.target_gems and PIT_CAGE in ctx.legal_actions:
             return PIT_CAGE
-        if self._moved:
+        if self._moved and PASS in ctx.legal_actions:
             # Standing on the chosen card: hold position, or the planning phase
             # walks straight past it and collects nothing.
-            if PASS in ctx.legal_actions:
-                return PASS
-            return PIT_CAGE if PIT_CAGE in ctx.legal_actions else int(ctx.legal_actions[0])
+            return PASS
 
         cards = _card_actions(ctx)
         own = [action for action in cards if action % MAX_COLUMNS == ctx.player_index]
@@ -585,7 +585,12 @@ class CounterAgent(Agent):
         return {
             (opponent.position, opponent.column)
             for opponent in ctx.opponents
-            if not (opponent.escaped or opponent.dead) and opponent.column is not None
+            if not (
+                opponent.escaped
+                or opponent.dead
+                or getattr(opponent, "displaced", False)
+            )
+            and opponent.column is not None
         }
 
     @staticmethod
@@ -781,7 +786,12 @@ class PusherAgent(CounterAgent):
         """Cells a rival was already standing on at this seat's previous turn."""
         held: set[tuple[int, int]] = set()
         for opponent in ctx.opponents:
-            if opponent.escaped or opponent.dead or opponent.column is None:
+            if (
+                opponent.escaped
+                or opponent.dead
+                or getattr(opponent, "displaced", False)
+                or opponent.column is None
+            ):
                 continue
             if not 0 <= int(opponent.position) < int(PIT_CAGE):
                 continue
@@ -798,7 +808,7 @@ class PusherAgent(CounterAgent):
         return held
 
     def _own_card_is_a_gem(self, ctx: PlayerActionContext) -> bool:
-        if ctx.own_column != ctx.player_index:
+        if getattr(ctx, "own_displaced", False) or ctx.own_column != ctx.player_index:
             return False
         row = int(ctx.own_position)
         if not 0 <= row < len(ctx.public_rows):
@@ -823,7 +833,11 @@ class PusherAgent(CounterAgent):
                 (
                     opponent
                     for opponent in ctx.opponents
-                    if not (opponent.escaped or opponent.dead)
+                    if not (
+                        opponent.escaped
+                        or opponent.dead
+                        or getattr(opponent, "displaced", False)
+                    )
                     and opponent.column is not None
                     and int(opponent.position) == row
                     and int(opponent.column) == column
@@ -882,6 +896,54 @@ class PusherAgent(CounterAgent):
         return super().act(ctx)
 
 
+class AlwaysDisplaceAgent(Agent):
+    """Adversarial audit policy that takes any legal displacement offered.
+
+    It prefers the highest-scoring victim, then the shallowest row, and falls
+    back to ``CounterAgent`` only when no legal push is available. This policy
+    is for stress simulations and training curricula; it is not a printed game
+    rule.
+    """
+
+    name = "always-pusher"
+
+    def __init__(self) -> None:
+        self.fallback = CounterAgent()
+        self.pushes = 0
+
+    def act(self, ctx: PlayerActionContext) -> int:
+        candidates = []
+        for action in ctx.legal_actions:
+            action = int(action)
+            if action >= PIT_CAGE:
+                continue
+            row, column = divmod(action, MAX_COLUMNS)
+            if row >= len(ctx.public_rows) or column >= len(ctx.public_rows[row]):
+                continue
+            occupant = next(
+                (
+                    opponent
+                    for opponent in ctx.opponents
+                    if not (
+                        opponent.escaped
+                        or opponent.dead
+                        or getattr(opponent, "displaced", False)
+                    )
+                    and opponent.column is not None
+                    and int(opponent.position) == row
+                    and int(opponent.column) == column
+                    and int(opponent.player_index) == int(opponent.column)
+                ),
+                None,
+            )
+            if occupant is not None:
+                candidates.append((-int(occupant.score), int(row), action))
+        if candidates:
+            self.pushes += 1
+            return int(min(candidates)[2])
+        return int(self.fallback.act(ctx))
+
+
 def visible_dragon_ahead(ctx: PlayerActionContext) -> tuple[int, int] | None:
     """A dragon the player can see in its own column, if it can still be forced onto it.
 
@@ -909,6 +971,7 @@ def should_blast(mode: str, ctx: PlayerActionContext) -> bool:
     ``never``  - the baseline rule policy never blasts.
     ``rich``   - blast once two gems are safe in hand.
     ``always`` - blast whenever two dynamite are available.
+    ``safe``   - blast when ``blast_dragon_risk`` is low (<= 0.30).
     ``trap``   - blast when a dragon is known to be waiting in the player's own
                  column, i.e. sitting still is a losing move anyway.
     ``behind`` - blast when another player is ahead on gems.
@@ -923,14 +986,10 @@ def should_blast(mode: str, ctx: PlayerActionContext) -> bool:
         return visible_dragon_ahead(ctx) is not None
     if mode == "behind":
         return behind_on_score(ctx)
-    if mode in ("never", "", None):
-        return False
-    if not owns_dynamite_pair(ctx):
-        return False
-    if not _card_actions(ctx):
-        return False
     if mode == "always":
         return True
+    if mode == "safe":
+        return ctx.cards_remaining_in_deck >= 3 and blast_dragon_risk(ctx) <= 0.30
     if mode == "rich":
         gems = sum(1 for front, _ in ctx.private_cards if front == GEM)
         return gems >= 2
@@ -960,6 +1019,8 @@ class NeuralAgent(Agent):
         seed: int = 0,
         recorder: list | None = None,
         player: int | None = None,
+        avoid_contestable_home_row0: bool = False,
+        avoid_exposed_row0_gem: bool | None = None,
     ) -> None:
         self.net = net
         self.name = name or getattr(net, "name", "neural")
@@ -969,6 +1030,22 @@ class NeuralAgent(Agent):
         self.rng = np.random.default_rng(seed)
         self.recorder = recorder
         self.player = player
+        # Keep the old keyword as a compatibility alias; the guard now covers
+        # every visible non-dragon card in the home column at row 0.
+        if avoid_exposed_row0_gem is not None:
+            avoid_contestable_home_row0 = bool(
+                avoid_contestable_home_row0 or avoid_exposed_row0_gem
+            )
+        self.avoid_contestable_home_row0 = bool(avoid_contestable_home_row0)
+
+    @property
+    def avoid_exposed_row0_gem(self) -> bool:
+        """Compatibility alias for the pre-generalization guard setting."""
+        return self.avoid_contestable_home_row0
+
+    @avoid_exposed_row0_gem.setter
+    def avoid_exposed_row0_gem(self, value: bool) -> None:
+        self.avoid_contestable_home_row0 = bool(value)
 
     def act(self, ctx: PlayerActionContext) -> int:
         choice = self.decide(ctx)
@@ -977,7 +1054,10 @@ class NeuralAgent(Agent):
     def decide(self, ctx: PlayerActionContext) -> ActionChoice:
         from features import action_mask, state_action_matrix, state_features
 
-        mask = action_mask(ctx)
+        mask = action_mask(
+            ctx,
+            avoid_contestable_home_row0=self.avoid_contestable_home_row0,
+        )
         if not mask.any():
             return ActionChoice(int(PASS))
 
@@ -1023,6 +1103,7 @@ SCRIPTED = (
     "threat",
     "counter",
     "pusher",
+    "always-pusher",
     "pusher-leader",
     "pusher-leader-only",
 )
@@ -1053,6 +1134,8 @@ def make_scripted_agent(
         return CounterAgent()
     if policy == "pusher":
         return PusherAgent()
+    if policy == "always-pusher":
+        return AlwaysDisplaceAgent()
     if policy in ("pusher-leader", "pusher-leader-only"):
         target = "top-score" if policy == "pusher-leader" else "leader-only"
         return PusherAgent(tell="any", before_planning=False, target=target)
@@ -1062,6 +1145,7 @@ def make_scripted_agent(
 __all__ = [
     "ActionChoice",
     "Agent",
+    "AlwaysDisplaceAgent",
     "CautiousAgent",
     "CounterAgent",
     "GreedyAgent",

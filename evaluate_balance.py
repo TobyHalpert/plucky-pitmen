@@ -161,10 +161,10 @@ def summarise(series: Sequence[SeriesGame], name: str) -> PolicyStats:
         others = policy_scores[1:]
         scores.append(own)
         margins.append(own - float(np.mean(others)))
-        wins += int(game.winner_policy() == 0)
+        wins += int(0 in game.winners_policy())
         tops += int(own == max(policy_scores))
         ranks.append(1 + sum(1 for score in policy_scores if score > own))
-    win_flags = [1.0 if game.winner_policy() == 0 else 0.0 for game in series]
+    win_flags = [1.0 if 0 in game.winners_policy() else 0.0 for game in series]
 
     escapes = 0
     zero_gem_escapes = 0
@@ -239,7 +239,7 @@ def benchmark(
     seed: int,
     passes: str = "n-1",
     solo_escape_bonus: bool = True,
-    blast_choice_sees_fronts: bool = True,
+    blast_choice_sees_fronts: bool = False,
 ) -> tuple[PolicyStats, list[SeriesGame]]:
     name, factory = target
     _, opponent_factory = opponent
@@ -265,7 +265,7 @@ def pairwise(
     seed: int,
     passes: str = "n-1",
     solo_escape_bonus: bool = True,
-    blast_choice_sees_fronts: bool = True,
+    blast_choice_sees_fronts: bool = False,
 ) -> tuple[PolicyStats, PolicyStats]:
     left_name, left_factory = left
     right_name, right_factory = right
@@ -340,7 +340,7 @@ def mirror_games(
     seed: int,
     passes: str = "n-1",
     solo_escape_bonus: bool = True,
-    blast_choice_sees_fronts: bool = True,
+    blast_choice_sees_fronts: bool = False,
 ) -> dict[str, Any]:
     """Play identical agents against each other to measure pure luck."""
     _, factory = agent
@@ -465,7 +465,7 @@ def build_markdown(
     lines.append(
         f"- hauls ending on a dragon: **{100 * dynamics_all.dragon_hauls / max(dynamics_all.hauls, 1):.1f}%** "
         f"({dynamics_all.dragon_hauls}/{dynamics_all.hauls})\n"
-        f"- hauls ending in a lorry stand-off (everyone left inside on a lorry): "
+        f"- legacy lorry stand-off outcomes (zero under current rules): "
         f"**{100 * dynamics_all.lorry_hauls / max(dynamics_all.hauls, 1):.1f}%** "
         f"({dynamics_all.lorry_hauls}/{dynamics_all.hauls})\n"
         f"- blast announcements per game: **{dynamics_all.blast_announcements / max(dynamics_all.games, 1):.2f}**\n"
@@ -542,8 +542,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--blind-blast-choice",
-        action="store_true",
-        help="choose blast cards face down, as the printed rules say",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="hide unchosen blast fronts and reveal each selected card in turn (default; --no-blind-blast-choice for historical peeking)",
     )
     parser.add_argument("--seed", type=int, default=12_345)
     parser.add_argument("--out", default="reports/balance.md")

@@ -7,8 +7,9 @@ answer, because they compare whole policies rather than single decisions:
    move to a card, fork the game: announce the blast in one copy, stay quiet in
    the other, and play both out. The difference in that seat's final score is
    what the blast was worth *there*. Reported under both blast-choice engines:
-   ``peek`` (the historical one, where the blaster sees all three drawn fronts)
-   and the printed rule (choose blind, then look).
+   ``peek`` (the historical one, where all three fronts are visible before the
+   first choice) and the printed procedure (each selected card is revealed
+   before the next choice).
 2. ``--choice`` Under the printed rule, does picking the keepers by backside
    knowledge beat picking them at random? Same movement and the same blast
    trigger, only the choice differs.
@@ -203,8 +204,8 @@ def main() -> None:
                 args.games, args.players, blind, seed0=args.seed
             )
             report_value(
-                "peek engine (the blaster sees the three drawn fronts)" if not blind
-                else "printed rule (choose two blind, then look)",
+                "peek engine (all three fronts visible before the first choice)" if not blind
+                else "printed rule (reveal each selected card before the next choice)",
                 deltas, behind, fired, args.games,
             )
     if not args.skip_choice:

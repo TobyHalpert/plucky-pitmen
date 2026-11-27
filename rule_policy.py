@@ -4,15 +4,12 @@
 from __future__ import annotations
 
 from game_env import (
-    DYNAMITE,
     DRAGON,
     GEM,
     LORRY,
     MAX_COLUMNS,
     PASS,
     PIT_CAGE,
-    DRAGONS_PER_BACKSIDE,
-    TOTAL_PER_BACKSIDE,
     PlayerActionContext,
     OpponentPublicView,
 )
@@ -41,62 +38,17 @@ def _active_opponents(ctx: PlayerActionContext) -> list[OpponentPublicView]:
 
 
 def _estimate_dragon_risk(ctx: PlayerActionContext, backside: int) -> float:
-    """Estimate the probability that an unknown-front card with the given
-    backside is a DRAGON.
-
-    Dragons are never collected — pulling one ends the haul. Known non-dragons
-    therefore come from four sources (all publicly derivable, except own-column
-    fronts which are private to the requesting player):
-
-    - Own collected cards with this backside (definitely non-dragons).
-    - Opponents' collected cards with this backside (backsides are public).
-    - Used blast backsides matching this backside (definitely dynamite).
-    - Non-dragon fronts visible in the player's own home column with this backside.
-
-    Known dragons can only come from dragons visible in the player's own
-    home column, since dragons never enter any player's hand.
+    """Estimate the probability that a draw-pile or untested card with ``backside``
+    is a DRAGON, incorporating backside conservation and public opponent tells.
     """
-    my_column = ctx.player_index
+    from features import backside_stats
 
-    known_dragons = 0
-    known_non_dragons = 0
-
-    # Own collected cards: never dragons.
-    for _, back in ctx.private_cards:
-        if back == backside:
-            known_non_dragons += 1
-
-    # Opponents' collected cards: backsides are public, fronts are hidden.
-    # The fronts are guaranteed to be non-dragons regardless.
-    for opp in ctx.opponents:
-        for back in opp.collected_backsides:
-            if back == backside:
-                known_non_dragons += 1
-
-    # Used blast backsides: always dynamite.
-    for back in ctx.used_blast_backsides:
-        if back == backside:
-            known_non_dragons += 1
-
-    # Own home column: fronts are fully visible.
-    for row in ctx.public_rows:
-        if my_column >= len(row):
-            continue
-        card_entry = row[my_column]
-        if card_entry is None or card_entry[1] != backside:
-            continue
-        front = card_entry[0]
-        if front == DRAGON:
-            known_dragons += 1
-        else:
-            known_non_dragons += 1
-
-    remaining_dragons = max(0, DRAGONS_PER_BACKSIDE - known_dragons)
-    unknown_cards = TOTAL_PER_BACKSIDE - known_dragons - known_non_dragons
-
-    if unknown_cards <= 0:
-        return 0.0
-    return remaining_dragons / unknown_cards
+    _known_dragons, _known_safe, _unknown, risk = backside_stats(
+        ctx, trust_suspected=1.0
+    )
+    if 0 <= int(backside) < 3:
+        return float(risk[int(backside)])
+    return 0.0
 
 
 def _dragon_under_opponent(ctx: PlayerActionContext) -> bool:
@@ -107,7 +59,7 @@ def _dragon_under_opponent(ctx: PlayerActionContext) -> bool:
     """
     my_column = ctx.player_index
     for opp in ctx.opponents:
-        if opp.escaped or opp.dead:
+        if opp.escaped or opp.dead or getattr(opp, "displaced", False):
             continue
         if opp.position is None or opp.position >= PIT_CAGE:
             continue
@@ -170,12 +122,13 @@ def _card_occupant(ctx: PlayerActionContext, row: int, column: int) -> int | Non
     Considers both the requesting player and the visible opponents.
     """
     if (
-        ctx.own_position == row
+        not getattr(ctx, "own_displaced", False)
+        and ctx.own_position == row
         and ctx.own_column == column
     ):
         return ctx.player_index
     for opp in ctx.opponents:
-        if opp.escaped or opp.dead:
+        if opp.escaped or opp.dead or getattr(opp, "displaced", False):
             continue
         if opp.position == row and opp.column == column:
             return opp.player_index
@@ -320,17 +273,11 @@ def deterministic_policy(
         if current_pos == LORRY:
             return int(PASS)
         if current_pos == PIT_CAGE:
-            # The cage is a departure, not a place to dig from. A figure in a
-            # cage is out of the mine at the execution phase and keeps its loot,
-            # so stepping back onto a card undoes the escape -- and it is worth
-            # -0.72 a move against taking the departure (BALANCE.md, "Out of the
-            # cage is out"). So once the seat has planned and is standing in one:
-            # hold the escape if it banks something, otherwise stay in the haul
-            # on the lorry and dig again next round from the front.
-            # Only the bank that exists: with loot in hand (or a dragon about to
-            # be turned) the escape is the point and the seat holds it. With
-            # nothing to bank there is nothing to undo, and digging out is the
-            # same trade the net keeps (BALANCE.md, "Out of the cage is out").
+            # Cage entry remains revisable in the engine. This rule policy treats
+            # a banked escape or visible threat as a reason to keep the figure in
+            # the cage, but an empty, safe cage can still be left to stay in the
+            # haul. The old -0.72-per-move valuation is historical (BALANCE.md,
+            # "Out of the cage"); it is not a current-rule estimate.
             if own_gems >= 1 or dragon_under_opponent or signaled_threat:
                 return int(PASS)
 
@@ -355,7 +302,7 @@ def deterministic_policy(
             return int(LORRY)
 
     # --- 2.5. DISPLACEMENT RAID (STEAL KNOWN/INFERRED GEMS) ---
-    if not must_escape and not signaled_threat:
+    if not must_escape and not signaled_threat and not ctx.own_blast_pending:
         raid_action = _find_displacement_raid(
             ctx, legal_actions, trust_sitter=trust_sitter
         )
@@ -518,10 +465,15 @@ def deterministic_policy(
 
     if PASS in legal_actions:
         return int(PASS)
-    if PIT_CAGE in original_legal_actions:
+    if (
+        (must_escape or dragon_under_opponent or signaled_threat or has_moderate_loot)
+        and PIT_CAGE in original_legal_actions
+    ):
         return int(PIT_CAGE)
     if LORRY in legal_actions:
         return int(LORRY)
+    if PIT_CAGE in original_legal_actions:
+        return int(PIT_CAGE)
 
     return int(legal_actions[0])
 
@@ -531,30 +483,13 @@ def deterministic_policy(
 # ----------------------------------------------------------------------
 
 
-def deterministic_blast_choice(blast_cards: tuple[tuple[int, int], ...]) -> int:
-    """Choose which card index to keep during `env.resolve_blast()`.
-
-    Takes the player's own blast draws (which are the ONLY thing they are
-    allowed to inspect) rather than the environment. Preference order:
-    GEM > DYNAMITE > any non-DRAGON > 0.
-    """
+def deterministic_blast_choice(
+    blast_cards: tuple[tuple[int, int], ...],
+    ctx: PlayerActionContext | None = None,
+) -> int:
+    """Choose which card index to keep during ``env.resolve_blast()``."""
     if not blast_cards:
         return 0
+    from agents import preferred_blast_choice
 
-    safe_indices = [
-        idx for idx, (card_type, _) in enumerate(blast_cards)
-        if card_type != DRAGON
-    ]
-
-    if not safe_indices:
-        return 0
-
-    for idx in safe_indices:
-        if blast_cards[idx][0] == GEM:
-            return idx
-
-    for idx in safe_indices:
-        if blast_cards[idx][0] == DYNAMITE:
-            return idx
-
-    return safe_indices[0]
+    return preferred_blast_choice(blast_cards, ctx)

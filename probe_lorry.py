@@ -1,16 +1,9 @@
-"""How often does a seat park on its lorry, and what does a lorry haul look like?
+"""How often does a seat park on its lorry?
 
-Standing on a lorry collects nothing and does **not** protect the figure: a woken
-dragon kills every player still in the mine, the ones on their lorry included
-(only a pit cage removes a figure from the haul). So the lorry has exactly one
-use — refusing the card under your own figure — and that is only right when that
-card is a dragon the seat can see.
-
-Sampled at temperature 0.7 the network parked constantly, and because each seat
-dodges for itself the whole table could park in one planning phase, which ends
-the haul with nobody having collected anything. This script reports both halves:
-how often the tracked seat parks (per field), and how often a haul ends in that
-stand-off (with the checkpoint in every seat, which is what the viewer shows).
+Standing on a lorry collects nothing and does not protect a player from a Dragon.
+The current engine treats it as a waiting place: it does not end the haul or
+score the player. The second metric retained below is a legacy stand-off counter
+and should remain zero under the current rules.
 
     python probe_lorry.py                       # the shipped checkpoint
     python probe_lorry.py --checkpoint other.npz --games 400
@@ -66,7 +59,7 @@ def parked_by_tracked_seat(
 def standoffs_in_a_peer_field(
     net: PolicyNet, games: int, greedy: bool = False
 ) -> tuple[float, float]:
-    """Share of games whose first haul / any haul ends in a lorry stand-off."""
+    """Legacy stand-off outcome share (zero under the current engine rules)."""
     first = 0
     any_haul = 0
     for seed in range(games):
@@ -103,8 +96,8 @@ def main() -> None:
         )
 
     first, any_haul = standoffs_in_a_peer_field(net, args.games)
-    print(f"  the network in all four seats: first haul is a stand-off in {first:.1f}% of games")
-    print(f"  ... any haul is a stand-off in {any_haul:.1f}%")
+    print(f"  legacy lorry stand-off counter, first haul: {first:.1f}% of games")
+    print(f"  legacy lorry stand-off counter, any haul: {any_haul:.1f}% of games")
 
 
 if __name__ == "__main__":

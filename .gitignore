@@ -226,6 +226,10 @@ checkpoints/*
 !checkpoints/selfplay4_prehazard.npz
 reports/
 
+# Push-aware baseline used for the own-column Gem displacement audits.
+!checkpoints/selfplay4_pushaware.npz
+!checkpoints/selfplay4_pushaware.history.json
+
 !checkpoints/selfplay4_pitcage.npz
 !checkpoints/selfplay4_nextcard.history.json
 
@@ -255,3 +259,21 @@ reports/
 # Printed-rule retrain: the "does the rule create a trigger?" control.
 !checkpoints/selfplay4_blindblast.npz
 !checkpoints/selfplay4_blindblast.history.json
+
+# Current-rules multi-seed balance study comparison checkpoints.
+!checkpoints/selfplay4_balance_s7002.npz
+!checkpoints/selfplay4_balance_s7002.history.json
+!checkpoints/selfplay4_balance_s7003.npz
+!checkpoints/selfplay4_balance_s7003.history.json
+
+# Publish only the requested current-rules study outputs; keep other runs ignored.
+!reports/
+reports/*
+!reports/current_rules_balance_study.md
+!reports/current_rules_balance_study.json
+
+# Terminal win-share retraining checkpoint and matched held-out comparison.
+!checkpoints/selfplay4_winfirst_s8111.npz
+!checkpoints/selfplay4_winfirst_s8111.history.json
+!reports/win_first_retraining.md
+!reports/win_first_retraining.json

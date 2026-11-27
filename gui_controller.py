@@ -63,6 +63,11 @@ TRAINING_CACHE_DIR = Path(__file__).with_name(".training_cache")
 CHECKPOINT_DIR = Path(__file__).with_name("checkpoints")
 NEURAL_PREFIX = "neural:"
 NEURAL_TEMPERATURE = 0.7
+# Protect safe home-row-zero cards from a same-phase raid in the default
+# interactive neural policy; direct NeuralAgent users can still opt out.
+NEURAL_CONTESTABLE_HOME_ROW0_GUARD = True
+# Compatibility alias for callers that imported the original Gem-only guard.
+NEURAL_ROW0_GEM_GUARD = NEURAL_CONTESTABLE_HOME_ROW0_GUARD
 
 
 # ---------------------------------------------------------------------------
@@ -306,6 +311,7 @@ class GameController:
             seed=self.seed,
             temperature=NEURAL_TEMPERATURE,
             deterministic=self.deterministic,
+            avoid_contestable_home_row0=NEURAL_CONTESTABLE_HOME_ROW0_GUARD,
         )
         if self.all_seats:
             for seat in range(1, self.env.n_players):
@@ -314,6 +320,7 @@ class GameController:
                     seed=self.seed + 101 * seat,
                     temperature=NEURAL_TEMPERATURE,
                     deterministic=self.deterministic,
+                    avoid_contestable_home_row0=NEURAL_CONTESTABLE_HOME_ROW0_GUARD,
                 )
 
     def ensure_training_ready(self, progress_callback: Callable[[str], None] | None = None) -> None:
@@ -424,7 +431,7 @@ class GameController:
             player.dynamite >= 2
             and not player.blast_pending
             and 0 <= action < PIT_CAGE
-            and action < self.movement_depth() * MAX_COLUMNS
+            and action < self.env._movement_depth(player) * MAX_COLUMNS
             and self.env._legal(action, player_index)
         )
 
@@ -496,16 +503,29 @@ class GameController:
         new = self.env.displacement_events[self._shown_displacement_count:]
         self._shown_displacement_count += len(new)
         return "".join(
-            f" Player {d + 1} stood on his own card, Player {s + 1} displaced him."
+            f" Player {d + 1} stood on his own card, Player {s + 1} displaced him"
+            f" (Player {d + 1} stays on the card and must choose a regular option except Pass)."
             for d, s in new
         )
 
     def _format_outcome(self, info: dict, reward: float) -> str:
         outcome = info.get("outcome", "continued")
         msg = f"Round {info.get('round', self.env.round)}: {outcome}. Reward {reward:+.2f}."
+        auto_passed = info.get("auto_passed", [])
+        if auto_passed:
+            seats = ", ".join(str(index + 1) for index in auto_passed)
+            msg += f" Players {seats} on exit spaces passed automatically."
+        own_column_eliminations = info.get("own_column_eliminations", [])
+        if own_column_eliminations:
+            seats = ", ".join(str(index + 1) for index in own_column_eliminations)
+            msg += f" Own-column Dragon eliminated player(s) {seats}."
         dragon_player = info.get("dragon_player")
-        if outcome == "dragon" and dragon_player is not None:
-            msg += f" Player {dragon_player + 1} awakened the dragon."
+        if outcome in {"dragon", "blast_dragon"} and dragon_player is not None:
+            msg += f" Player {dragon_player + 1} awakened a mine-wide Dragon."
+        winners = info.get("winners", [])
+        if info.get("game_over") and len(winners) > 1:
+            seats = ", ".join(str(index + 1) for index in winners)
+            msg += f" Players {seats} share the win."
         msg += self._consume_displacement_messages()
         return msg
 
@@ -515,16 +535,20 @@ class GameController:
         player = self.env.players[player_index]
         if not 0 <= choice_index < len(player.blast_cards):
             return StepResult("Select one of the three blast cards.")
-        
+
         final_haul = self.env.haul == HAULS_PER_GAME
         chosen = self.env.resolve_blast(player_index, choice_index)
         player_num = player_index + 1
-        
+
         if chosen[0] == DRAGON:
-            if final_haul:
+            if final_haul and self.env.game_finished:
                 return StepResult(
                     f"Blast choice: DRAGON. Player {player_num} awakened the dragon. Game over.",
                     game_over=True,
+                )
+            if final_haul and self.env.tie_breaker_contenders:
+                return StepResult(
+                    f"Blast choice: DRAGON. Player {player_num} awakened the dragon. Tie-break required."
                 )
             return StepResult(
                 f"Blast choice: DRAGON. Player {player_num} awakened the dragon. Starting the next haul."
@@ -557,7 +581,7 @@ class GameController:
         while not terminated and self.env.planning_player != 0:
             # P1 may have left the mine or died with this action; in that case
             # its turn never comes again and the loop would spin forever.
-            if p.escaped or p.dead:
+            if p.escaped or p.dead or self.blast_pending or self.in_tie_breaker:
                 break
             _obs, reward, terminated, _trunc, info = self.env.step_one_player()
 
@@ -611,8 +635,8 @@ class GameController:
 
     def _auto_blast(self, seat: int) -> StepResult:
         agent = self.agents[seat]
-        cards = self.env.players[seat].blast_cards
         ctx = self.env.player_action_context(seat)
+        cards = ctx.own_blast_cards
         index = int(agent.blast_choice(cards, ctx))
         index = min(max(index, 0), len(cards) - 1)
         return self.resolve_player_blast(index, seat)
@@ -627,11 +651,14 @@ class GameController:
             source, row, column = agent.tie_break(ctx)
         else:
             options = self.tie_break_options()
-            source, row, column = (
-                options[0]
-                if len(options) == 1
-                else options[int(self.env.rng.integers(len(options)))]
-            )
+            if not options:
+                source, row, column = "deck", None, None
+            else:
+                source, row, column = (
+                    options[0]
+                    if len(options) == 1
+                    else options[int(self.env.rng.integers(len(options)))]
+                )
         try:
             result = self.env.resolve_tie_breaker(source, row, column)
         except ValueError:
@@ -711,7 +738,17 @@ class GameController:
         ctx = self.env.player_action_context(seat)
         if not ctx.legal_actions:
             return []
-        mask = action_mask(ctx)
+        agent = self.agents[seat] if seat < len(self.agents) else None
+        mask = action_mask(
+            ctx,
+            avoid_contestable_home_row0=bool(
+                getattr(
+                    agent,
+                    "avoid_contestable_home_row0",
+                    getattr(agent, "avoid_exposed_row0_gem", False),
+                )
+            ),
+        )
         if not mask.any():
             return []
         probs = net.masked_probs(
@@ -748,6 +785,8 @@ class GameController:
             where = "on the lorry"
         elif column is None or pos >= len(self.env.rows):
             where = "not planned yet"
+        elif player.displaced:
+            where = f"row {pos + 1}, column {column + 1} (displaced, must move - cannot pass)"
         else:
             card = self.env.rows[pos][column]
             action = pos * MAX_COLUMNS + column
@@ -784,17 +823,25 @@ class GameController:
 
     @staticmethod
     def _tie_break_message(result: dict) -> StepResult:
+        if result.get("all_survivors_win"):
+            survivors = ", ".join(
+                f"Player {index + 1}" for index in result.get("winners", [])
+            )
+            return StepResult(
+                f"The mine and draw pile are exhausted; {survivors} share the win.",
+                game_over=True,
+            )
+
         player_num = result["player"] + 1
         if result.get("game_over"):
+            winner = result.get("winner")
             return StepResult(
-                f"Player {player_num} drew a dragon and was eliminated from the tie-break. "
-                f"Player {result['winner'] + 1} wins the tie-break. Game over.",
+                f"Player {player_num} drew a Dragon and was eliminated from the tie-break. "
+                f"Player {winner + 1} wins the tie-break. Game over.",
                 game_over=True,
             )
         if result["outcome"] == "dragon":
             return StepResult(
-                f"Player {player_num} drew a dragon and was eliminated from the tie-break."
+                f"Player {player_num} drew a Dragon and was eliminated from the tie-break."
             )
         return StepResult(f"Player {player_num} drew a safe tie-break card.")
-
-

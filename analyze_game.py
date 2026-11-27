@@ -96,7 +96,15 @@ def positions_text(env: MineEnv) -> str:
             else f"r{player.position}c{player.column}"
         )
         held = [front for front, _ in player.collected_cards]
-        mark = " OUT" if player.escaped else " DEAD" if player.dead else ""
+        mark = (
+            " OUT"
+            if player.escaped
+            else " DEAD"
+            if player.dead
+            else " DISPLACED"
+            if player.displaced
+            else ""
+        )
         parts.append(
             f"P{index + 1} {where} {held.count(GEM)}g/{held.count(DYNAMITE)}d{mark}"
         )
@@ -133,10 +141,22 @@ def knowledge_text(ctx) -> str:
     )
 
 
-def probabilities(net: PolicyNet, ctx) -> np.ndarray | None:
+def probabilities(
+    net: PolicyNet,
+    ctx,
+    *,
+    avoid_contestable_home_row0: bool = False,
+    avoid_exposed_row0_gem: bool | None = None,
+) -> np.ndarray | None:
+    if avoid_exposed_row0_gem is not None:
+        avoid_contestable_home_row0 = bool(
+            avoid_contestable_home_row0 or avoid_exposed_row0_gem
+        )
     if net is None or not ctx.legal_actions:
         return None
-    mask = action_mask(ctx)
+    mask = action_mask(
+        ctx, avoid_contestable_home_row0=avoid_contestable_home_row0
+    )
     if not mask.any():
         return None
     return net.masked_probs(
@@ -172,7 +192,22 @@ def transcript(
             controller.step_one_player_auto()
             continue
         owned = seat < len(controller.agents) and controller.agents[seat] is not None
-        probs = probabilities(net, ctx) if owned else None
+        agent = controller.agents[seat] if owned else None
+        probs = (
+            probabilities(
+                net,
+                ctx,
+                avoid_contestable_home_row0=bool(
+                    getattr(
+                        agent,
+                        "avoid_contestable_home_row0",
+                        getattr(agent, "avoid_exposed_row0_gem", False),
+                    )
+                ),
+            )
+            if owned
+            else None
+        )
         before = [len(player.collected_cards) for player in env.players]
         state = (board_text(env), positions_text(env))
         haul_before, round_before = env.haul, env.round

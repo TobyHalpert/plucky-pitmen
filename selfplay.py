@@ -7,11 +7,13 @@ including blast announcements, blast draws and the tie-break, and records one
 
 Reward signal
 -------------
-Scores change only at the end of a haul, far too sparse for short games.  Each
-player therefore receives a small dense shaping reward for loot collected and
-for leaving the mine safely, plus the real score change and a terminal bonus
-for winning.  Shaping reads the true card fronts; that is a *training* signal
-only - the policy still sees nothing but the cheat-safe context.
+By default, players receive score changes, small dense shaping rewards for
+loot and safe exits, and a terminal winner bonus. Pass ``win_only_reward=True``
+to give no intermediate reward at all and train only from the final winner
+(after the tie-break). In that mode, use an undiscounted return (``gamma=1``)
+if the objective is the probability of winning the whole game. Dense shaping
+reads the true card fronts; it is a *training* signal only - the policy still
+sees nothing but the cheat-safe context.
 """
 
 from __future__ import annotations
@@ -23,10 +25,9 @@ from agents import ActionChoice
 from game_env import DYNAMITE, PASS, PIT_CAGE, PlayerActionContext, MineEnv
 
 MAX_GAME_STEPS = 4000
-# A planning phase can be prolonged indefinitely by a policy that keeps
-# bouncing between a pit cage and its lorry.  After this many decisions in one
-# round, the driver forces a pass whenever passing is legal, which guarantees
-# that a round (and therefore a game) always resolves.
+# Driver safety for no-card exit-zone loops: after this many decisions the
+# policy driver forces a pass whenever one is legal. Players remain free to
+# revise a cage move; this is only a bounded fallback, not an engine rule.
 MAX_PLANNING_FACTOR = 4
 
 # Dense shaping, kept small relative to the points that decide a haul.
@@ -52,6 +53,7 @@ class HaulSummary:
     blasts: list[int] = field(default_factory=list)
     # Execution rounds played in this haul (more rounds = deeper mine = riskier).
     rounds: int = 0
+    own_column_eliminated: list[int] = field(default_factory=list)
 
 
 @dataclass
@@ -60,6 +62,8 @@ class GameResult:
     scores: list[int]
     winner: int | None
     turns: int
+    # More than one player can win if the tie-break runs out of cards.
+    winners: list[int] = field(default_factory=list)
     hauls: list[HaulSummary] = field(default_factory=list)
     blasts_announced: int = 0
     blast_choices: int = 0
@@ -78,7 +82,7 @@ class GameResult:
 
     @property
     def lorry_standoffs(self) -> int:
-        """Hauls that ended because everybody left inside stood on a lorry."""
+        """Legacy outcome count; current rules never end a haul for lorry parking."""
         return sum(1 for haul in self.hauls if haul.outcome == "lorry")
 
 
@@ -107,8 +111,14 @@ def _snapshot(env: MineEnv) -> _Snapshot:
 
 
 def _reward_vector(
-    env: MineEnv, before: _Snapshot, escape_shaping: float = ESCAPE_SHAPING
+    env: MineEnv,
+    before: _Snapshot,
+    escape_shaping: float = ESCAPE_SHAPING,
+    *,
+    win_only_reward: bool = False,
 ) -> list[float]:
+    if win_only_reward:
+        return [0.0] * len(env.players)
     rewards = [0.0] * len(env.players)
     haul_changed = env.haul != before.haul
     for index, player in enumerate(env.players):
@@ -176,9 +186,10 @@ def play_game(
     decisions: list[Any] | None = None,
     reward_shaping: bool = True,
     escape_shaping: float = ESCAPE_SHAPING,
+    win_only_reward: bool = False,
     passes: str = "n-1",
     solo_escape_bonus: bool = True,
-    blast_choice_sees_fronts: bool = True,
+    blast_choice_sees_fronts: bool = False,
     env: MineEnv | None = None,
 ) -> GameResult:
     """Play one complete 3-haul game with one agent per seat.
@@ -208,10 +219,12 @@ def play_game(
     if decisions is None:
         decisions = []
     last_decision: dict[int, Any] = {}
+    episode_id = object()
     blasts_announced = 0
     blast_choices = 0
     haul_blasts: dict[int, set[int]] = {}
     winner: int | None = None
+    winners: list[int] = []
     steps = 0
     aborted = False
     abort_reason = ""
@@ -234,6 +247,8 @@ def play_game(
             contenders = env.tie_breaker_contenders
             player_index = contenders[env.tie_breaker_turn % len(contenders)]
             outcome = _tie_break(env, agents[player_index], player_index)
+            if outcome.get("winners") is not None:
+                winners = [int(index) for index in outcome["winners"]]
             if outcome.get("winner") is not None:
                 winner = int(outcome["winner"])
             continue
@@ -255,7 +270,12 @@ def play_game(
             env.resolve_blast(player_index, choice)
             if learning:
                 for index, reward in enumerate(
-                    _reward_vector(env, before, escape_shaping)
+                    _reward_vector(
+                        env,
+                        before,
+                        escape_shaping,
+                        win_only_reward=win_only_reward,
+                    )
                 ):
                     flush(index, reward)
             continue
@@ -306,14 +326,22 @@ def play_game(
             blasts_announced += 1
 
         for decision in decisions[count_before:]:
+            decision.episode_id = episode_id
             last_decision[decision.player] = decision
 
+        if "winners" in info:
+            winners = [int(index) for index in info["winners"]]
         if "winner" in info and info["winner"] is not None:
             winner = int(info["winner"])
 
         if learning:
             for index, reward in enumerate(
-                _reward_vector(env, before, escape_shaping)
+                _reward_vector(
+                    env,
+                    before,
+                    escape_shaping,
+                    win_only_reward=win_only_reward,
+                )
             ):
                 flush(index, reward)
 
@@ -343,25 +371,36 @@ def play_game(
             ],
         }
 
-    if env.game_finished and winner is None:
-        best = max(player.score for player in env.players)
-        leaders = [i for i, p in enumerate(env.players) if p.score == best]
-        winner = leaders[0] if len(leaders) == 1 else None
-
-    if learning:
-        if winner is not None:
-            flush(winner, WIN_BONUS)
-        else:
+    if env.game_finished:
+        if not winners:
+            winners = [int(index) for index in env.winners]
+        if not winners:
             best = max(player.score for player in env.players)
-            for index, player in enumerate(env.players):
-                if player.score == best:
-                    flush(index, WIN_BONUS)
+            winners = [
+                index for index, player in enumerate(env.players)
+                if player.score == best
+            ]
+        if winner is None and len(winners) == 1:
+            winner = winners[0]
+        elif len(winners) != 1:
+            winner = None
+
+    if learning and winners:
+        if win_only_reward:
+            # A tied official win is one unit of win share, split among all
+            # declared winners. Runner-up seats receive exactly zero.
+            terminal_reward = WIN_BONUS / len(winners)
+        else:
+            terminal_reward = WIN_BONUS
+        for index in winners:
+            flush(index, terminal_reward)
 
     return GameResult(
         seed=-1 if seed is None else int(seed),
         scores=[player.score for player in env.players],
         winner=winner,
         turns=steps,
+        winners=winners,
         hauls=[
             HaulSummary(
                 haul=int(record["haul"]),
@@ -374,6 +413,9 @@ def play_game(
                 cards=list(record.get("cards", [])),
                 blasts=sorted(haul_blasts.get(int(record["haul"]), ())),
                 rounds=int(record.get("rounds", 0)),
+                own_column_eliminated=list(
+                    record.get("own_column_eliminated", [])
+                ),
             )
             for record in env.haul_history
         ],
@@ -404,9 +446,14 @@ class SeriesGame:
         return scores
 
     def winner_policy(self) -> int | None:
+        """Return the unique winning policy, or None for a shared win."""
         if self.result.winner is None:
             return None
         return self.policy_of_seat[self.result.winner]
+
+    def winners_policy(self) -> list[int]:
+        """Return every policy that won, including shared tie-break wins."""
+        return [self.policy_of_seat[seat] for seat in self.result.winners]
 
 
 def play_series(
@@ -418,7 +465,7 @@ def play_series(
     decisions: list[Any] | None = None,
     passes: str = "n-1",
     solo_escape_bonus: bool = True,
-    blast_choice_sees_fronts: bool = True,
+    blast_choice_sees_fronts: bool = False,
 ) -> list[SeriesGame]:
     """Play ``games`` games between policy factories, rotating seats.
 

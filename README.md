@@ -4,17 +4,19 @@ This project turns **Plucky Pitmen** into a Gymnasium environment for testing st
 
 **Feel free to contribute!** I appreciate your feedback.
 
-**Is the game balanced?** Mostly yes, and the interesting part is *why* it is
-hard to measure: leaving the mine early looks dominant against fixed bots, but
-is worth exactly zero against a player who collects loot and then leaves. The
-measurements, the confidence intervals and the reproduction commands are in
-**[BALANCE.md](BALANCE.md)**; the agents that produced them are in this
-repository and can play any of the rule variants.
+**What does the balance evidence show?** The current-rules screen is in
+`reports/current_rules_balance_study.md`: it compares trained bots against
+several scripted styles at three player counts, with confidence intervals. It is
+bot/self-play evidence, not a conclusion about human-game balance. **[BALANCE.md](BALANCE.md)**
+is a historical experimental record; its measurements should not be read as a
+current-rules estimate. Reproduce the current screen with
+`python current_rules_balance_study.py`.
 
 ## Rules
 
 The winner of a haul is the player who **leaves the mine with the most gems**.
-Everyone inside the mine when the dragon is awakened loses everything.
+A Dragon revealed outside the acting player's own column wipes out everyone still
+in the mine; a Dragon in that player's own column eliminates only its owner.
 The players must **cooperate** to avoid waking the dragon and **compete** to win the game.
 
 During a haul, **planning** and **execution phases** alternate.
@@ -34,23 +36,27 @@ There are 3 sets of 10 cards, each set sharing the same card back. Each set cont
 
 ### Planning Phase
 
-Beginning with the starting player, players take turns until exactly **as many players pass in a row as there are players remaining** in the mine (number of players in the mine minus one). 
+Beginning with the starting player, active players take turns until the normal pass threshold is reached (usually one fewer consecutive passes than the number of players still in the mine). Once every active player deeper in the mine than the last pit cage has passed—including players in deeper cages—any active players on a lorry or in the last pit cage are counted as having passed automatically. These automatic passes count toward the normal threshold.
 
 On their turn, a player chooses **one** of the following options:
 
 *   **Move to a free card:** The player places their figure on an unoccupied card.
 *   **Move to the nearest pit cage:** A pit cage can accommodate any number of players.
-*   **Pass:** The player does not change their announced plan. If it is their turn again later, all options are open to them once more. Passing is not allowed during the first round of the planning phase.
-*   **Displace an opponent:** This is only possible if the opponent is standing on a card within that opponent's own column (the color of the player figure is the same as the color of the lorry). The player places their own figure on the opponent's card and moves the opponent to the next free card towards the lorries in that opponent's own column (skipping empty or occupied cells). If no card remains, the opponent goes to their lorry. The displaced player keeps their loot and their next planning decision. Landing on a card gives no pit-cage shelter: they must choose a cage themselves if they want shelter from a dragon.
-*   **Sit on their lorry:** Anyone who has occupied their lorry at any point during a planning phase can only switch between the last pit cage and their lorry for the remainder of that planning phase.
+*   **Pass:** The player does not change their announced plan. If it is their turn again later, options are normally open again. A player cannot choose Pass on their first planning turn; automatic passes at the exit spaces are an exception.
+*   **Displace an opponent:** This is only possible if the opponent is standing on a card within that opponent's own column (the color of the player figure is the same as the color of the lorry). The player places their own figure on the opponent's card, while the displaced opponent stays on that same card until their next turn. When it is the displaced opponent's turn, they have all regular options from that card's row (a free card, displacing an opponent, the nearest pit cage, or their lorry) except **Pass**.
+*   **Sit on their lorry:** Anyone who has occupied their lorry at any point during a planning phase cannot return to a card that phase. They may stay on the lorry, pass, or move to the last pit cage. If they are still in the cage when execution begins, they leave the mine.
 
 For the options "free card", "pit cage", and "displace", the following rule applies: The card or pit cage **must be closer to the lorries** than the row the player is currently in.
+
+A Pit Cage choice is provisional during planning, not a commitment to leave. While the planning phase remains open, a player may revise it by choosing another legal move; anyone still in the cage when execution begins leaves the mine.
+
+The **lorry is a waiting place, not an exit**: standing there collects nothing but keeps the player in the haul. Automatic passes at the lorries and last pit cage close only the planning phase; they do not score or end the haul. If nobody has escaped, a new row is dealt when the stack allows it. Once a player has escaped, no new rows are dealt; the remaining players continue under the ordinary haul-ending rules using the existing mine.
 
 ### Execution Phase
 
 All players who are in a **pit cage** at the beginning of the execution phase leave the mine and **are safe from the dragon**. They sit out for the rest of the haul, meaning they do not participate in any further planning or execution phases and only become active again for the final scoring.
 
-Beginning with the starting player, **everyone** who is still in the mine and not standing on a lorry **takes the card** beneath their figure and looks at it. If it is a **dragon**, the haul ends immediately—the dragon has been awakened. Otherwise, the player places the card face down in front of them. The player remains in the mine. The card backs of collected cards remain visible to everyone.
+Beginning with the starting player, **everyone** who is still in the mine and not standing on a lorry **takes the card** beneath their figure and looks at it. A Dragon in the acting player's **own column** eliminates only that player; execution continues in order for the other players whose choices were already locked. A Dragon in another column ends the haul immediately and eliminates everyone still in the mine. Otherwise, the player places the card face down in front of them. The player remains in the mine. The card backs of collected cards remain visible to everyone.
 
 If no one has left the mine so far: Beginning with the starting player, each player draws (if possible) a **card from the draw pile**, looks at it, and places it face down in their column of the newly created row at the bottom end of the mine (see Figure 2). If someone has left the mine: No cards are added.
 
@@ -62,32 +68,32 @@ If a player has collected two dynamites, they can announce a blast during their 
 
 If it becomes the player's turn again during the planning phase, choosing any option other than "Pass" aborts the blast. In this case, they flip their two dynamite cards back face down and choose a different option instead. They may announce a blast on a different space. Used dynamite is consumed at the end of the planning phase.
 
-In the **execution phase**, the player **receives the card as usual**. Additionally, the player draws **three cards from the draw pile** and places them face down in front of themselves. They must choose **two of them**. They look at the two cards. If a dragon is among them, the round ends immediately—the dragon has been awakened. Otherwise, they place the treasures face down in front of themselves. The third card is placed at the bottom of the draw pile. If there are fewer than three cards left in the draw pile, the choice is skipped and the player takes all remaining cards.
+In the **execution phase**, the player first **receives the card under their figure as usual**. If the haul continues, put the top **three cards from the draw pile** face down in front of the blaster. They choose one and turn it face up. If it is a Dragon, the haul ends immediately; all still-face-down cards—including cards prepared for later blasts—return to the bottom of the pile, and no later blast is resolved. If it is safe, the player keeps it, chooses one of the two remaining face-down cards, and turns that one face up. A second Dragon ends the haul in the same way. If the second card is safe, the player keeps it and returns the last card to the bottom of the pile. If fewer than three cards remain, no choice is made: take safe cards in draw order, stopping at the first Dragon, which awakens the Dragon and ends the haul; any cards after it stay in the pile. If no Dragon appears in the short stack, take all those cards.
 
 ### End of a Haul
 
 A haul **ends**
-*   immediately if the dragon is awakened.
+*   immediately if a Dragon outside the acting player's own column, or a blast Dragon, is awakened.
 *   if only one player remains in the mine after the execution phase. This player leaves the mine automatically.
 *   if a complete row cannot be formed after an execution phase. The remaining players leave the mine automatically.
-*   if there are no treasures left in the mine.
-*   if **all players still in the mine stand on their lorry** at the end of a planning phase. Standing on a lorry collects nothing, so such a haul can never progress: the haul ends and the players still inside leave the mine automatically, taking part in the scoring with the loot they are holding (just like "only one player remains" or "a full row cannot be formed").
+*   if no cards remain in the mine.
 
 Now, the **scoring** takes place:
-*   Players who left the mine reveal their collected cards. The player with the **most gems** receives **+3 points** (+4 points in the final haul). If only one player has left the mine, they receive these points even without having any gems. In the event of a **tie** for gems, each player with the highest number of gems receives **+1 point**.
-*   The player who **awakened the dragon** receives **-2 points**.
-*   All other players who **died in the mine** receive **-1 point**.
+*   Players who left the mine reveal their collected cards. **A sole escapee receives the haul bonus even with zero gems: +3 points in hauls 1–2 or +4 points in the final haul.** Otherwise, the player or players with the most gems receive the bonus; in the event of a **tie** for gems, each tied player receives **+1 point**.
+*   A player eliminated by a Dragon revealed in their **own column** receives **-2 points**. They do not score below -1, and remain eligible for the final tie-break.
+*   When a Dragon in another column ends the haul, its player receives **-2 points** and all other players still in the mine receive **-1 point**. An own-column Dragon player eliminated earlier is not affected again.
 *   A player's score cannot fall below -1 point.
-*   If a player awakens the dragon (-2 points) and nobody has left the mine, the other players receive +2 points instead of -1 point. The other players are allowed to keep their dynamite.
 
-A full game consists of **3 hauls**. If there is another haul to be played, all cards are collected, shuffled, and a new mine is set up. Players who successfully left the mine are allowed to keep their dynamite.
+A full game consists of **3 hauls**. If there is another haul to be played, all cards are collected and the conserved 30-card set is shuffled for the next mine. Players who successfully left the mine keep their Dynamite out of that shuffle; if they carry over *k* cards, the shuffled stack contains **30 − k cards**.
 
 
 ### End of the Game
 
 The game ends after the third haul. The player with the most points wins.
 
-In the event of a **tie**, the contenders for victory take turns - starting with the starting player - drawing a card either from the mine or from the draw pile. Players who draw a dragon are eliminated. The last survivor wins.
+In the event of a **tie**, contenders for victory take turns drawing a card either from the mine or from the draw pile, beginning with the first tied contender at or clockwise from the starting-player marker after it advances at the end of the final round. Players who draw a Dragon are eliminated; a player eliminated by an own-column Dragon is still eligible to contend. The last survivor wins. If the mine and draw pile are exhausted while several contenders remain, all remaining contenders share the win.
+
+The Gymnasium `MineEnv.step()` API includes the tie-break as a distinct phase. During that phase, a mine-cell action draws that card and `PASS` means draw from the deck; `action_mask()` and the four trailing observation values identify the phase, current contender, remaining contenders, and deck count. Built-in opponents draw automatically until player 0 is next or the game is decided, at which point `step()` returns `terminated=True`. The lower-level `step_one_player()` advances one tie-break draw at a time.
 
 ## Open Questions
 
@@ -114,7 +120,7 @@ To watch the players move through the mine in a graphical interface:
 python mine_gui.py --policy random
 ```
 
-Use **Take action** to choose the learner's destination, or **Autoplay** to run the simulation automatically. The viewer shows card backs only; opponent gems and dynamite remain hidden. The action menu is rebuilt from the current legal-action mask, so an occupied card appears only when it is a legal displacement, labelled **Displace Player N**; selecting it takes the move and any stale action is rejected before it can reach the engine.
+Use **Take action** to choose the learner's destination, or **Autoplay** to run the simulation automatically. Mine cards show their backs, with Player 1's column fronts also revealed for analysis—even in AI-in-every-seat spectator mode. Opponent columns and hands remain hidden; AI agents receive only their cheat-safe masked contexts. The action menu is rebuilt from the current legal-action mask, so an occupied card appears only when it is a legal displacement, labelled **Displace Player N**; selecting it takes the move and any stale action is rejected before it can reach the engine.
 
 ### Watching the trained agents
 
@@ -124,13 +130,13 @@ network — including whether to announce a blast and which of the three blast
 cards to keep.
 
 `checkpoints/selfplay4.npz` ships with the repository, so `neural:selfplay4`
-works in a fresh clone. It now uses **next-card displacement** and was retrained
-for 120 generations of 64 games (four seats, seed 7001), resuming the previous
-net. That predecessor is preserved as `neural:selfplay4_pitcage`; both play the
-current rule when selected. The training history and the comparison are recorded
-in BALANCE.md. In 200 four-net games the retrained net finished every game, but
-pushed less (0.035 vs 0.105 per game) and chose its own column more (96.1% vs
-92.8%): this run has not yet produced more competition for spots.
+works in a fresh clone. It now uses **same-card displacement** and **face-down
+blast card selection**, retrained for 120 generations of 64 games (four seats,
+seed 7002, 81.7% win rate vs three `rule` bots), with the downstream tactical
+and curriculum nets (`selfplay4_tactical`, `selfplay4_last_haul`, and
+`selfplay4_row0_blast_sequence`) retrained on top of it as well. The historical
+pit-cage predecessor is preserved as `neural:selfplay4_pitcage`; all checkpoints
+play the current rule when selected.
 
 To watch the retrained net:
 
@@ -235,7 +241,8 @@ the list says whether the plan currently standing is **locked** or still
 again before the phase ends. The panel is empty for scripted policies, during a
 tie-break, and while a blast is waiting on a card.
 
-What to look for, given the measurements in [BALANCE.md](BALANCE.md): it should
+For context, the following behavior notes come from historical bot measurements
+in [BALANCE.md](BALANCE.md), not the current-rules screen: the network should
 rarely blast (0.02-0.05 per game *fired*, for two reasons — it seldom holds two
 dynamite, and most blasts it announces are cancelled by its own next move, §5),
 it should walk to a pit cage as soon as it holds loot, and it *does* leave when
@@ -273,7 +280,7 @@ uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
 | module | purpose |
 | :-- | :-- |
 | `features.py` | fixed-size, seat-invariant state + action features; no hidden information |
-| `agents.py` | `Agent` interface, scripted baselines (incl. `rusher`, `leaver`, `threat`, `reader` — `rule` without the "a quiet rival means a safe card" inference — `bluffer`, which announces a blast it always cancels, and `counter`, the deterministic seat that farms the trained net), `NeuralAgent` |
+| `agents.py` | `Agent` interface, scripted baselines (incl. `rusher`, `leaver`, `threat`, `reader` — `rule` without the "a quiet rival means a safe card" inference — `bluffer`, which announces a blast it always cancels, `counter`, and the adversarial `always-pusher` audit policy), `NeuralAgent` |
 | `learning.py` | masked-softmax MLP policy + value baseline, REINFORCE, Adam, save/load |
 | `selfplay.py` | full-game driver: every seat controlled, blasts, tie-breaks, per-player returns |
 | `train_tactical.py` | branch-based tactical distillation from sampled hidden worlds and full-game win-share comparisons |
@@ -290,6 +297,7 @@ uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
 | `probe_blast_trigger.py` | does a checkpoint actually fire blasts, under the printed rule and under the engine's peek, and does the retrained one play any better |
 | `probe_dragon_step.py` | does a seat step onto a dragon it can see and get off again before the reveal? digs per game, the share followed by another decision, and where the figure is when the card is turned |
 | `probe_vacated_dragons.py` | is a rival walking off a card in its own column a dragon tell? precision against ground truth, the risk it moves, and whether the table plays differently |
+| `probe_signalled_dragon_response.py` | paired full-game test of the forced Pass mask versus a confidence-weighted response, calibrated against card truth |
 | `probe_blast_colour.py` | does the net use the colour of a dragon it has seen? the keeper rule under the printed vs peeking blast draw, and a paired counterfactual on the announcement |
 | `probe_bluff.py` | what an announced blast nobody fires is worth: a bluffing seat against three unchanged nets, with the same movement policy and no announcements as the control |
 | `probe_blast_value.py` | what a single blast is worth from a real position (forked rollouts), and whether backside knowledge improves the blind choice |
@@ -299,10 +307,11 @@ uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
 | `probe_push_clock.py` | deprecated historical clock diagnostic; its conclusions are withdrawn (see BALANCE.md) |
 | `probe_seed7_p2.py` | exact-position forks of seed-7 P2 push, blast and cancellation; limitations and results in SEED7_P2.md |
 | `probe_pusher_match.py` | deterministic pusher versus three retrained nets, rotated seats, no-push control and actual displacement counts |
-| `probe_always_pusher_match.py` | one net versus three seats that take every displacement opportunity, with incoming and outgoing pushes and paired scores |
+| `probe_always_pusher_match.py` | one net versus three always-pushers; counts own-column Gem choices, successful displacements, whether the Gem is actually taken at execution, and paired scores (`--fixed-p1-first` isolates Player 1) |
+| `probe_row0_gem_exposure.py` | exact row-0 own-column Gem offers, choices, pre-reveal displacements, Gem resolution and same-pusher theft; paired default-versus-guard full games |
 | `probe_nextcard_training.py` | old versus retrained nets under the current rule: actual pushes, own-column card moves, scores and completed games |
 | `probe_backside_reading.py` | does the learner read a backside? risk of the card it takes, against the risk it was offered |
-| `probe_lorry.py` | how often a seat parks on its lorry, and how often a haul is lost to a stand-off because every seat did |
+| `probe_lorry.py` | how often a seat parks on its lorry; the stand-off outcome is a legacy metric and remains zero under the current rules |
 | `probe_escape.py` | escape rules side by side: how often a haul is thrown away by a herd of empty-handed cage moves, and what each variant is worth |
 | `analyze_game.py` | one game move by move: what each seat knew, the probability the network put on the move, and what the move was worth from there |
 | `probe_displacement.py` | is a push worth anything — to the seat that pushes, or to the one that parks where it can be pushed? paired arms over a 1,000-game league |
@@ -310,6 +319,31 @@ uses the existing cheat-safe `PlayerActionContext`, and puts an agent in
 | `profile_agent.py` | what a checkpoint actually does: digs, front-row digs, passes, retreats, blasts, escapes — side by side for two checkpoints |
 | `gui_controller.py` | Tk-free viewer logic: moves, blasts, tie-breaks, the AI POLICY snapshot |
 | `mine_gui.py` | the Tk viewer itself |
+
+### Training objective (design invariant)
+
+For a single game, the policy's objective is to maximize its probability of
+winning the **whole game**, after all three hauls and the final tie-break—not
+to maximize points or win an individual haul. **Second place has no positive
+value** unless a tournament format explicitly rewards placements; none is
+assumed here. Tournament points for runner-up finishes would change the
+incentives and create a different game psychology.
+
+Use the terminal winner as the primary training target (for example, win vs.
+non-win, with any rule-defined shared win handled explicitly). Cumulative
+end-game score, point margin, haul bonuses, and the sole-escape bonus remain
+part of the game rules and state; they are not goals to accumulate for their
+own sake. If intermediate point-based shaping is used to help learning, keep it
+auxiliary and ensure it does not override first-place utility. Select and
+compare checkpoints primarily by win rate or win share on held-out matchups,
+not by mean points or score margin.
+
+"All-in" does not mean choosing the riskiest move every time: protect a lead
+when that improves the chance of winning, and take higher-variance lines when
+that is the best route to first from behind. The trainer's historical default
+still uses score and shaping rewards for reproducibility; pass
+`--win-only-reward` to train against the documented terminal win-share
+objective. Bot results do not establish human-relative strength.
 
 ### Train
 
@@ -320,10 +354,29 @@ python train_selfplay.py --generations 60 --games-per-generation 64
 
 This writes `checkpoints/selfplay.npz`, older snapshots to
 `checkpoints/league/`, and the learning curve to
-`checkpoints/selfplay.history.json`.
+`checkpoints/selfplay.history.json`. The historical default reward remains
+score-and-shaping based. To train for the documented win-first objective,
+resume a checkpoint and save to a **new** path:
 
-To train an existing network further, resume it and keep the old one for the
-comparison:
+```powershell
+python train_selfplay.py --players 4 --resume checkpoints/selfplay4.npz `
+    --win-only-reward --generations 60 --games-per-generation 64 `
+    --seed 7004 --out checkpoints/selfplay4_winfirst.npz
+```
+
+This mode gives one unit of terminal reward split among official co-winners,
+zero to every non-winner, no intermediate score/loot/escape/death rewards, and
+uses `gamma=1` so the win objective is not discounted. It does not overwrite
+the starting checkpoint. Compare the warm start and retrained policy on matched,
+seat-rotated held-out games with:
+
+```powershell
+python compare_win_first.py --baseline checkpoints/selfplay4_balance_s7003.npz `
+    --candidate checkpoints/selfplay4_winfirst_s8111.npz --games 180
+```
+
+To train an existing network further using the historical shaped objective,
+resume it and keep the old one for the comparison:
 
 ```powershell
 python train_selfplay.py --players 4 --resume checkpoints/selfplay4.npz `
@@ -339,16 +392,18 @@ Useful flags:
 | :-- | :-- |
 | `--players 3\|4\|5` | number of seats |
 | `--hidden 0` / `--hidden 64` | linear policy / one hidden layer |
+| `--win-only-reward` | use only terminal official win share; automatically sets `gamma=1` |
 | `--epochs`, `--batch-size`, `--lr` | optimisation budget |
 | `--mirror-prob` | fraction of games in which every seat is the current learner |
 | `--league-prob`, `--league-size` | how often opponents are older snapshots |
 | `--eval-opponent rule` | benchmark used during training |
 | `--no-solo-escape-bonus` | play the rules variant without the free bonus for a sole escapee with zero gems |
-| `--blind-blast-choice` | choose blast cards face down, as the printed rules say |
+| `--blind-blast-choice` / `--no-blind-blast-choice` | keep unchosen blast-card fronts hidden; reveal each selected card before the next choice (default on) |
 | `--pass-rule {n-1,n}` | play the "n passes" variant instead of the printed "n-1" |
 | `--league-blast-mode {never,rich,always}` | how the scripted league blasts (default `rich`) |
 | `--league-blast-prob` | fraction of that league that uses the blast mode in the chosen proportion (default 0.15; set `1.0 --league-blast-mode always` for a league that blasts on sight) |
 | `--league-threat-prob` | share of scripted league seats replaced by `threat`, the policy that leaves when a rival's blast is pending (default 0, which keeps the historical league bit-identical); measured: no gain, see [THREAT_LEAGUE.md](THREAT_LEAGUE.md) |
+| `--pusher-match-prob` | optional share of non-mirror training games with one learner against three `always-pusher` seats (default 0; adversarial curriculum, not a printed rule) |
 
 Each game gives the learner one rotating seat while the other seats are filled
 from a league of the hand-tuned rule policy, simple bots and older snapshots of
@@ -399,7 +454,9 @@ than retrained from scratch.
 ### Findings
 
 The full write-up, with confidence intervals and reproduction commands, is in
-**[BALANCE.md](BALANCE.md)**. The short version:
+**[BALANCE.md](BALANCE.md)**. The numerical findings below were collected under
+an earlier lorry stand-off rule and are historical, not a current balance run.
+The short version:
 
 * **There is no dominant strategy — and early leaves are a trap.** An
   empty-handed escape only earns the +3 haul bonus while the other players fail
@@ -428,10 +485,11 @@ The full write-up, with confidence intervals and reproduction commands, is in
   inverts. The report therefore always includes `rusher` and `leaver`, plus a
   "where the points come from" split, so a policy that farms opponents' mistakes
   is visible instead of looking skilful.
-* **Blasting is not too weak, but the engine was cheating.** The blast rule says
-  to draw three cards face down and choose two before looking. `MineEnv` showed
-  the chooser all three fronts, which makes blasting dominant (+1.71 points at
-  three players, +1.00 at four). With the printed rule (`--blind-blast-choice`)
+* **Blasting is not too weak, but the engine was cheating.** The printed
+  procedure reveals each selected card before the next choice. `MineEnv` showed
+  the chooser all three fronts before the first choice, which makes blasting
+  dominant (+1.71 points at three players, +1.00 at four). With the printed
+  rule (`--blind-blast-choice`)
   it is neutral (+0.39 at three players, +0.38 at four), a blast haul is worth
   the same as a normal one (+0.41 vs +0.40 points), and against a field that
   banks loot it is a losing move (-0.52).
@@ -480,33 +538,21 @@ The full write-up, with confidence intervals and reproduction commands, is in
   1,985 seat-phases take exactly one card move**, and every remaining second dig is
   a re-entry from a cage or a step off a visible dragon. BALANCE.md, "The card you
   are standing on".
-* **A seat that has walked into a cage leaves it.** A figure in a cage keeps its
-  loot and is out of the haul at the execution phase, so a card move taken from
-  there undoes the escape. The shipped net did it **604 times in 60 games**, 313
-  of them while holding a gem the escape would have banked, and it is worth
-  **−0.72 (se 0.12)** a move. Rule 10 refuses it when there is a bank to forfeit
-  (`+0.029`, se 0.032 — it removes a move with no upside). The harder version,
-  holding the seat to its departure so the figure cannot walk in and out of the
-  cage, is priced and **left off**: +0.145 a seat and a third fewer decisions, at
-  the cost of 28% of the gems in the mine (`ESCAPE_STANDS_ONCE_TAKEN`). The
-  viewer's default opponent, `rule_policy`, had the same habit — 520 steps out of a
-  cage in 40 games — and now holds a banked escape too. BALANCE.md, "Out of the
-  cage is out".
-* **A seat that sits on its lorry stays out of the mine.** The printed rule —
-  *"anyone who has occupied their lorry at any point during a planning phase can
-  only switch between the last pit cage and their lorry for the remainder of that
-  phase"* — was not enforced: from the lorry the cage was legal, and from a cage
-  at index 1 or deeper the mine opened again, so `card -> lorry -> cage -> card`
-  was a legal way back into a mine a figure had already left. `LORRY_COMMITS_THE_SEAT`
-  now refuses the card move for the rest of the phase. It changes nothing and it
-  cannot: sitting on the lorry is the seat's decision for that phase, so no seat
-  that has done it is asked again before the round ends (0 of 30 games), and a
-  figure still on the lorry when a round starts cannot step onto a card either.
-  Paired over 200 games the difference is **+0.000** — the line was missing, not
-  harmful. The check is kept as a guard, with a test pinning the fact that makes it
-  inert. BALANCE.md, "Sit on their lorry".
-* **Next-card displacement is now the default.** A push contests a rival's
-  chosen spot without giving that rival free pit-cage shelter. The displaced
+* **A Pit Cage move is provisional.** A player can revise the choice during
+  planning and leaves only if still in the cage at execution. Some AI policies
+  prefer to hold a valuable escape, but that is strategy—not an engine rule.
+  Earlier policy-only measurements of holding cage choices (+0.145 points per
+  seat, 28% fewer gems) are historical and not estimates of the current rules.
+* **The lorry is a waiting place, not a second exit.** Once a player has occupied
+  the lorry, card moves are closed for that phase, but they can still switch
+  between the lorry and cage. If everyone stays on lorries, the round resolves
+  normally and the haul continues when ordinary rules permit, rather than ending
+  with a special scored escape. A last-resort planning guard bounds no-card
+  cycles without making cage entry itself a forced exit.
+* **Same-card displacement is now the default.** A push contests a rival's
+  chosen spot without giving that rival free pit-cage shelter or moving them
+  automatically: the displaced figure stays on the same card and on its next
+  turn has all regular options from that position except `Pass`. The displaced
   figure keeps its loot and its next decision; a dragon can still make it choose
   shelter. The aim is competition for spots, not profitable indiscriminate pushing.
   Earlier pass-count comparisons did not distinguish passing on a card from
@@ -562,6 +608,52 @@ The full write-up, with confidence intervals and reproduction commands, is in
   1,953 offers** — the same habit it had before — while the pushes it declines
   price at **−0.30 (se 0.06)**. The blind spot was real; closing it did not make
   the move good. BALANCE.md, "The planning clock went into the input".
+* **Own-column Gem exposure is now tested, not guessed from the rules.** In 500
+  P1-first games against three always-pushers, the original `selfplay4` chose an
+  own-column Gem on its opening move 66.0% of the time, and every such choice
+  was displaced before reveal. Under the push-aware policy plus retraining the
+  opening rate was 2.8%; displacement and actual Gem theft are reported
+  separately because same-card displacement gives the victim another turn.
+  This is a development-only policy signal, not a new game rule. See
+  [OWN_COLUMN_PUSH_AUDIT.md](OWN_COLUMN_PUSH_AUDIT.md).
+* **The row-0 own-column Gem sequence is counted exactly, and a guard was tested.**
+  In 500 paired games per opponent field with `selfplay4_pushaware`, choices were
+  counted only when every active rival was still on a deeper card. Against three
+  neural controls, the default chose the Gem 149/513 times; 116/149 were pushed
+  before reveal, 137/149 Gems were collected, and the exact “pushed + Gem
+  resolved” event occurred 110/149 times. The same pusher took the Gem in
+  108/110 exact events. A policy-only row-0 mask reduced those counts to 60/845,
+  43/60, 57/60, and 43/60; the pusher took all 43 resolved displaced Gems.
+  Across all three fields, the exact event fell by 0.086–0.134 per focal game.
+  Win-rate changes were −0.6 pp vs neural controls, −0.4 pp vs rule agents, and
+  +5.8 pp vs always-pushers (the last paired 95% CI: +2.3 to +9.3 pp). Those
+  figures measure the earlier Gem-only guard, not today's policy. A seed-7 P4
+  replay exposed two gaps in that guard: the public `planned` flag marks only a
+  provisional move (a later card move resets the pass clock, giving that rival
+  another turn), and the Gem-only mask did not cover P4's own row-0 Dynamite.
+  The GUI's default neural path now uses active movement-depth reachability,
+  regardless of `planned`, to protect any known safe home-row-zero card (Gem or
+  Dynamite); a visible Dragon remains usable as bait. This is a policy-only
+  guard: engine legality and checkpoint feature semantics are unchanged.
+  `NeuralAgent(..., avoid_contestable_home_row0=True)` enables it, and the old
+  `avoid_exposed_row0_gem` keyword remains an alias. On the reproduced seed-7
+  decision, the guard removes P4's row-0 Dynamite while leaving other policy-
+  approved moves available; the same controller test follows the phase and
+  verifies P4 is not displaced there. The seed-7 regressions also keep foreign
+  alternatives open for a displaced P1 and avoid falling back to the no-score
+  lorry when a policy-approved deeper dig remains. The paired figures above and
+  in the audit file are historical; rerun the probe for performance estimates
+  of the generalized default. Full denominators, Wilson intervals, paired
+  per-game changes and seed examples are in
+  [ROW0_GEM_EXPOSURE_AUDIT.md](ROW0_GEM_EXPOSURE_AUDIT.md) and its JSON data.
+* **Dragon signals are cue-specific; hard dodging has no measured edge yet.**
+  Across 600 forced-policy calibration games, the owner-in-cage cue matched a
+  dragon on 2,496/2,756 observed cards (90.6%). The voluntary walk-off cue had
+  only 8 observations (1 dragon), too few to calibrate confidently. In 400
+  paired games each against neural controls and `rule` agents, a confidence-
+  weighted response changed only 12/1,040 signalled choices to Pass; all paired
+  outcome intervals included zero. The hard mask remains the default. See
+  [SIGNALLED_DRAGON_RESPONSE_AUDIT.md](SIGNALLED_DRAGON_RESPONSE_AUDIT.md).
 * **The blast threat is real; the AI ignores it.** A pending blast costs the
   blaster's rivals **-0.43 points [-0.81, -0.06]** and 11 points of win rate, and
   the cheapest counter — walk to the pit cage while the blast is pending —
@@ -576,13 +668,14 @@ The full write-up, with confidence intervals and reproduction commands, is in
   real bug:
   `step_one_player()` ignored `--pass-rule` entirely, so the variant only worked
   in the single-learner API.
-* **The lorry stand-off rule is what closes the exploit.** Replacing the old
-  "no collection for 8 rounds" valve with "everyone still inside leaves when the
-  haul ends" does two things: it stops paying the escapee while voiding the
-  campers' loot, and it hands the campers' gems into the scoring. The trained
-  agent's margin against the scripted bots fell from +4.14 to -0.31 (parity),
-  the rusher's from +2.69 to +0.26, and the games that used to be farmed now
-  end with the campers banking what they collected.
+* **Lorry parking is waiting, not an automatic escape.** A cage move remains
+  revisable while the planning phase is open; a player leaves only if still in the
+  cage when cards are turned. Once all active players deeper than the last pit cage have passed,
+  lorry and last-cage occupants pass automatically, closing only the planning
+  phase. New rows are dealt only before anyone escapes; after an escape, the
+  remaining players continue under the ordinary haul-ending rules on the existing
+  mine. This replaces the previous special lorry stand-off scoring, which could
+  end a haul and score campers without them choosing the pit cage.
 * **Luck dominates a single game.** Identical agents playing each other spread
   **4.5–5.0 points** within a game, far more than any between-policy margin here.
   Use the confidence intervals.
@@ -595,10 +688,10 @@ The full write-up, with confidence intervals and reproduction commands, is in
 * **An engine bug was silently scoring whole games as zero.** A player killed by
   a dragon while a blast was pending left the haul unable to finish, so the game
   was recorded `aborted` with every score at 0 (36 of 60 always-blaster games).
-  Fixed, and every report now prints how many games the engine abandoned. A
-  second bug reported alongside it — a tie-break with no dragons left to draw —
-  does not exist: the card economy always leaves enough, and
-  [BALANCE.md](BALANCE.md) §7 records the withdrawal.
+  Fixed, and every report now prints how many games the engine abandoned. The
+  tie-break exhaustion edge case is also defined rather than assumed away:
+  contenders draw only from the mine and stack, and any survivors left when both
+  are empty share the win.
 
 ### Testing the rules variants
 
@@ -625,24 +718,27 @@ python train_selfplay.py --players 4 --generations 60 --games-per-generation 64 
 python analyze_blasts.py --checkpoint checkpoints/selfplay4.npz --players 4 --games 240 --out reports/blasts4_noblastleague.md
 ```
 
-Two rule gaps surfaced while building this, plus one bug. The gaps are
-switchable so you can measure them instead of guessing:
+The balance tooling keeps the listed variants switchable where useful. The
+lorry/cage loop safety is not a scoring rule; cage choices remain revisable:
 
 | gap | behaviour | switch |
 | :-- | :-- | :-- |
 | free solo-escape bonus | +3/+4 for leaving alone with zero gems | `--no-solo-escape-bonus` |
-| blast peek | the blaster sees all three draws before choosing | `--blind-blast-choice` (the printed rule) |
+| blast peek | historical variant exposes all three fronts before the first selection | fixed to hiding unchosen fronts by default (`--no-blind-blast-choice` reproduces historical peeking) |
 | pass count | `step_one_player()` ignored `--pass-rule` and always used `n` | fixed; both variants now work |
+| lorry/cage loop | players could bounce between exit spaces and stall planning | lorry waits; exit spaces auto-pass after deeper players pass; no automatic lorry scoring |
 
-The lorry deadlock used to be patched with a `stall_rounds` valve, which paid the
-player who had escaped while voiding the campers' loot. That valve is gone: the
-haul now simply ends when everybody still in the mine stands on their lorry,
-which is the rule the game was missing (see the rules section above).
+The engine keeps a Pit Cage move revisable while the planning phase remains
+open; choosing the cage itself never causes an automatic escape. Exit-space
+automatic passes close planning once all deeper players have passed, without
+scoring lorry occupants or ending the haul. The existing planning-turn guard
+still bounds no-card planning loops.
 
-The defaults keep the historical environment behaviour, so old scripts
-reproduce. For balance work, pass `--blind-blast-choice` and decide explicitly
-what to do about the other two; [BALANCE.md](BALANCE.md) has the measured effect
-of each.
+The current engine does not auto-end a haul for an all-lorry round. Earlier
+balance results that relied on the lorry stand-off ending are historical and
+should not be treated as measurements of the current rules. For the remaining
+variants, pass `--blind-blast-choice` and choose settings explicitly;
+[BALANCE.md](BALANCE.md) records the older comparison data.
 
 The open questions map directly onto the tooling:
 

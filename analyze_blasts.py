@@ -548,12 +548,12 @@ def render(report: dict[str, Any]) -> str:
     lines.append(
         "The blaster seat runs the *same* movement policy as its opponents and "
         "differs only in announcing a blast whenever it holds two dynamite. "
-        "`peek` = the historical engine (the blaster sees all three draws); "
-        "`blind` = the printed rule (choose two, then look).\n"
+        "`peek` = the historical engine (all three fronts are visible before the first choice); "
+        "`blind` = the printed procedure (each chosen card is revealed before the next choice).\n"
     )
     lines.append(
         "| engine | blaster win % | blaster margin [95% CI] | blasts/game | "
-        "dragons | lorry endings | points per blast haul | points otherwise |\n"
+        "dragons | legacy lorry outcomes | points per blast haul | points otherwise |\n"
         "|:--|--:|:--|--:|--:|--:|--:|--:|\n"
     )
     for label, variant in report["value"]["variants"].items():
@@ -612,7 +612,7 @@ def render(report: dict[str, Any]) -> str:
     field = report["field"]
     lines.append(
         "\nTrained agent against the same opponents, with and without blasting:\n\n"
-        "| field | win % | top % | top score tied % | margin [95% CI] | dragons | lorry endings | turns/game |\n"
+        "| field | win % | top % | top score tied % | margin [95% CI] | dragons | legacy lorry outcomes | turns/game |\n"
         "|:--|--:|--:|--:|:--|--:|--:|--:|\n"
     )
     for label in ("no_threats", "threats"):

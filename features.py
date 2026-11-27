@@ -56,8 +56,12 @@ OPPONENT_BASE = BACKSIDE_BLOCK + 9
 HAZARD_FEATURE = OPPONENT_BASE + MAX_TRACKED_OPPONENTS * N_OPPONENT_FEATURES
 PHASE_CLOCK_FEATURE = HAZARD_FEATURE + 1
 FORCED_SEATS_FEATURE = HAZARD_FEATURE + 2
-N_STATE_FEATURES = FORCED_SEATS_FEATURE + 1
-N_ACTION_FEATURES = 21
+BLAST_RISK_FEATURE = HAZARD_FEATURE + 3
+DECK_RISK_BASE = BLAST_RISK_FEATURE + 1
+DECK_COUNT_BASE = DECK_RISK_BASE + 3
+SUSPECTED_DRAGON_BASE = DECK_COUNT_BASE + 3
+N_STATE_FEATURES = SUSPECTED_DRAGON_BASE + 3
+N_ACTION_FEATURES = 34
 N_INPUT_FEATURES = N_STATE_FEATURES + N_ACTION_FEATURES
 
 
@@ -74,33 +78,135 @@ def join_action(primitive_action: int, announces_blast: bool) -> int:
 # ----------------------------------------------------------------------
 # Backside bookkeeping (public knowledge + the player's own cards)
 # ----------------------------------------------------------------------
-#: How much weight to give a *suspected* dragon -- a card a seat walked off in
-#: its own column.  0.0 (the default) ignores the inference and reproduces every
-#: earlier measurement bit for bit; 1.0 treats the departure as proof.
+#: Default weight on *suspected* dragons in legacy ``backside_stats(ctx)`` calls
+#: (kept at 0.0 so frozen historical checkpoints and baseline probes remain
+#: bit-identical; ``blast_dragon_risk``, ``preferred_blast_choice``, and the
+#: dedicated backside/tell features pass ``trust_suspected=1.0`` explicitly).
 TRUST_SUSPECTED_DRAGONS = 0.0
 
 
+def cell_suspicion_weights(ctx: PlayerActionContext) -> dict[tuple[int, int], float]:
+    """Per-cell dragon suspicion in ``[0, 1]`` for opponent-column board cards.
+
+    The owner of column ``c`` sees every front in column ``c``:
+    - Walking off ``(r, c)`` inside a planning phase (``vacated_cells``) is a
+      near-certain dragon tell (1.0).
+    - Hopping past a free own-column card ``(r, c)`` to gamble on an unoccupied
+      foreign card, or hopping past ``(r, c)`` across 3+ rounds, carries 0.85.
+    - Hopping past ``(r, c)`` in 2 rounds carries 0.65; in 1 round carries 0.35.
+    Only cells still present on ``ctx.public_rows`` carry suspicion: if another
+    seat later raided ``(r, c)`` and survived, the cell is ``None`` and its
+    backside is already counted in ``collected_backsides`` as safe.
+    """
+    vacated_cells = getattr(ctx, "vacated_cells", ())
+    vacated_backsides = getattr(ctx, "vacated_backsides", ())
+    if vacated_cells and not vacated_backsides:
+        # Caller cleared ``vacated_backsides`` via ``dataclasses.replace`` (e.g.
+        # ``probe_vacated_dragons.py`` counterfactual); strip rival tells cleanly.
+        return {}
+    hopped_cells = getattr(ctx, "hopped_cells", ())
+    if not vacated_cells and not hopped_cells:
+        return {}
+
+    vacated_set = {(int(r), int(c)) for r, c, _b in vacated_cells}
+    hop_rounds: dict[tuple[int, int], set[int]] = {}
+    hop_foreign: set[tuple[int, int]] = set()
+    for rnd, col, row, _back, to_foreign_free in hopped_cells:
+        key = (int(row), int(col))
+        hop_rounds.setdefault(key, set()).add(int(rnd))
+        if to_foreign_free:
+            hop_foreign.add(key)
+
+    weights: dict[tuple[int, int], float] = {}
+    for row_idx, row in enumerate(ctx.public_rows):
+        for col_idx, entry in enumerate(row):
+            if col_idx == ctx.player_index or entry is None or entry[0] is not None:
+                continue
+            key = (row_idx, col_idx)
+            if key in vacated_set:
+                weights[key] = 1.0
+            elif key in hop_foreign:
+                weights[key] = 0.85
+            elif key in hop_rounds:
+                k = len(hop_rounds[key])
+                weights[key] = 0.85 if k >= 3 else (0.65 if k == 2 else 0.35)
+    return weights
+
+
 def suspected_dragon_counts(ctx: PlayerActionContext) -> np.ndarray:
-    """Dragons a seat has *inferred* from public departures, per backside.
+    """Dragons a seat has *inferred* from public departures and hops, per backside.
 
     Each backside colour is a ten-card set with two dragons, so a dragon sitting
-    in anybody's column is a dragon that is not in the draw pile.  The owner of a
-    column can see its fronts; everybody else has to guess.  One public tell is
-    available: a seat that *walks off* a card in its own column had that card
-    turned towards it, so the step is evidence the card was a dragon -- the seat
-    would otherwise keep a gem it can see.  It is evidence, not proof (it may be
-    leaving for a card it prefers), which is why ``backside_stats`` applies a
-    weight rather than adding it to ``known_dragons``.
-
-    ``game_env`` records only voluntary card-to-card steps inside the seat's own
-    column: a displaced figure, or a departure for the cage or the lorry, is not
-    recorded.
+    in anybody's column is a dragon that is not in the draw pile.  Combines
+    board-cell suspicion from :func:`cell_suspicion_weights` with any legacy
+    ``vacated_backsides`` entries (for synthetic contexts without cell coords).
     """
     counts = np.zeros(3, dtype=np.float32)
-    for back in getattr(ctx, "vacated_backsides", ()):  # tolerate old contexts
-        if 0 <= int(back) < 3:
-            counts[int(back)] += 1.0
+    cell_weights = cell_suspicion_weights(ctx)
+    if cell_weights:
+        for (row_idx, col_idx), weight in cell_weights.items():
+            back = int(ctx.public_rows[row_idx][col_idx][1])
+            if 0 <= back < 3:
+                counts[back] += float(weight)
+
+    vacated_cells = getattr(ctx, "vacated_cells", ())
+    vacated_backsides = getattr(ctx, "vacated_backsides", ())
+    if vacated_backsides and not vacated_cells:
+        for back in vacated_backsides:
+            if 0 <= int(back) < 3:
+                counts[int(back)] += 1.0
     return np.minimum(counts, DRAGONS_PER_BACKSIDE)
+
+
+def _raw_backside_inventory(
+    ctx: PlayerActionContext,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Return ``(known_dragons, known_safe_haul, unknown_raw, board_unknown)`` per backside."""
+    known_dragons = np.zeros(3, dtype=np.float32)
+    own_col_safe = np.zeros(3, dtype=np.float32)
+    board_unknown = np.zeros(3, dtype=np.float32)
+
+    own_column = ctx.player_index
+    for row in ctx.public_rows:
+        for col_idx, entry in enumerate(row):
+            if entry is None:
+                continue
+            front, back = entry
+            if col_idx == own_column and front is not None:
+                if front == DRAGON:
+                    known_dragons[back] += 1.0
+                else:
+                    own_col_safe[back] += 1.0
+            else:
+                board_unknown[back] += 1.0
+
+    collected_and_used = np.zeros(3, dtype=np.float32)
+    for front, back in ctx.private_cards:
+        if front != DRAGON:
+            collected_and_used[back] += 1.0
+    for opponent in ctx.opponents:
+        for back in opponent.collected_backsides:
+            collected_and_used[back] += 1.0
+    for back in ctx.used_blast_backsides:
+        collected_and_used[back] += 1.0
+
+    retained = np.zeros(3, dtype=np.float32)
+    for back in getattr(ctx, "haul_retained_backsides", ()):
+        if 0 <= int(back) < 3:
+            retained[int(back)] += 1.0
+
+    haul_inventory = np.maximum(0.0, TOTAL_PER_BACKSIDE - retained)
+    max_safe_from_haul = np.maximum(
+        0.0, haul_inventory - DRAGONS_PER_BACKSIDE - own_col_safe
+    )
+    haul_collected_safe = np.clip(
+        collected_and_used - retained, 0.0, max_safe_from_haul
+    )
+    known_safe = own_col_safe + haul_collected_safe
+    unknown_raw = np.maximum(
+        0.0, haul_inventory - known_dragons - known_safe
+    )
+    return known_dragons, known_safe, unknown_raw, board_unknown
 
 
 def backside_stats(
@@ -109,62 +215,100 @@ def backside_stats(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Return ``(known_dragons, known_safe, unknown, dragon_risk)`` per backside.
 
-    A player knows a card is *not* a dragon when it is in their own collection,
-    in an opponent's collection (dragon draws end the haul, so collected cards
-    are never dragons), was used for a blast, or lies face up in their own
-    home column.  Dragons are only ever *known* from the own home column;
-    ``trust_suspected`` turns public departures into suspected ones, which also
-    come out of the per-colour unknown count because such a card is lying in the
-    mine rather than in the pile.
+    Combines face-up own-column cards, safe collected/blast-spent cards (excluding
+    Dynamite retained outside the current haul's conserved inventory), and
+    suspected opponent-column dragons from voluntary walk-offs and repeated
+    card-hopping. ``dragon_risk``
+    is the posterior dragon probability per non-suspected unknown card (including
+    every card of that colour in the draw pile).
     """
-    known_dragons = np.zeros(3, dtype=np.float32)
-    known_safe = np.zeros(3, dtype=np.float32)
-
-    own_column = ctx.player_index
-    for row in ctx.public_rows:
-        if own_column >= len(row):
-            continue
-        entry = row[own_column]
-        if entry is None:
-            continue
-        front, back = entry
-        if front is None:
-            continue
-        if front == DRAGON:
-            known_dragons[back] += 1
-        else:
-            known_safe[back] += 1
-
-    for front, back in ctx.private_cards:
-        if front != DRAGON:
-            known_safe[back] += 1
-
-    for opponent in ctx.opponents:
-        for back in opponent.collected_backsides:
-            known_safe[back] += 1
-
-    for back in ctx.used_blast_backsides:
-        known_safe[back] += 1
+    known_dragons, known_safe, unknown_raw, _board_unknown = _raw_backside_inventory(ctx)
 
     if trust_suspected is None:
-        # Read at call time so a probe can switch the inference on for a run
-        # instead of re-importing the module.
         trust_suspected = TRUST_SUSPECTED_DRAGONS
-    suspected = (
+    raw_suspected = (
         suspected_dragon_counts(ctx) * float(trust_suspected)
         if trust_suspected
         else np.zeros(3, dtype=np.float32)
     )
-    unknown = np.maximum(
-        0.0,
-        TOTAL_PER_BACKSIDE - known_dragons - known_safe - suspected,
+    max_suspected = np.minimum(
+        np.maximum(0.0, DRAGONS_PER_BACKSIDE - known_dragons),
+        unknown_raw,
     )
+    suspected = np.minimum(raw_suspected, max_suspected)
+    unknown = np.maximum(0.0, unknown_raw - suspected)
     remaining_dragons = np.maximum(
         0.0, DRAGONS_PER_BACKSIDE - known_dragons - suspected
     )
     with np.errstate(divide="ignore", invalid="ignore"):
-        risk = np.where(unknown > 0, remaining_dragons / np.maximum(unknown, 1), 0.0)
-    return known_dragons, known_safe, unknown, risk.astype(np.float32)
+        risk = np.where(unknown > 0, remaining_dragons / np.maximum(unknown, 1e-6), 0.0)
+    return known_dragons, known_safe, unknown, np.clip(risk, 0.0, 1.0).astype(np.float32)
+
+
+def deck_backside_counts(ctx: PlayerActionContext) -> np.ndarray:
+    """Exact count of cards of each backside colour remaining in the draw pile."""
+    _known_dragons, _known_safe, unknown_raw, board_unknown = _raw_backside_inventory(ctx)
+    return np.maximum(0.0, unknown_raw - board_unknown).astype(np.float32)
+
+
+def blast_dragon_risk(
+    ctx: PlayerActionContext,
+    trust_suspected: float = 1.0,
+) -> float:
+    """Probability ``[0, 1]`` that conducting a blast wakes a dragon.
+
+    A blast draws three cards without replacement from the draw pile, shows only
+    their backsides, and keeps two (via :func:`agents.preferred_blast_choice`,
+    which discards the highest-risk backside).  Uses exact draw-pile backside
+    counts (accounting for board backsides and collected/spent backsides) and
+    posterior per-backside dragon risk (incorporating own-column dragons and
+    opponent hopping/walk-off tells).
+    """
+    if ctx.cards_remaining_in_deck < 3:
+        return 0.0
+    _known_dragons, _known_safe, _unknown, risk = backside_stats(
+        ctx, trust_suspected=trust_suspected
+    )
+    deck_counts = deck_backside_counts(ctx)
+    total = float(deck_counts.sum())
+    if total < 3.0:
+        return 0.0
+
+    fail_prob = 0.0
+    for b0 in (0, 1, 2):
+        c0 = float(deck_counts[b0])
+        if c0 <= 0.0:
+            continue
+        for b1 in (0, 1, 2):
+            c1 = float(deck_counts[b1]) - (1.0 if b1 == b0 else 0.0)
+            if c1 <= 0.0:
+                continue
+            for b2 in (0, 1, 2):
+                c2 = (
+                    float(deck_counts[b2])
+                    - (1.0 if b2 == b0 else 0.0)
+                    - (1.0 if b2 == b1 else 0.0)
+                )
+                if c2 <= 0.0:
+                    continue
+                p_draw = (c0 / total) * (c1 / (total - 1.0)) * (c2 / (total - 2.0))
+                kept = sorted((b0, b1, b2), key=lambda b: (float(risk[b]), b))[:2]
+                k0, k1 = kept[0], kept[1]
+                if k0 != k1:
+                    p_safe = (1.0 - float(risk[k0])) * (1.0 - float(risk[k1]))
+                else:
+                    nb = float(deck_counts[k0])
+                    r = float(risk[k0])
+                    db = r * nb
+                    p_first = 1.0 - r
+                    p_second = (
+                        np.clip((nb - 1.0 - db) / (nb - 1.0), 0.0, 1.0)
+                        if nb > 1.0
+                        else 0.0
+                    )
+                    p_safe = p_first * float(p_second)
+                fail_prob += p_draw * (1.0 - p_safe)
+    return float(np.clip(fail_prob, 0.0, 1.0))
 
 
 def cell_dragon_risk(
@@ -174,7 +318,8 @@ def cell_dragon_risk(
 
     ``None`` means there is no card there at all (an empty slot, or a figure
     standing in front of the mine).  A face-up card is certain either way; a
-    face-down card is priced by the backside left in the deck.
+    face-down card combines its backside's draw-pile risk with any cell-specific
+    departures or hop-overs on ``(row, column)``.
     """
     if column is None or not 0 <= int(row) < len(ctx.public_rows):
         return None
@@ -186,8 +331,20 @@ def cell_dragon_risk(
     front, back = entry
     if front is not None:
         return 1.0 if int(front) == DRAGON else 0.0
-    _known_dragons, _known_safe, _unknown, risk = backside_stats(ctx)
-    return float(risk[int(back)])
+    known_dragons, _known_safe, _unknown, risk = backside_stats(ctx)
+    base_risk = float(risk[int(back)])
+    if not TRUST_SUSPECTED_DRAGONS:
+        return base_risk
+    rem_dragons = max(0.0, float(DRAGONS_PER_BACKSIDE - known_dragons[int(back)]))
+    if rem_dragons <= 0.0:
+        return 0.0
+    susp = cell_suspicion_weights(ctx).get((int(row), int(column)), 0.0) * float(
+        TRUST_SUSPECTED_DRAGONS
+    )
+    if susp <= 0.0:
+        return base_risk
+    susp = min(susp, rem_dragons)
+    return float(np.clip(susp + (1.0 - susp) * base_risk, 0.0, 0.98))
 
 
 def _figure_cell(
@@ -222,6 +379,13 @@ def figure_dragon_risk(ctx: PlayerActionContext, player_index: int) -> float:
     see, and in 200 re-rolls from that position the haul ended on a dragon 1% of
     the time.
     """
+    if player_index == ctx.player_index:
+        if getattr(ctx, "own_displaced", False):
+            return 0.0
+    else:
+        for opponent in ctx.opponents:
+            if opponent.player_index == player_index and getattr(opponent, "displaced", False):
+                return 0.0
     row, column = _figure_cell(ctx, player_index)
     if not 0 <= row < PIT_CAGE:
         return 0.0
@@ -232,25 +396,27 @@ def figure_dragon_risk(ctx: PlayerActionContext, player_index: int) -> float:
 
 
 def round_dragon_hazard(ctx: PlayerActionContext) -> float:
-    """How likely a dragon is woken this round, from this seat's knowledge.
+    """Snapshot dragon exposure from the figures' current positions.
 
     This is the only thing a pit cage insures against: a dragon ends the haul and
     everybody still in the mine scores for a dead figure, loot and haul bonus
-    gone with it.  A figure in front of the mine, in a cage or on a lorry is
-    standing on nothing and carries no risk.  A figure standing on a card
+    gone with it. A figure in front of the mine, in a cage or on a lorry is
+    standing on nothing and carries no risk. A figure standing on a card
     *nobody at the table can see* carries the risk of that card -- and that is
     the only way a dragon is woken in this game, because a seat can see its own
     column and will step away from a dragon rather than turn it (see
-    ``figure_dragon_risk``).  A charged blast can wake one whatever the board
+    ``figure_dragon_risk``). A charged blast can wake one whatever the board
     says, so it reads as certain danger.
 
-    It is deliberately a *lower* bound on the truth: a rival is free to walk
-    onto a card mid-round, so a table where nobody currently stands on a
-    dragon-capable card is more dangerous than zero.  What it does capture is
-    the case the seat can read: is anybody -- including itself -- about to turn
-    a card that can be a dragon?
+    This is a snapshot, not the probability that the round will actually end on
+    a dragon. It assumes each counted figure stays on its current cell until the
+    cards are revealed. Planning is still open: a later move can take a figure
+    off a risky card, or put one onto a new risky card. The estimate can
+    therefore move up or down before reveal; it is neither a strict lower nor an
+    upper bound on the eventual hazard. It remains useful as a state feature and
+    as a coarse trigger for the cage rule.
     """
-    if ctx.own_blast_pending or any(o.blast_pending for o in ctx.opponents):
+    if any(o.blast_pending for o in ctx.opponents):
         return 1.0
     seats = [ctx.player_index]
     seats.extend(
@@ -259,6 +425,8 @@ def round_dragon_hazard(ctx: PlayerActionContext) -> float:
     survive = 1.0
     for index in seats:
         survive *= 1.0 - figure_dragon_risk(ctx, index)
+    if ctx.own_blast_pending:
+        survive *= 1.0 - blast_dragon_risk(ctx)
     return float(1.0 - survive)
 
 
@@ -309,13 +477,25 @@ def state_features(ctx: PlayerActionContext) -> np.ndarray:
     best_other_score = max(opponent_scores) if opponent_scores else ctx.own_score
 
     own_row = ctx.own_position if 0 <= ctx.own_position < PIT_CAGE else -1
-    on_own_column = ctx.own_column is not None and ctx.own_column == ctx.player_index
+    on_own_column = (
+        not getattr(ctx, "own_displaced", False)
+        and ctx.own_column is not None
+        and ctx.own_column == ctx.player_index
+    )
     cage_index = ctx.own_cage_index if ctx.own_cage_index is not None else -1
 
     visible_gems, visible_dynamite, visible_dragons, visible_unknown = (
         _visible_home_counts(ctx)
     )
     known_dragons, _known_safe, unknown, risk = backside_stats(ctx)
+    _smart_kd, _smart_ks, _smart_unk, smart_risk = backside_stats(
+        ctx, trust_suspected=1.0
+    )
+    deck_counts = deck_backside_counts(ctx)
+    suspected = np.minimum(
+        suspected_dragon_counts(ctx),
+        np.maximum(0.0, DRAGONS_PER_BACKSIDE - known_dragons),
+    )
 
     values = np.zeros(N_STATE_FEATURES, dtype=np.float32)
 
@@ -373,7 +553,8 @@ def state_features(ctx: PlayerActionContext) -> np.ndarray:
         values[base + 7] = opponent.card_count / 8.0
         values[base + 8] = float(opponent.blast_pending)
         values[base + 9] = float(
-            opponent.column is not None
+            not getattr(opponent, "displaced", False)
+            and opponent.column is not None
             and opponent.column == opponent.player_index
         )
         values[base + 10] = float(opponent.player_index in displaced)
@@ -409,6 +590,12 @@ def state_features(ctx: PlayerActionContext) -> np.ndarray:
             continue
         forced += 1
     values[FORCED_SEATS_FEATURE] = forced / n_players
+    values[BLAST_RISK_FEATURE] = blast_dragon_risk(ctx)
+    values[DECK_RISK_BASE : DECK_RISK_BASE + 3] = smart_risk
+    values[DECK_COUNT_BASE : DECK_COUNT_BASE + 3] = deck_counts / TOTAL_PER_BACKSIDE
+    values[SUSPECTED_DRAGON_BASE : SUSPECTED_DRAGON_BASE + 3] = (
+        suspected / DRAGONS_PER_BACKSIDE
+    )
 
     return values
 
@@ -416,15 +603,111 @@ def state_features(ctx: PlayerActionContext) -> np.ndarray:
 # ----------------------------------------------------------------------
 # Action features
 # ----------------------------------------------------------------------
+def _opponent_movement_depth(opp: object) -> int:
+    pos = int(opp.position)
+    if pos == PIT_CAGE:
+        return int(opp.cage_index) if opp.cage_index is not None else 0
+    if pos == LORRY:
+        return 0
+    return pos
+
+
+def _active_rivals_able_to_reach(ctx: PlayerActionContext, row: int) -> int:
+    """Count living rivals who can reach ``row`` before this card resolves.
+
+    ``planned`` means a move has been announced, not that the figure is locked
+    for the phase. Any non-pass action resets the pass clock, so each active
+    rival gets another decision before the selected card is revealed. A rival
+    can therefore still push a card even if it has already planned once.
+    """
+    return sum(
+        1
+        for opponent in ctx.opponents
+        if not opponent.escaped
+        and not opponent.dead
+        and _opponent_movement_depth(opponent) > int(row)
+    )
+
+
+def _contestable_home_row0_safe_card(ctx: PlayerActionContext) -> bool:
+    """Whether a visible, non-dragon home card at row 0 can still be raided.
+
+    The row-0 Gem and dynamite are both vulnerable: if a deeper active rival
+    takes this card later in the same phase, its owner is displaced at the last
+    card row and has no card move left. A visible Dragon is different; it can be
+    used as bait, so the guard leaves that policy choice alone.
+    """
+    if not ctx.public_rows or len(ctx.public_rows[0]) <= ctx.player_index:
+        return False
+    entry = ctx.public_rows[0][ctx.player_index]
+    return bool(
+        entry is not None
+        and entry[0] in (GEM, DYNAMITE)
+        and _active_rivals_able_to_reach(ctx, 0) > 0
+    )
+
+
 def action_features(
     ctx: PlayerActionContext,
     action: int,
     risk: np.ndarray | None = None,
+    blast_risk: float | None = None,
+    known_dragons: np.ndarray | None = None,
+    cell_weights: dict[tuple[int, int], float] | None = None,
+    smart_risk: np.ndarray | None = None,
+    opp_by_col: dict[int, object] | None = None,
+    max_score: int | None = None,
+    own_dynamite: int | None = None,
+    table_pushes: int | None = None,
+    min_own_gem_row: int | None = -1,
+    opp_depths: tuple[tuple[int, int, bool, bool], ...] | None = None,
 ) -> np.ndarray:
     primitive, announces_blast = split_action(action)
     values = np.zeros(N_ACTION_FEATURES, dtype=np.float32)
-    if risk is None:
-        _known_dragons, _known_safe, _unknown, risk = backside_stats(ctx)
+    if risk is None or known_dragons is None:
+        known_dragons, _known_safe, _unknown, risk = backside_stats(ctx)
+    if blast_risk is None:
+        blast_risk = blast_dragon_risk(ctx) if announces_blast else 0.0
+    if primitive < PIT_CAGE:
+        if cell_weights is None:
+            cell_weights = cell_suspicion_weights(ctx)
+        if smart_risk is None:
+            _, _, _, smart_risk = backside_stats(ctx, trust_suspected=1.0)
+        if opp_by_col is None:
+            opp_by_col = {o.player_index: o for o in ctx.opponents}
+        if max_score is None:
+            max_score = max([ctx.own_score] + [o.score for o in ctx.opponents])
+        if own_dynamite is None:
+            own_dynamite = sum(1 for f, _ in ctx.private_cards if f == DYNAMITE)
+        if table_pushes is None:
+            table_pushes = sum(o.displacements for o in ctx.opponents)
+        if min_own_gem_row == -1:
+            gem_rows = [
+                int(a) // MAX_COLUMNS
+                for a in ctx.legal_actions
+                if 0 <= int(a) < PIT_CAGE
+                and int(a) % MAX_COLUMNS == ctx.player_index
+                and int(a) // MAX_COLUMNS < len(ctx.public_rows)
+                and ctx.public_rows[int(a) // MAX_COLUMNS][ctx.player_index] is not None
+                and ctx.public_rows[int(a) // MAX_COLUMNS][ctx.player_index][0] == GEM
+            ]
+            min_own_gem_row = min(gem_rows) if gem_rows else None
+        if opp_depths is None:
+            opp_depths = tuple(
+                (
+                    o.player_index,
+                    _opponent_movement_depth(o),
+                    bool(o.planned and not getattr(o, "displaced", False)),
+                    bool(
+                        o.planned
+                        and not getattr(o, "displaced", False)
+                        and o.column == o.player_index
+                        and 0 <= o.position < PIT_CAGE
+                    ),
+                )
+                for o in ctx.opponents
+                if not o.escaped and not o.dead
+            )
 
     n_players = max(1, ctx.n_players)
     depth = _own_depth(ctx)
@@ -445,25 +728,160 @@ def action_features(
         if entry is not None:
             front, back = entry
             values[8 + int(back)] = 1.0
+            susp = 0.0
             if front is None:
                 values[15] = 1.0
                 card_risk = float(risk[int(back)])
+                rem_dragons = max(
+                    0.0, float(DRAGONS_PER_BACKSIDE - known_dragons[int(back)])
+                )
+                susp = (
+                    (cell_weights or {}).get((int(row), int(column)), 0.0)
+                    if rem_dragons > 0.0
+                    else 0.0
+                )
+                values[21] = float(min(susp, rem_dragons))
             else:
                 # 12 = gem, 13 = dragon, 14 = dynamite, 15 = unknown front
                 values[12 + _FRONT_SLOT[int(front)]] = 1.0
-                # A visible front is not an estimate: it is the answer. Reporting
-                # it through the same risk/safety channels as a backside is what
-                # keeps a visible dragon from looking as safe as a visible gem.
+                # A visible dragon front is certain; a visible gem/dynamite is safe.
                 card_risk = 1.0 if int(front) == DRAGON else 0.0
             values[16] = card_risk
             values[17] = 1.0 - card_risk
 
             occupant = _occupant(ctx, row, column)
+            raiding_owner = False
             if occupant is not None:
                 values[18] = 1.0
-                values[19] = float(
-                    occupant != ctx.player_index and occupant == column
-                )
+                raiding_owner = occupant != ctx.player_index and occupant == column
+                values[19] = float(raiding_owner)
+
+            if column != own_column and not announces_blast:
+                owner = (opp_by_col or {}).get(int(column))
+                if owner is not None:
+                    values[24] = float(
+                        not owner.escaped
+                        and not owner.dead
+                        and owner.position != PIT_CAGE
+                    )
+                    values[25] = owner.card_count / 8.0
+                    values[26] = float(raiding_owner)
+                    if raiding_owner:
+                        values[27] = float(row == 0)
+                        values[28] = float(
+                            owner.score == max_score and ctx.own_score < max_score
+                        )
+                        if not ctx.own_planned and float(values[21]) < 0.5:
+                            unsettled_above = sum(
+                                1
+                                for o_idx, o_depth, is_settled, _on_own in (
+                                    opp_depths or ()
+                                )
+                                if o_idx != column and not is_settled and o_depth > row
+                            )
+                            settled_targets = sum(
+                                1
+                                for _idx, o_depth, _set, on_own in (opp_depths or ())
+                                if on_own and o_depth >= row
+                            )
+                            start_p = int(getattr(ctx, "starting_player", 0))
+                            turn_ord = (column - start_p) % n_players
+                            early_bonus = 0.20 * (
+                                1.0 - turn_ord / max(1, n_players - 1)
+                            )
+                            has_para_or_nogem = (
+                                min_own_gem_row is None or row > min_own_gem_row
+                            )
+                            if unsettled_above == 0:
+                                urgency = 1.0
+                            elif settled_targets > unsettled_above:
+                                urgency = (
+                                    settled_targets - unsettled_above
+                                ) / settled_targets
+                            elif has_para_or_nogem:
+                                urgency = 0.30
+                            else:
+                                urgency = 0.0
+                            if urgency > 0.0:
+                                values[32] = float(min(1.2, urgency + early_bonus))
+                            if min_own_gem_row is not None and row > min_own_gem_row:
+                                values[33] = 1.0
+                            elif min_own_gem_row is None:
+                                values[33] = 0.85 if own_dynamite == 0 else 0.35
+                if front is None and smart_risk is not None:
+                    values[29] = float(
+                        max(
+                            0.0,
+                            (1.0 - float(smart_risk[int(back)]))
+                            * (1.0 - float(values[21])),
+                        )
+                    )
+            elif front is not None:
+                if int(front) == DYNAMITE and own_dynamite == 1:
+                    values[30] = 1.0
+                elif (
+                    int(front) == DRAGON
+                    and row >= 1
+                    and table_pushes
+                    and rival_can_push(ctx, primitive)
+                ):
+                    values[31] = min(float(table_pushes), 3.0) / 3.0
+                if column == own_column and int(front) == GEM:
+                    # A visible gem is certain, but not guaranteed to remain
+                    # ours: an unsettled rival can still raid this exact row.
+                    # The existing action channel 33 already carries a
+                    # learned penalty for exposed row-0 gems; extend it to every
+                    # reachable own-column gem and size it by the number of
+                    # unsettled rivals that can get there.
+                    reachable_pushers = sum(
+                        1
+                        for _idx, o_depth, is_settled, _on_own in (opp_depths or ())
+                        if not is_settled and o_depth > row
+                    )
+                    if reachable_pushers:
+                        values[33] = min(
+                            float(values[33]),
+                            -1.04 * min(1.0, reachable_pushers / 2.0),
+                        )
+                if row == 0 and occupant is None:
+                    unsettled_r0 = sum(
+                        1
+                        for _idx, o_depth, is_settled, _on_own in (opp_depths or ())
+                        if not is_settled and o_depth > 0
+                    )
+                    foreign_climbers_r0 = sum(
+                        1
+                        for _idx, o_depth, is_settled, on_own in (opp_depths or ())
+                        if is_settled and not on_own and 1 <= o_depth < PIT_CAGE
+                    )
+                    has_deeper_card = any(
+                        0 <= int(a) < PIT_CAGE and int(a) // MAX_COLUMNS >= 1
+                        for a in ctx.legal_actions
+                    )
+                    has_alt_r0 = any(
+                        0 <= int(a) < PIT_CAGE
+                        and int(a) // MAX_COLUMNS == 0
+                        and int(a) % MAX_COLUMNS != own_column
+                        and _occupant(ctx, 0, int(a) % MAX_COLUMNS) is None
+                        for a in ctx.legal_actions
+                    )
+                    if int(front) == DRAGON and (has_deeper_card or has_alt_r0):
+                        values[33] = -1.04
+                    elif int(front) == DYNAMITE and own_dynamite == 0:
+                        if (
+                            not ctx.own_planned
+                            and (has_deeper_card or has_alt_r0)
+                            and (unsettled_r0 + foreign_climbers_r0) >= 1
+                        ):
+                            values[33] = -1.04
+                        elif (
+                            ctx.own_planned
+                            and has_alt_r0
+                            and (unsettled_r0 + foreign_climbers_r0) >= 1
+                        ):
+                            values[33] = -1.04 * (
+                                0.70 if unsettled_r0 >= 1 else 0.35
+                            )
     elif primitive == PIT_CAGE:
         values[1] = 1.0
     elif primitive == LORRY:
@@ -472,14 +890,21 @@ def action_features(
         values[3] = 1.0
 
     values[20] = float(announces_blast)
+    if announces_blast:
+        values[22] = float(blast_risk)
+        values[23] = 1.0 - float(blast_risk)
     return values
 
 
 def _occupant(ctx: PlayerActionContext, row: int, column: int) -> int | None:
-    if ctx.own_position == row and ctx.own_column == column:
+    if (
+        not getattr(ctx, "own_displaced", False)
+        and ctx.own_position == row
+        and ctx.own_column == column
+    ):
         return ctx.player_index
     for opponent in ctx.opponents:
-        if opponent.escaped or opponent.dead:
+        if opponent.escaped or opponent.dead or getattr(opponent, "displaced", False):
             continue
         if opponent.position == row and opponent.column == column:
             return opponent.player_index
@@ -495,11 +920,57 @@ def state_action_matrix(
     """Return an ``(N_ACTIONS, N_INPUT_FEATURES)`` policy input matrix."""
     if state is None:
         state = state_features(ctx)
-    _known_dragons, _known_safe, _unknown, risk = backside_stats(ctx)
+    known_dragons, _known_safe, _unknown, risk = backside_stats(ctx)
+    blast_risk = float(state[BLAST_RISK_FEATURE])
+    smart_risk = state[DECK_RISK_BASE : DECK_RISK_BASE + 3]
+    cell_weights = cell_suspicion_weights(ctx)
+    opp_by_col = {o.player_index: o for o in ctx.opponents}
+    max_score = max([ctx.own_score] + [o.score for o in ctx.opponents])
+    own_dynamite = sum(1 for f, _ in ctx.private_cards if f == DYNAMITE)
+    table_pushes = sum(o.displacements for o in ctx.opponents)
+    gem_rows = [
+        int(a) // MAX_COLUMNS
+        for a in ctx.legal_actions
+        if 0 <= int(a) < PIT_CAGE
+        and int(a) % MAX_COLUMNS == ctx.player_index
+        and int(a) // MAX_COLUMNS < len(ctx.public_rows)
+        and ctx.public_rows[int(a) // MAX_COLUMNS][ctx.player_index] is not None
+        and ctx.public_rows[int(a) // MAX_COLUMNS][ctx.player_index][0] == GEM
+    ]
+    min_own_gem_row = min(gem_rows) if gem_rows else None
+    opp_depths = tuple(
+        (
+            o.player_index,
+            _opponent_movement_depth(o),
+            bool(o.planned and not getattr(o, "displaced", False)),
+            bool(
+                o.planned
+                and not getattr(o, "displaced", False)
+                and o.column == o.player_index
+                and 0 <= o.position < PIT_CAGE
+            ),
+        )
+        for o in ctx.opponents
+        if not o.escaped and not o.dead
+    )
     matrix = np.empty((N_ACTIONS, N_INPUT_FEATURES), dtype=np.float32)
     matrix[:, :N_STATE_FEATURES] = state
     for action in range(N_ACTIONS):
-        matrix[action, N_STATE_FEATURES:] = action_features(ctx, action, risk=risk)
+        matrix[action, N_STATE_FEATURES:] = action_features(
+            ctx,
+            action,
+            risk=risk,
+            blast_risk=blast_risk,
+            known_dragons=known_dragons,
+            cell_weights=cell_weights,
+            smart_risk=smart_risk,
+            opp_by_col=opp_by_col,
+            max_score=max_score,
+            own_dynamite=own_dynamite,
+            table_pushes=table_pushes,
+            min_own_gem_row=min_own_gem_row,
+            opp_depths=opp_depths,
+        )
     return matrix
 
 
@@ -550,6 +1021,24 @@ def has_dragon_free_move(ctx: PlayerActionContext) -> bool:
     )
 
 
+def _forced_rival_move_remains(ctx: PlayerActionContext) -> bool:
+    """Whether an active rival still owes a non-Pass planning action.
+
+    An unplanned seat cannot Pass yet, and a displaced seat cannot Pass even if
+    it has already planned. Either state forces a non-Pass action, which resets
+    the pass clock and guarantees the current actor another turn.
+    """
+    return any(
+        not opponent.escaped
+        and not opponent.dead
+        and (
+            not opponent.planned
+            or getattr(opponent, "displaced", False)
+        )
+        for opponent in ctx.opponents
+    )
+
+
 def can_wait_on_a_dragon(ctx: PlayerActionContext) -> bool:
     """True when standing on a dragon the seat can see is a move it can take back.
 
@@ -557,18 +1046,18 @@ def can_wait_on_a_dragon(ctx: PlayerActionContext) -> bool:
     (``MineEnv._execute_round``), so a visible dragon is not a trap in itself —
     it is a square the seat can stand on and step off at its next decision. The
     question is whether a next decision is guaranteed, and the engine answers it
-    exactly. A round resolves when ``n - 1`` consecutive passes accumulate, and a
-    pass is legal only *after* the seat has planned in that round
-    (``MineEnv._pass_threshold``, ``MineEnv._legal``). So if any seat that acts
-    after this one has not yet planned, it cannot pass, the streak cannot
-    complete, and this seat's next decision arrives. If every seat behind it has
-    planned, the other ``n - 1`` can pass in a row and the round ends with the
-    figure still on the dragon — this seat never gets to step off.
+    exactly. A round resolves when ``n - 1`` consecutive passes accumulate.
+    Any active rival that has not planned, or is displaced, cannot pass; its
+    forced non-Pass action resets the clock and guarantees this seat another
+    decision, even if this seat has already planned once. Otherwise, an
+    already-planned seat cannot count on another turn: the other ``n - 1`` can
+    pass in a row and the round ends with the figure still on the dragon.
 
-    That gives one exact condition: **this is the seat's first decision of the
-    round and it is not the last seat in the round's order.** On a first decision
-    everything behind it is still unplanned, so any position but last is safe; on
-    any later decision every seat has planned, so nothing is.
+    On a first decision with no rival owing a move, the starting order still
+    matters: if this seat is the last active seat, the others may pass before it
+    ever gets another decision. If it is not last, there is an unplanned rival
+    later in the order and that rival is already covered by the forced-move
+    check above.
 
     Worth being precise about, because the sketch version of this ("somebody else
     still has to move, so I always get another turn") is wrong: three consecutive
@@ -576,8 +1065,12 @@ def can_wait_on_a_dragon(ctx: PlayerActionContext) -> bool:
     (order P4, P1, P2, P3): P4, P1 and P2 plan, then pass in a row, and P3 —
     last in the order — never gets a second decision at all.
     """
+    if _forced_rival_move_remains(ctx):
+        return True
     if int(PASS) in {int(action) for action in ctx.legal_actions}:
-        return False  # already planned this round: nothing behind us is forced to move
+        return False  # already planned; no rival is forced to reset the clock
+    if getattr(ctx, "own_displaced", False):
+        return False
     active = {ctx.player_index}
     active |= {
         opponent.player_index
@@ -608,9 +1101,10 @@ BAIT_IS_ALLOWED = True
 def doomed_dragon_digs(ctx: PlayerActionContext) -> set[int]:
     """Refuse known-dragon digs unless another decision is guaranteed.
 
-    A reachable rival is not a rescue: it can pass instead of pushing, closing
-    the phase before the dragon sitter acts again (seed 7, haul 1). Bait is only
-    permitted while the sitter can still take its own shelter decision.
+    A merely reachable rival is not a rescue if it has already planned: it can
+    pass instead of pushing and close the phase before the dragon sitter acts
+    again (seed 7, haul 1). An unplanned or displaced rival is different: it must
+    make a non-Pass move, which gives the sitter another decision before reveal.
     """
     if BAIT_IS_ALLOWED and can_wait_on_a_dragon(ctx):
         return set()
@@ -669,6 +1163,8 @@ def walks_past_a_free_card(ctx: PlayerActionContext) -> set[int]:
 
 def own_card_is_known_dragon(ctx: PlayerActionContext) -> bool:
     """True when the figure stands on a card the seat can see is a dragon."""
+    if getattr(ctx, "own_displaced", False):
+        return False
     row = ctx.own_position
     if not 0 <= row < len(ctx.public_rows):
         return False
@@ -677,6 +1173,75 @@ def own_card_is_known_dragon(ctx: PlayerActionContext) -> bool:
         return False
     entry = ctx.public_rows[row][column]
     return entry is not None and entry[0] is not None and int(entry[0]) == DRAGON
+
+
+def own_card_is_signalled_dragon(ctx: PlayerActionContext) -> bool:
+    """True when standing on a foreign card whose column owner signalled dragon.
+
+    The owner of column ``c`` sees every front in column ``c``:
+    - If ``(row, c)`` was previously walked off voluntarily (``vacated_cells``),
+      or
+    - If owner ``c`` bolted into ``PIT_CAGE`` in this round (``not escaped`` and
+      ``position == PIT_CAGE``) with no blast pending and external hazard from
+      other columns below ``CAGE_ANSWERS_A_HAZARD``,
+    then ``(row, c)`` is a signalled dragon that the seat must step off rather
+    than pass on.
+    """
+    if getattr(ctx, "own_displaced", False):
+        return False
+    row = ctx.own_position
+    column = ctx.own_column
+    if column is None or column == ctx.player_index or not (0 <= row < len(ctx.public_rows)):
+        return False
+    if column >= len(ctx.public_rows[row]) or ctx.public_rows[row][column] is None:
+        return False
+    if ctx.own_blast_pending or any(o.blast_pending for o in ctx.opponents):
+        return False
+    for vr, vc, _vb in getattr(ctx, "vacated_cells", ()):
+        if int(vr) == int(row) and int(vc) == int(column):
+            return True
+    owner = next((o for o in ctx.opponents if o.player_index == column), None)
+    if (
+        owner is not None
+        and not owner.escaped
+        and not owner.dead
+        and owner.position == PIT_CAGE
+    ):
+        survive = 1.0
+        for other in ctx.opponents:
+            if other.escaped or other.dead or other.player_index == column:
+                continue
+            survive *= 1.0 - figure_dragon_risk(ctx, other.player_index)
+        if (1.0 - survive) < CAGE_ANSWERS_A_HAZARD:
+            return True
+    return False
+
+
+def holds_a_signalled_dragon(ctx: PlayerActionContext) -> set[int]:
+    """Refuse ``PASS`` when standing on a foreign dragon signalled by its owner."""
+    if int(PASS) in {int(a) for a in ctx.legal_actions} and own_card_is_signalled_dragon(ctx):
+        return {int(PASS)}
+    return set()
+
+
+def holds_a_known_dragon(ctx: PlayerActionContext) -> set[int]:
+    """Refuse to pass on a visible Dragon when no forced rival move remains.
+
+    A known-Dragon dig can be bait on an early decision: a later seat may push
+    the sitter into the cage, or a forced move may keep the phase open so the
+    sitter can step away. But once every active rival has planned, passing is
+    allowed to close the phase on the Dragon immediately. In that case the seat
+    must take a non-pass shelter action now. A displaced/unplanned rival cannot
+    pass on its upcoming turn, so it will reset the pass clock and give this
+    seat another decision first.
+    """
+    if (
+        int(PASS) not in {int(action) for action in ctx.legal_actions}
+        or not own_card_is_known_dragon(ctx)
+    ):
+        return set()
+    forced_rival_remains = _forced_rival_move_remains(ctx)
+    return set() if forced_rival_remains else {int(PASS)}
 
 
 def known_safe_card_available(ctx: PlayerActionContext) -> bool:
@@ -711,25 +1276,28 @@ def lorry_skips_a_card_worth_taking(ctx: PlayerActionContext) -> bool:
     dragon you can see. Everywhere else it trades a card (eight cards in ten are
     a gem or a dynamite) for nothing.
 
-    It is also a coordination trap, and the reason this rule exists: each seat
-    dodges for itself, so at a table that samples its moves all four can end up
-    parked in the same planning phase, and then the haul is over with nobody
-    having collected anything (+1 point apiece, if that). With the shipped
-    checkpoint in all four seats, 93 of 200 sampled games lost the first haul
-    that way (seed 7 among them); under the argmax, which picks the lorry less
-    often, none did. See BALANCE.md, "Four nets parked on their lorries".
+    Under the former automatic all-lorry ending, sampled checkpoint games could
+    park every seat in the same planning phase and immediately end the haul.
+    That stand-off frequency is a historical measurement, not a result for the
+    current engine. Today a lorry-only round resolves normally, without special
+    scoring. New rows are dealt only while nobody has escaped; otherwise the
+    existing mine and ordinary haul-ending rules govern what happens next.
 
-    A figure standing in a pit cage is decided elsewhere, in ``action_mask``,
-    because there the pair lorry/pass has to be read together: the cage leaves
-    the mine by itself when the cards are turned, so a pass *is* the departure
-    and the lorry is the only move that keeps the haul alive. This rule on its
-    own masked the lorry there and left nothing but that pass -- seed 7 of the
-    viewer, haul 1, P3 displaced into cage index 0, hazard 0.00, one legal move
-    left.
+    Cage states are handled separately in ``action_mask`` because the lorry/pass
+    choice depends on engine legality. A cage move is provisional during planning:
+    the player may revise it, and leaves only if still in the cage at execution.
+    This helper does not add an action absent from the context's legal-action
+    list; it describes only an AI policy preference for the lorry.
     """
     if ctx.own_position == LORRY:
         return False  # parked already; the move is not legal from here anyway
-    return not own_card_is_known_dragon(ctx)
+    if getattr(ctx, "own_displaced", False) and not any(
+        0 <= int(a) < PIT_CAGE for a in ctx.legal_actions
+    ):
+        # Displaced on row 0: no card is reachable and Pass is illegal, so the
+        # only choice is leaving via pit cage vs staying in the haul on the lorry.
+        return not cage_banks_nothing(ctx)
+    return not (own_card_is_known_dragon(ctx) or own_card_is_signalled_dragon(ctx))
 
 
 # The hazard a cage actually answers.  It cannot be the ordinary risk of the
@@ -744,7 +1312,12 @@ def rival_is_on_my_dragon(ctx: PlayerActionContext) -> bool:
     """True when a rival stands on a card in this seat's column that it can see is
     a dragon: the seat knows the round is about to end with a dragon."""
     for opponent in ctx.opponents:
-        if opponent.dead or opponent.escaped or opponent.position == PIT_CAGE:
+        if (
+            opponent.dead
+            or opponent.escaped
+            or getattr(opponent, "displaced", False)
+            or opponent.position == PIT_CAGE
+        ):
             continue
         if opponent.column != ctx.player_index:
             continue
@@ -756,6 +1329,32 @@ def rival_is_on_my_dragon(ctx: PlayerActionContext) -> bool:
     return False
 
 
+def _external_round_hazard(ctx: PlayerActionContext) -> float:
+    """Dragon blow-up risk from rivals and rival blasts if this seat steps to safety."""
+    if any(o.blast_pending for o in ctx.opponents) or rival_is_on_my_dragon(ctx):
+        return 1.0
+    survive = 1.0
+    for opponent in ctx.opponents:
+        if opponent.escaped or opponent.dead:
+            continue
+        survive *= 1.0 - figure_dragon_risk(ctx, opponent.player_index)
+    return float(1.0 - survive)
+
+
+def _own_card_is_known_safe(ctx: PlayerActionContext) -> bool:
+    """True when standing on a card in own column whose front is known not to be a dragon."""
+    if getattr(ctx, "own_displaced", False):
+        return False
+    row = ctx.own_position
+    if not 0 <= row < len(ctx.public_rows):
+        return False
+    column = ctx.own_column if ctx.own_column is not None else ctx.player_index
+    if column != ctx.player_index or column >= len(ctx.public_rows[row]):
+        return False
+    entry = ctx.public_rows[row][column]
+    return entry is not None and entry[0] is not None and int(entry[0]) != DRAGON
+
+
 def cage_banks_nothing(ctx: PlayerActionContext) -> bool:
     """True when leaving through a pit cage would collect nothing and answer nothing.
 
@@ -765,55 +1364,74 @@ def cage_banks_nothing(ctx: PlayerActionContext) -> bool:
     escape from. Loot means a gem in hand (dynamite is not scored and survives an
     escape either way). Something to escape from means a blast that is charged --
     it can end the haul whatever the board says -- a dragon the seat can see is
-    about to be turned (the card under its own figure, or a card in its column
-    with a rival standing on it), or a board that is genuinely going up in flames
-    (``round_dragon_hazard`` above ``CAGE_ANSWERS_A_HAZARD``, which a charged
-    blast reads as 1.00).
+    about to be turned (the card under its own figure when no safe card or lorry
+    can refuse it, or a card in its column with a rival standing on it), or high
+    residual raider exposure. The raw ``round_dragon_hazard`` includes this
+    seat's current face-down card. If that card has nonzero estimated risk and a
+    known-safe own-column card is legal, the seat can step off it; the cage
+    trigger then uses the external hazard instead, while still counting every
+    risky rival card. A charged blast reads as 1.00. This threshold is a policy
+    trigger, not a prediction that no later move can avert the dragon.
 
-    What is *not* a reason, and used to be one: the ordinary risk of a mine. Four
-    figures on face-down cards read 0.2-0.3 every single round, so any bar below
-    that made the cage legal at every decision, and a seat holding one gem had no
-    reason not to take it. Seed 7, haul 3: all four seats left with one gem each
-    at 0.22-0.29 while three of them could see gems in their own columns, and the
-    haul paid a four-way tie of +1 with the mine abandoned. Leaving is a
-    **decision that repeats**: the cage is still there next round, the gems are
-    still there next round, and until something can actually take them away the
-    round is better spent digging.
-
-    The same question is asked of a *pass* taken while already in a cage: a
-    figure in a cage leaves the mine when the cards are turned, so passing there
-    is the same departure one decision later.
-
-    Everything else is a wasted round, and the clause has to get one more case
-    right, which it does not by looking at the table: **"somebody is already in a
-    cage"** is not a threat. Ordinary raiding displaces rivals into cages all the
-    time, and once one seat reads another's cage as a reason to flee, the whole
-    table follows: an earlier checkpoint, seed 7, haul 1, ended with every figure
-    in a cage and not one gem collected, and the same thing happened in 40% of
-    sampled four-net games.
+    What is *not* a reason, and used to be one: the ordinary risk of a mine, or
+    a visible dragon under the seat's own figure while every rival stands safely
+    in its own column and a safe card or lorry is available to refuse that
+    dragon without forfeiting the haul. Leaving is a **decision that repeats**:
+    the cage is still there next round, the gems are still there next round, and
+    until something external can actually take them away (or every rival has
+    already left the mine) the round is better spent staying in the haul.
     """
-    if any(front == GEM for front, _ in ctx.private_cards):
-        # Loot in hand is a reason to leave only if something can take it away.
-        # A dragon is the only thing that does: it ends the haul and everybody
-        # still inside scores for a dead figure. So the test is the danger, not
-        # the gems -- and it has to be danger above the ordinary risk of a mine,
-        # because that risk never goes away and "it might blow" would make the
-        # cage legal at every decision (see the constant).
+    own_gems = sum(1 for front, _ in ctx.private_cards if front == GEM)
+    ext_hazard = _external_round_hazard(ctx)
+    lorry_legal = int(LORRY) in {int(a) for a in ctx.legal_actions}
+    safe_refusal_available = known_safe_card_available(ctx) or lorry_legal
+    on_dragon = own_card_is_known_dragon(ctx) or own_card_is_signalled_dragon(ctx)
+    alone_in_mine = bool(ctx.opponents) and all(
+        o.escaped or o.dead or (o.position == PIT_CAGE and o.planned)
+        for o in ctx.opponents
+    )
+
+    if on_dragon and ext_hazard < CAGE_ANSWERS_A_HAZARD:
+        # Standing on a visible or signalled dragon with no external danger:
+        # even if own_blast_pending is True, that blast can never fire from a
+        # dragon square (phase 2 reveals board cards before blasts). Stepping to
+        # a visible safe card or the lorry refuses the dragon without giving up
+        # the haul, unless all rivals are already out and we are banking loot.
+        if not (own_gems >= 1 and alone_in_mine):
+            return safe_refusal_available
+
+    if own_gems >= 1:
+        if alone_in_mine:
+            if not ctx.own_blast_pending and _own_card_is_known_safe(ctx):
+                return True
+            if not ctx.own_blast_pending or blast_dragon_risk(ctx) >= 0.30:
+                return False
+        current_cell_risk = figure_dragon_risk(ctx, ctx.player_index)
+        can_clear_own_cell_risk = (
+            current_cell_risk > 0.0 and known_safe_card_available(ctx)
+        )
+        hazard_if_staying = (
+            ext_hazard
+            if on_dragon or can_clear_own_cell_risk
+            else round_dragon_hazard(ctx)
+        )
         return not (
-            round_dragon_hazard(ctx) >= CAGE_ANSWERS_A_HAZARD
+            hazard_if_staying >= CAGE_ANSWERS_A_HAZARD
             or rival_is_on_my_dragon(ctx)
         )
-    if ctx.own_blast_pending or any(o.blast_pending for o in ctx.opponents):
+
+    if any(o.blast_pending for o in ctx.opponents):
         return False
-    if own_card_is_known_dragon(ctx):
-        # Refusing the dragon is the point, but spending the haul is not the
-        # only way to do it: a card the seat can see is a gem it can take, and
-        # one row away is close enough. Seed 7, haul 3, round 0 -- P3 sits on a
-        # dragon it can see, holds nothing, plans the cage at 62% while a gem it
-        # can see sits at r0c2, and takes that gem at its next decision in the
-        # same phase; from that position the gem is worth +2.59 +- 0.12 and the
-        # cage +2.23 +- 0.10.
-        return known_safe_card_available(ctx)
+    if ctx.own_position == PIT_CAGE and ctx.own_blast_pending:
+        return False
+    if (
+        ctx.own_blast_pending
+        and not on_dragon
+        and round_dragon_hazard(ctx) >= CAGE_ANSWERS_A_HAZARD
+    ):
+        return False
+    if on_dragon:
+        return safe_refusal_available
     if rival_is_on_my_dragon(ctx):
         return False
     return True
@@ -834,12 +1452,14 @@ def _cage_reason(ctx: PlayerActionContext) -> str:
     why: list[str] = []
     if own_card_is_known_dragon(ctx):
         why.append("the dragon under me")
+    elif own_card_is_signalled_dragon(ctx):
+        why.append("the signalled dragon under me")
     if ctx.own_blast_pending:
         why.append("my blast")
     elif any(opponent.blast_pending for opponent in ctx.opponents):
         why.append("a rival's blast")
     for opponent in ctx.opponents:
-        if opponent.dead or opponent.escaped:
+        if opponent.dead or opponent.escaped or getattr(opponent, "displaced", False):
             continue
         if opponent.column != ctx.player_index:
             continue
@@ -849,7 +1469,7 @@ def _cage_reason(ctx: PlayerActionContext) -> str:
         if entry is not None and entry[0] is not None and int(entry[0]) == DRAGON:
             why.append(f"P{opponent.player_index + 1} is on my dragon")
     if not why:
-        why.append(f"{round_dragon_hazard(ctx):.0%} the mine blows this round")
+        why.append(f"{round_dragon_hazard(ctx):.0%} risk if current figures stay")
     return f"pit cage, banks {gems}g ({', '.join(why)})"
 
 
@@ -866,11 +1486,17 @@ def action_reason(ctx: PlayerActionContext, action: int) -> str:
     if primitive == PIT_CAGE:
         return _cage_reason(ctx) + suffix
     if primitive == LORRY:
-        refusal = (
-            "lorry, refuses the dragon I can see"
-            if own_card_is_known_dragon(ctx)
-            else "lorry"
-        )
+        if own_card_is_known_dragon(ctx):
+            refusal = "lorry, refuses the dragon I can see"
+        elif own_card_is_signalled_dragon(ctx):
+            refusal = "lorry, refuses the signalled dragon"
+        elif (
+            _contestable_home_row0_safe_card(ctx)
+            and int(ctx.player_index) in {int(a) for a in ctx.legal_actions}
+        ):
+            refusal = "lorry, avoids the contestable home row-0 card"
+        else:
+            refusal = "lorry"
         return refusal + suffix
     if primitive == PASS:
         return "pass" + suffix
@@ -898,12 +1524,12 @@ def action_reason(ctx: PlayerActionContext, action: int) -> str:
 def strands_the_figure(ctx: PlayerActionContext) -> set[int]:
     """Cards in the seat's own column that it should reach from a deeper row first.
 
-    A raid pushes a figure into the pit cage with ``cage_index = the row it stood
-    on``, and from a cage only rows **shallower** than the cage index are legal
-    again (``MineEnv._movement_depth``). So the row a card is taken at decides
-    what the seat can do if a rival raids that call mid-phase: from row 0 the
-    answer is nothing — the only moves left are the lorry and the pass, and a
-    pass in a cage is a departure — while from row 3 rows 0-2 are still open.
+    Under the current same-card displacement rule, a raid leaves the victim at
+    the selected row and forces a reply. From row 0 no card moves remain, so the
+    victim can choose the cage (and leave if still there at execution) or the
+    lorry; from row 3, rows 0-2 remain reachable. In the older cage-displacement variant, the
+    victim was moved to a cage index derived from the occupied row. Either way,
+    reaching a deeper card first preserves more movement options if it is raided.
 
     Two cards of the **same front** in one column are therefore not a trade: the
     deeper one is raidable by fewer seats (a rival can only reach a card it
@@ -957,34 +1583,41 @@ def strands_the_figure(ctx: PlayerActionContext) -> set[int]:
     return hidden
 
 
-def digs_past_a_known_gem(ctx: PlayerActionContext) -> set[int]:
-    """Face-down digs that a gem the seat can see makes pointless.
+def _active_pushers_for_row0_gem(ctx: PlayerActionContext) -> int:
+    """Count active rivals able to push the sole home-column Gem at row 0.
 
-    A front of the seat's **own** column is information the rest of the table
-    does not have: a card there is a gem or a dynamite, never a dragon. A card
-    still face down may be a dragon — two of them per backside — and the seat
-    that turns it is the dragon player. So the two are not a trade. Take the
-    known gem and compare the branch each way:
-
-    - the face-down card turns out a gem: equal to the gem that was there;
-    - it turns out dynamite: it is not scored at all, so worse;
-    - it turns out a dragon: the hull is over and its turner scores -2.
-
-    That is weak dominance in every branch, and it holds whether the face-down
-    card is in the seat's own column or a rival's. The one thing that could
-    outweigh it is a **displacement** — pushing a rival who stands on its own
-    column into the cage costs that rival its position — so a dig that displaces
-    is left alone, and only an unoccupied face-down cell is hidden. Seed 7 of the
-    viewer, haul 1, planning phase 1: P1 has gems at r0 and r1 of its own column
-    and takes **r1c1**, an empty cell in P2's column, at 25% dragon risk — P2 was
-    standing in P3's column at the time, so there was nobody to displace and the
-    move bought nothing but the lottery ticket.
-
-    Note what this rule does **not** need: a threshold. Face-down dragons cost
-    25% at that table and 0% at another, and the argument is the same in both,
-    because a known gem is 100% a gem.
+    A planned move is not committed until reveal. This count therefore uses
+    active movement depth rather than treating ``planned`` as settled.
     """
-    own_gem_legal = False
+    has_row0_own_gem = False
+    has_deeper_card = False
+    for action in ctx.legal_actions:
+        primitive = int(action)
+        if not 0 <= primitive < PIT_CAGE:
+            continue
+        row, column = divmod(primitive, MAX_COLUMNS)
+        if row >= 1:
+            has_deeper_card = True
+        if column != ctx.player_index or row >= len(ctx.public_rows):
+            continue
+        entry = ctx.public_rows[row][column]
+        if entry is not None and entry[0] == GEM:
+            if row >= 1:
+                return 0
+            has_row0_own_gem = True
+    if not (has_row0_own_gem and has_deeper_card):
+        return 0
+    return _active_rivals_able_to_reach(ctx, 0)
+
+
+def exposed_own_gem_actions(ctx: PlayerActionContext) -> set[int]:
+    """Legal own-column Gems any active, deeper rival can still reach.
+
+    ``planned`` indicates a provisional move, not a committed position. If a
+    new card move resets the pass clock, that rival gets another decision
+    before reveal. This is a policy signal only; engine legality is unchanged.
+    """
+    exposed: set[int] = set()
     for action in ctx.legal_actions:
         primitive = int(action)
         if not 0 <= primitive < PIT_CAGE:
@@ -993,11 +1626,84 @@ def digs_past_a_known_gem(ctx: PlayerActionContext) -> set[int]:
         if column != ctx.player_index or row >= len(ctx.public_rows):
             continue
         entry = ctx.public_rows[row][column]
-        if entry is not None and entry[0] == GEM:
-            own_gem_legal = True
-            break
-    if not own_gem_legal:
+        if (
+            entry is not None
+            and entry[0] == GEM
+            and _active_rivals_able_to_reach(ctx, row) > 0
+        ):
+            exposed.add(primitive)
+    return exposed
+
+
+def digs_past_a_known_gem(
+    ctx: PlayerActionContext,
+    *,
+    avoid_contestable_home_row0: bool = False,
+    avoid_exposed_row0_gem: bool | None = None,
+) -> set[int]:
+    """Face-down digs that a secure gem the seat can see makes pointless.
+
+    A front of the seat's **own** column is information the rest of the table
+    does not have: a card there is a Gem or a Dynamite, never a Dragon. A face-
+    down card may be a Dragon, so a secure known Gem usually dominates it. A Gem
+    is treated as exposed when any active rival has enough movement depth to
+    reach its row. ``planned`` is provisional, not settled: a later non-pass
+    move resets the pass clock and gives that rival another decision before
+    reveal. If all legal own-column Gems are exposed, foreign alternatives stay
+    open instead of being hidden by the usual known-Gem preference.
+
+    The optional ``avoid_contestable_home_row0`` guard additionally masks a
+    known safe Gem or Dynamite in the last card row when any active deeper rival
+    can reach it. If that guard removes the row-0 Gem, this helper keeps
+    alternatives open. It is policy-only; the old ``avoid_exposed_row0_gem``
+    keyword remains an alias. With no exposed own Gem, the usual comparison
+    still holds: a hidden card that becomes a Gem ties the known Gem, Dynamite
+    is not scored, and a Dragon can end the haul.
+    """
+    if avoid_exposed_row0_gem is not None:
+        avoid_contestable_home_row0 = bool(
+            avoid_contestable_home_row0 or avoid_exposed_row0_gem
+        )
+    own_gem_actions = {
+        int(action)
+        for action in ctx.legal_actions
+        if 0 <= int(action) < PIT_CAGE
+        and int(action) % MAX_COLUMNS == ctx.player_index
+        and int(action) // MAX_COLUMNS < len(ctx.public_rows)
+        and ctx.public_rows[int(action) // MAX_COLUMNS][ctx.player_index] is not None
+        and ctx.public_rows[int(action) // MAX_COLUMNS][ctx.player_index][0] == GEM
+    }
+    if not own_gem_actions:
         return set()
+
+    exposed_gems = exposed_own_gem_actions(ctx)
+    row0_action = int(ctx.player_index)
+    exposed_row0_gem = (
+        avoid_contestable_home_row0
+        and row0_action in own_gem_actions
+        and _contestable_home_row0_safe_card(ctx)
+    )
+    secure_gems = own_gem_actions - exposed_gems
+    if exposed_row0_gem:
+        # Row 0 has no card move left after a push. The broader exposure signal
+        # already counts planned rivals, but discard this Gem explicitly so the
+        # known-Gem preference cannot undo the guard.
+        secure_gems.discard(row0_action)
+    has_secure_gem = bool(secure_gems)
+    allow_foreign_alternatives = (
+        _active_pushers_for_row0_gem(ctx) >= 2
+        or (bool(exposed_gems) and not has_secure_gem)
+        or (exposed_row0_gem and not has_secure_gem)
+    )
+    has_deeper_legal_card = any(
+        0 <= int(action) < PIT_CAGE
+        and int(action) // MAX_COLUMNS >= 1
+        for action in ctx.legal_actions
+    )
+    allow_row0_foreign_alternatives = (
+        exposed_row0_gem
+        and not has_deeper_legal_card
+    )
 
     hidden: set[int] = set()
     for action in ctx.legal_actions:
@@ -1011,6 +1717,12 @@ def digs_past_a_known_gem(ctx: PlayerActionContext) -> set[int]:
         if entry is None or entry[0] is not None:
             continue
         if _occupant(ctx, row, column) is not None:
+            continue
+        if (
+            allow_foreign_alternatives
+            and column != ctx.player_index
+            and (row >= 1 or allow_row0_foreign_alternatives)
+        ):
             continue
         hidden.add(primitive)
     return hidden
@@ -1041,6 +1753,7 @@ def takes_the_gem_over_the_dynamite(ctx: PlayerActionContext) -> set[int]:
     """
     gem_legal = False
     dynamite_digs: set[int] = set()
+    allow_deeper_dynamite = _active_pushers_for_row0_gem(ctx) >= 1
     for action in ctx.legal_actions:
         primitive = int(action)
         if not 0 <= primitive < PIT_CAGE:
@@ -1054,71 +1767,23 @@ def takes_the_gem_over_the_dynamite(ctx: PlayerActionContext) -> set[int]:
         if int(entry[0]) == GEM:
             gem_legal = True
         elif int(entry[0]) == DYNAMITE:
+            if allow_deeper_dynamite and row >= 1:
+                continue
             dynamite_digs.add(primitive)
     return dynamite_digs if gem_legal else set()
 
 
-# Whether a seat that has walked into a cage is held to the departure for the
-# rest of the phase. Measured on the shipped checkpoint, 200 paired four-net
-# games: **+0.145 a seat (se 0.042)**, decisions per game 97 -> 55, every game
-# finishing -- and **gems per haul 4.33 -> 3.13** with hauls thrown away (three
-# or more seats out, two gems between them) 14% -> 34%. That is the whole tension
-# in one number: a seat held to its escape leaves earlier, dies less, and takes
-# the loot with it. Off by default because "the table gave the haul away" is the
-# complaint this file already fixed once (#27); flip it to True to trade loot for
-# score, and the mask reads it at decision time.
-ESCAPE_STANDS_ONCE_TAKEN = False
-
-
-def the_escape_stands_once_taken(ctx: PlayerActionContext) -> bool:
-    """True when a seat has already committed to leaving the haul this phase.
-
-    A figure in a cage leaves the mine when the cards are turned, so a seat that
-    walked into one has made its decision. Rule 4 then re-reads that decision on
-    the seat's *next* turn of the same phase -- and the hazard it reads has moved,
-    because every other seat has moved since: the table that looked dangerous
-    when the seat entered the cage can look calm by the time it is asked again.
-    The mask then refuses the escape it just allowed, puts the seat back on the
-    lorry, and the seat digs its way out of the cage instead. On screen that is a
-    figure that walks into the pit cage and straight back out, which is the
-    "keeps moving forward because it keeps being asked" the viewer reports.
-
-    Once the seat has planned and is standing in a cage, the decision is the
-    departure; this rule is what makes the mask stop re-litigating it.
-    """
-    return int(ctx.own_position) == PIT_CAGE and bool(ctx.own_planned)
-
-
 def steps_out_of_the_cage(ctx: PlayerActionContext) -> set[int]:
-    """Card moves taken from inside a pit cage.
+    """Card moves the AI policy may decline from a cage with loot to bank.
 
-    A figure in a cage leaves the mine at the start of the execution phase and
-    keeps its loot, so a seat standing there has exactly two decisions left: take
-    the departure, or stay in the haul on the lorry (and dig again next round,
-    from the mouth of the mine). Stepping back **onto a card** is neither. It
-    undoes the escape the seat just made, and because the figure then stands on a
-    card the departure is gone for the rest of the phase — the seat re-enters the
-    mine one row shallower than where it started.
+    Pit-cage entry is provisional in the engine. A player may move to a reachable
+    shallower card or to the lorry when those actions are legal, and leaves only
+    if still in the cage at execution. This helper is an optional policy filter,
+    not a rule: it discourages a card move when leaving would bank loot. An
+    empty-handed player retains the option to stay in the haul.
 
-    Measured on the shipped checkpoint, 60 four-net games: of **1,235 decisions
-    taken from inside a cage**, 604 stepped back onto a card and **313 of those
-    were holding a gem the escape would have banked**. Priced from the identical
-    position against taking the departure, 20 re-rolled continuations each, the
-    step back is worth **−0.72 (se 0.12)** a move — the same in the empty-handed
-    bucket (−0.71) as in the carrying one (−0.73), so it is not a close call about
-    loot: it is a round spent re-entering a mine the seat had just left safely.
-
-    This is the "figure that keeps moving forward because it keeps being asked"
-    the viewer reports.
-
-    **Only when the escape banks something.** An empty-handed seat has nothing to
-    undo: leaving is worth nothing to it, a card in the mine is not, and staying in
-    the haul on the lorry costs it a round — so the lorry, the departure and the
-    dig are all real options and the net picks. Masking those too is a different
-    rule with a different price: it gains more score (+0.18 a seat) but collects
-    18% fewer gems and ends half again as many hauls with the table picked clean,
-    which is the trade #27 was about. So the line is drawn at "there is loot in
-    hand to forfeit", not at "the seat is in a cage".
+    Older measurements of this filter are historical, not estimates of the
+    current engine or of a universal cage-commitment rule.
     """
     if int(ctx.own_position) != PIT_CAGE:
         return set()
@@ -1140,12 +1805,8 @@ def climbs_off_the_card_it_chose(ctx: PlayerActionContext) -> set[int]:
     cage (which leaves the haul). Passing is legal for any seat that has planned,
     so the seat can simply hold what it has.
 
-    Measured on the shipped checkpoint, 40 four-net games: **66% of the 1,360
-    seat-phases take two or more moves**, 1,326 moves were made after the first
-    one, and a pass was available for **every single one of them**. 11% of the
-    phases ended with the figure on its lorry. Priced against holding the card to
-    the end of the phase, the extra move is worth -0.08 (se 0.09) a move and
-    -2.7 points a game across the four seats.
+    Older checkpoint measurements of second moves are historical and do not
+    estimate current policy or game balance.
 
     Two swaps are worth making, and only two:
 
@@ -1168,9 +1829,19 @@ def climbs_off_the_card_it_chose(ctx: PlayerActionContext) -> set[int]:
     entry = ctx.public_rows[ctx.own_position][ctx.own_column]
     if entry is None:
         return set()  # already standing on an emptied cell: nothing to give up
-    if own_card_is_known_dragon(ctx):
+    if own_card_is_known_dragon(ctx) or own_card_is_signalled_dragon(ctx):
         return set()  # rule 1: step off it, wherever that is
+    if ctx.own_blast_pending:
+        # Moving to another card silently cancels the announced blast; hold on
+        # PASS unless standing on a known/signalled dragon (handled above).
+        return {
+            int(action)
+            for action in ctx.legal_actions
+            if 0 <= int(action) < PIT_CAGE
+        }
     already_on_a_gem = entry[0] is not None and int(entry[0]) == GEM
+    max_score = max([ctx.own_score] + [o.score for o in ctx.opponents])
+    opp_by_col = {o.player_index: o for o in ctx.opponents}
     doomed = set()
     for action in ctx.legal_actions:
         primitive = int(action)
@@ -1185,31 +1856,60 @@ def climbs_off_the_card_it_chose(ctx: PlayerActionContext) -> set[int]:
             and not already_on_a_gem
         ):
             continue  # a gem it can see is worth the swap, if it is not on one
+        if column != ctx.player_index:
+            occupant = _occupant(ctx, row, column)
+            if occupant is not None and occupant == column:
+                owner = opp_by_col.get(column)
+                victim_is_leader = (
+                    owner is not None
+                    and owner.score == max_score
+                    and ctx.own_score < max_score
+                )
+                if not already_on_a_gem or (row == 0 and victim_is_leader):
+                    continue  # displacement guarantees another turn + owner canary
         doomed.add(primitive)
     return doomed
 
 
-def action_mask(ctx: PlayerActionContext) -> np.ndarray:
+def action_mask(
+    ctx: PlayerActionContext,
+    *,
+    force_signalled_dragon_dodge: bool = True,
+    avoid_contestable_home_row0: bool = False,
+    avoid_exposed_row0_gem: bool | None = None,
+) -> np.ndarray:
     """Legal policy actions, including legal blast announcements.
 
-    Eleven narrow rules ride on top of the legal moves, all of them policies rather
-    than rules of the game, which is why they live here and not in the
-    environment (see BALANCE.md):
+    ``force_signalled_dragon_dodge`` defaults to the historical hard rule. It
+    can be disabled by controlled probes that apply a soft, confidence-weighted
+    penalty to passing instead. ``avoid_contestable_home_row0`` masks a known
+    safe card in the home column at row 0 while any active rival can still reach
+    it. This includes already-planned rivals: their moves are provisional, and
+    a new card move gives them another turn. The old
+    ``avoid_exposed_row0_gem`` keyword remains as a compatibility alias. If the
+    guard leaves a policy-approved card dig, the lorry is not kept as a no-card
+    substitute. The engine's legal-action list is authoritative: this mask never
+    re-enables an action made illegal by the rules, including moves after a
+    voluntary pit-cage entry.
+
+    Ten policy filters sit on top of the engine-legal moves (see BALANCE.md):
 
     1. A dig onto a dragon the seat can see is not automatically a mistake: the
        card is only turned if the round resolves with the figure still on it, so
-       a dragon the seat can stand on and step off is a waiting square — the
-       deepest square in the mine cannot be raided either. It is masked only when
-       the seat cannot wait safely, or when no rival is deep enough to push the
-       bait into a cage. ``doomed_dragon_digs``, ``can_wait_on_a_dragon``.
+       a dragon the seat can stand on and step off is a waiting square. It is
+       masked only when the seat cannot wait safely, or when no rival is deep
+       enough to push the bait into a cage. If it is still on a known Dragon at
+       its last decision, Pass is masked so it must step off or leave.
+       ``doomed_dragon_digs``, ``holds_a_known_dragon``, ``can_wait_on_a_dragon``.
     2. A face-down card that pays more than a deeper free card is dominated — the
        backside is the price and the position a round ends on buys nothing.
        ``walks_past_a_free_card``.
     3. The lorry collects nothing and does not protect the figure, so it is only
        a way to refuse a dragon the seat can see under itself.
        ``lorry_skips_a_card_worth_taking``.
-    4. The pit cage is the only exit that banks loot before the cards are turned,
-       so an escape has to bank something or answer a visible threat.
+    4. The pit cage is the only exit that banks loot before the cards are turned.
+       Its escape check uses visible threats and residual hazard; a risky current
+       face-down card does not justify leaving if a known-safe card can clear it.
        ``cage_banks_nothing``.
     5. A card the seat can see is a gem beats one it can see is a dynamite: a
        gem is scored and a lone dynamite is inert. ``takes_the_gem_over_the_dynamite``.
@@ -1217,47 +1917,29 @@ def action_mask(ctx: PlayerActionContext) -> np.ndarray:
        first: the row a card is taken at is the cage index a raid would leave the
        figure with, and a shallow row leaves it nothing to step back onto.
        ``strands_the_figure``.
-    7. A face-down dig is not a trade against a gem the seat can see in its own
-       column: the same one card a round, and only one of the two can be a
-       dragon. Raids are left alone, because pushing a rival is worth something
-       the card is not. ``digs_past_a_known_gem``.
-    8. A figure in a pit cage is already halfway out: whoever is still in a cage
-       when the cards are turned leaves the mine.  So from a cage the lorry and
-       the pass are one decision, not two — the escape is taken when it banks
-       something, and refused (staying in the haul on the lorry) when it does
-       not. Before this the lorry was masked in the cage and the only move left
-       was a pass, so the seat "chose" an empty departure at 100%. The rule
-       also covers the lorry side: an escape that banks nothing is masked
-       whenever it is offered, from the lorry included, and a seat on the lorry
-       can always fall back on its pass (measured: 143 decisions in 100 games
-       offer the cage from the lorry, and every one of them is a real escape --
-       a blast is charged -- so the mask has nothing to remove).
-
-    11. (Off by default, ``ESCAPE_STANDS_ONCE_TAKEN``.) A seat that has walked
-        into a cage has decided to leave, and this stops the mask re-litigating
-        it: on its next turn the departure is the only move offered. Without it
-        the escape rule re-reads a hazard that has moved since the seat planned,
-        refuses the escape it just allowed, and the figure digs its way back out
-        -- the "in and straight back out of the cage" the viewer reports. Priced:
-        +0.145 a seat and a third fewer decisions, at the cost of 28% of the gems
-        in the mine. ``the_escape_stands_once_taken``.
-    10. A figure in a cage has made its escape: it leaves at the execution phase
-        and keeps its loot, so the only decisions left are the departure and the
-        lorry. Stepping back onto a card undoes the escape and costs -0.72 a move.
-        ``steps_out_of_the_cage``.
-    9. The card a seat scores is the one under its figure when the phase closes,
-       and movement is one-way, so a second move in the same phase forfeits the
-       card already chosen for a shallower one -- at the bottom of the column,
-       for the lorry, which collects nothing. A seat that has planned holds
-       unless it is stepping off a dragon it can see or onto a gem it can see.
-       ``climbs_off_the_card_it_chose``.
-
-    Rules 3 and 4 are about wasted rounds, and 4 in particular exists because
-    "somebody is already in a cage" is *not* a threat: a raid puts a rival there,
-    every seat then reads the herd as danger, and a haul ends with the whole
-    table in cages and nothing collected (seed 7 of the viewer, four nets).
+    7. A face-down dig is normally dominated by a Gem the seat can see in its
+       own column. If an active rival can still reach that Gem, keep foreign
+       alternatives available instead of treating it as guaranteed; ``planned``
+       rivals count because moves remain provisional until reveal.
+       ``digs_past_a_known_gem``.
+    8. The lorry is a waiting place, not an exit. From a cage, the policy compares
+       leaving with staying in the haul; from a lorry, an empty-handed cage move
+       can be screened. Cage choices remain revisable under the engine rules.
+       ``cage_banks_nothing``.
+    9. A player still in a cage at execution leaves; during planning, the policy
+       may prefer to preserve a banked escape over re-entering the mine. This is
+       a heuristic only: every action it returns must still be engine-legal.
+       ``steps_out_of_the_cage``.
+    10. A second card move forfeits the selected card for a shallower one. Hold
+        the current card unless stepping off a visible dragon or onto a visible
+        gem; ``climbs_off_the_card_it_chose``.
     """
+    if avoid_exposed_row0_gem is not None:
+        avoid_contestable_home_row0 = bool(
+            avoid_contestable_home_row0 or avoid_exposed_row0_gem
+        )
     mask = np.zeros(N_ACTIONS, dtype=bool)
+    engine_legal = np.zeros(N_ACTIONS, dtype=bool)
     own_dynamite = sum(1 for front, _ in ctx.private_cards if front == DYNAMITE)
     can_blast = own_dynamite >= 2 and not ctx.own_blast_pending
     for primitive in ctx.legal_actions:
@@ -1265,13 +1947,28 @@ def action_mask(ctx: PlayerActionContext) -> np.ndarray:
         if not 0 <= primitive < N_BASE_ACTIONS:
             continue
         mask[primitive] = True
+        engine_legal[primitive] = True
         if can_blast and primitive < PIT_CAGE:
-            mask[join_action(primitive, True)] = True
+            blast_action = join_action(primitive, True)
+            mask[blast_action] = True
+            engine_legal[blast_action] = True
     doomed = doomed_dragon_digs(ctx)
     if doomed and any(int(a) not in doomed for a in ctx.legal_actions):
         for primitive in doomed:
             mask[primitive] = False
             mask[join_action(primitive, True)] = False
+    signalled = (
+        holds_a_signalled_dragon(ctx)
+        if force_signalled_dragon_dodge
+        else set()
+    )
+    dragon_holds = signalled | holds_a_known_dragon(ctx)
+    if dragon_holds:
+        trial = mask.copy()
+        for primitive in dragon_holds:
+            trial[primitive] = False
+        if trial.any():
+            mask = trial
     passed = {
         action for action in walks_past_a_free_card(ctx) if mask[int(action)]
     }
@@ -1279,28 +1976,19 @@ def action_mask(ctx: PlayerActionContext) -> np.ndarray:
         for primitive in passed:
             mask[primitive] = False
             mask[join_action(primitive, True)] = False
-    if ESCAPE_STANDS_ONCE_TAKEN and the_escape_stands_once_taken(ctx):
-        # It has already walked in: the departure is the move. Nothing else is
-        # offered, so the mask cannot talk it back into the mine.
-        trial = np.zeros(N_ACTIONS, dtype=bool)
-        if mask[int(PASS)]:
-            trial[int(PASS)] = True
-        else:  # pragma: no cover - planned seats always may pass
-            trial = mask.copy()
-        mask = trial
-    elif int(ctx.own_position) == PIT_CAGE:
-        # From a cage the escape is already half taken: a figure still in a cage
-        # when the cards are turned leaves the mine.  So the lorry/pass pair has
-        # to be read together.  A departure that banks nothing is refused and the
-        # seat stays in the haul on the lorry (seed 7, haul 1: P3 displaced into
-        # cage index 0, hazard 0.00, lorry +0.93 +- 0.11 against pass +0.55 +- 0.10);
-        # one that is worth taking keeps the pass and drops the lorry.
+    if int(ctx.own_position) == PIT_CAGE:
+        # If leaving banks nothing, this policy prefers staying in the haul on
+        # the lorry to leaving from the cage. Add the lorry only when the engine
+        # lists it as legal; policy code must never manufacture an action.
         trial = mask.copy()
         if cage_banks_nothing(ctx):
-            trial[int(PASS)] = False
-            trial[int(LORRY)] = True
-        else:
-            trial[int(LORRY)] = False
+            if int(LORRY) in {int(action) for action in ctx.legal_actions}:
+                trial[int(PASS)] = False
+                trial[int(LORRY)] = True
+        # Keep a revising action available even when the policy values a
+        # banked escape. In particular, do not turn a provisional cage choice
+        # into a Pass-only policy mask; the lorry lets the player stay in the
+        # haul, and the engine also continues to offer any legal card moves.
         if trial.any():
             mask = trial
     elif mask[int(LORRY)] and lorry_skips_a_card_worth_taking(ctx):
@@ -1318,7 +2006,13 @@ def action_mask(ctx: PlayerActionContext) -> np.ndarray:
         for primitive in ranked:
             mask[primitive] = False
             mask[join_action(primitive, True)] = False
-    lottery = {action for action in digs_past_a_known_gem(ctx) if mask[int(action)]}
+    lottery = {
+        action
+        for action in digs_past_a_known_gem(
+            ctx, avoid_contestable_home_row0=avoid_contestable_home_row0
+        )
+        if mask[int(action)]
+    }
     if lottery:
         trial = mask.copy()
         for primitive in lottery:
@@ -1358,10 +2052,41 @@ def action_mask(ctx: PlayerActionContext) -> np.ndarray:
             trial[join_action(primitive, True)] = False
         if trial.any():  # a pass is always there to hold with, so this holds
             mask = trial
-    return mask
+    if avoid_contestable_home_row0:
+        # Row 0 is the last card row before the lorry: after a same-card push,
+        # the victim cannot move to another card, only cage or lorry. A planned
+        # rival is still able to choose a push before reveal, so count every
+        # active rival with enough movement depth. Keep the engine move legal;
+        # this is only a conservative policy choice for the neural controller.
+        row0_action = int(ctx.player_index)
+        if _contestable_home_row0_safe_card(ctx) and mask[row0_action]:
+            trial = mask.copy()
+            trial[row0_action] = False
+            trial[join_action(row0_action, True)] = False
+            if not trial.any():
+                # The safe card can be the only move left after the ordinary
+                # policy rules, even though the engine still offers a retreat.
+                # Use the lorry (stay in the haul) before the cage (leave it).
+                for fallback in (int(LORRY), int(PIT_CAGE)):
+                    if fallback in ctx.legal_actions:
+                        trial[fallback] = True
+                        break
+            if trial.any():
+                mask = trial
+                # Do not turn an avoided, contestable home card into a no-card
+                # lorry retreat when another policy-approved dig remains. The
+                # lorry remains the fallback if every card is excluded.
+                if mask[int(LORRY)] and any(
+                    mask[int(action)]
+                    for action in ctx.legal_actions
+                    if 0 <= int(action) < PIT_CAGE
+                ):
+                    mask[int(LORRY)] = False
+    return mask & engine_legal
 
 
 __all__ = [
+    "BLAST_RISK_FEATURE",
     "CAGE_ANSWERS_A_HAZARD",
     "N_ACTIONS",
     "N_ACTION_FEATURES",
@@ -1377,23 +2102,28 @@ __all__ = [
     "action_mask",
     "action_reason",
     "backside_stats",
+    "blast_dragon_risk",
     "cage_banks_nothing",
+    "cell_suspicion_weights",
     "climbs_off_the_card_it_chose",
+    "deck_backside_counts",
     "steps_out_of_the_cage",
     "BAIT_IS_ALLOWED",
-    "the_escape_stands_once_taken",
-    "ESCAPE_STANDS_ONCE_TAKEN",
     "can_wait_on_a_dragon",
     "cell_dragon_risk",
     "digs_face_up_dragon",
     "digs_past_a_known_gem",
     "doomed_dragon_digs",
+    "exposed_own_gem_actions",
     "figure_dragon_risk",
     "has_dragon_free_move",
+    "holds_a_known_dragon",
+    "holds_a_signalled_dragon",
     "join_action",
     "known_safe_card_available",
     "lorry_skips_a_card_worth_taking",
     "own_card_is_known_dragon",
+    "own_card_is_signalled_dragon",
     "rival_can_push",
     "round_dragon_hazard",
     "split_action",

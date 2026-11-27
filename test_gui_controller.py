@@ -14,7 +14,7 @@ import json
 import numpy as np
 import pytest
 
-from features import N_INPUT_FEATURES, join_action
+from features import N_INPUT_FEATURES, action_mask, join_action
 from gui_controller import (
     GameController,
     agent_policies,
@@ -53,6 +53,17 @@ def test_scripted_autoplay_still_completes():
     assert controller.env.game_finished
     assert not controller.is_neural
     assert controller.policy_snapshot() == []
+
+
+def test_automatic_exit_passes_are_reported_to_the_viewer():
+    controller = GameController(2, "simple", seed=11)
+
+    message = controller._format_outcome(
+        {"round": 2, "outcome": "continued", "auto_passed": [0, 2]}, 0.0
+    )
+
+    assert "Players 1, 3" in message
+    assert "passed automatically" in message
 
 
 def test_neural_policy_loads_announces_and_finishes_at_four_players(tiny_net):
@@ -99,6 +110,238 @@ def test_all_seats_neural_plays_itself(tiny_net):
     assert controller.env.game_finished
 
 
+def test_default_selfplay4_seed7_avoids_exposed_row0_home_gem():
+    """The reported P3 choice must stay out of the row-0 own Gem in game 7."""
+    from game_env import GEM, MAX_COLUMNS
+
+    policy = "neural:selfplay4"
+    controller = GameController(3, policy, seed=7)
+    controller.reset(3, policy, seed=7, all_seats=True, advance=False)
+
+    # Replay the same opening through P4, P1 and P2, stopping at P3's
+    # problematic haul-1, planning-round-0 decision.
+    for _ in range(3):
+        controller.step_one_player_auto()
+    assert controller.env.haul == 1
+    assert controller.env.round == 0
+    assert controller.env.planning_player == 2
+    assert all(agent.avoid_contestable_home_row0 for agent in controller.agents)
+
+    ctx = controller.env.player_action_context(2)
+    assert all(opponent.planned for opponent in ctx.opponents)
+    row0_home_gem = ctx.player_index
+    assert ctx.public_rows[0][2][0] == GEM
+    assert row0_home_gem in ctx.legal_actions
+
+    # The known-Gem heuristic must leave safer deeper lanes available even
+    # though every rival has already planned once; the default controller guard
+    # then excludes the exposed home Gem from both the viewer and the sampler.
+    unguarded = action_mask(ctx)
+    guarded = action_mask(ctx, avoid_contestable_home_row0=True)
+    assert unguarded[row0_home_gem]
+    assert not guarded[row0_home_gem]
+    assert any(
+        guarded[action]
+        for action in ctx.legal_actions
+        if action // MAX_COLUMNS >= 1
+    )
+    assert row0_home_gem not in {
+        action for action, _probability in controller.policy_snapshot(seat=2)
+    }
+
+    controller.step_one_player_auto()
+    assert controller.last_choice_seat == 2
+    assert controller.last_choice is not None
+    assert int(controller.last_choice.action) != row0_home_gem
+
+
+def test_seed7_guard_does_not_fall_back_to_lorry_over_a_deeper_dig():
+    """P1 should keep digging after the row-0 guard blocks the exposed Gem."""
+    from game_env import GEM, LORRY, MAX_COLUMNS, PIT_CAGE
+
+    policy = "neural:selfplay4"
+    controller = GameController(3, policy, seed=7)
+    controller.reset(3, policy, seed=7, all_seats=True, advance=False)
+
+    ctx = None
+    deeper_digs = []
+    for _ in range(100):
+        env = controller.env
+        if (
+            env.haul == 1
+            and env.round == 0
+            and env.planning_player == 0
+        ):
+            candidate = env.player_action_context(0)
+            if (
+                candidate.public_rows[0][0] is not None
+                and candidate.public_rows[0][0][0] == GEM
+                and 0 in candidate.legal_actions
+            ):
+                guarded = action_mask(
+                    candidate, avoid_contestable_home_row0=True
+                )
+                deeper = [
+                    action
+                    for action in candidate.legal_actions
+                    if 0 <= action < PIT_CAGE
+                    and action // MAX_COLUMNS >= 1
+                    and guarded[action]
+                ]
+                if deeper:
+                    ctx, deeper_digs = candidate, deeper
+                    break
+        controller.step_one_player_auto()
+    assert ctx is not None, "seed-7 P1 exposed-Gem/deeper-dig decision not reproduced"
+    assert controller.agents[0].avoid_contestable_home_row0
+    guarded = action_mask(ctx, avoid_contestable_home_row0=True)
+    assert not guarded[ctx.player_index]  # the exposed home Gem
+    assert not guarded[int(LORRY)]  # no empty lorry retreat while a dig remains
+    assert deeper_digs
+    snapshot = dict(controller.policy_snapshot(seat=0, limit=56))
+    assert int(LORRY) not in snapshot
+    assert ctx.player_index not in snapshot
+
+    controller.step_one_player_auto()
+    assert controller.last_choice_seat == 0
+    assert controller.last_choice is not None
+    assert int(controller.last_choice.action) in deeper_digs
+
+
+def test_default_all_seats_controller_guards_contestable_row0_dynamite():
+    """P4's default neural agent avoids a vulnerable own-row-zero Dynamite.
+
+    P4 is at the mine entrance for its first move, making the decision point
+    independent of a seed-specific replay. Deeper rivals have planned, but their
+    choices remain provisional until the cards are revealed.
+    """
+    from game_env import DYNAMITE, GEM, LORRY, MAX_COLUMNS, PIT_CAGE
+
+    policy = "neural:selfplay4"
+    controller = GameController(3, policy, seed=7, all_seats=True)
+    controller.reset(3, policy, seed=7, all_seats=True, advance=False)
+    env = controller.env
+
+    for row in env.rows:
+        for column in range(len(row)):
+            row[column] = None
+    env.rows[0][3] = (DYNAMITE, 2)
+    env.rows[1][0] = (GEM, 0)
+    env.rows[1][1] = (DYNAMITE, 1)
+    env.rows[1][2] = (GEM, 2)
+    env.rows[1][3] = (None, 1)
+    env.rows[2][0] = (GEM, 0)
+    env.rows[2][1] = (None, 1)
+    env.rows[2][2] = (None, 2)
+    env.rows[2][3] = (None, 0)
+
+    for seat in (0, 1, 2):
+        rival = env.players[seat]
+        rival.position, rival.column, rival.cage_index = 2, seat, None
+        rival.displaced, rival.escaped, rival.dead = False, False, False
+        rival.collected_cards = []
+        env.planned_players[seat] = True
+    p4 = env.players[3]
+    p4.position, p4.column, p4.cage_index = len(env.rows), None, None
+    p4.displaced, p4.escaped, p4.dead = False, False, False
+    p4.collected_cards = [(DYNAMITE, 2)]
+    env.planned_players[3] = False
+    env.planning_player = 3
+    env.haul, env.round = 1, 1
+    env.consecutive_passes = 0
+
+    ctx = env.player_action_context(3)
+    target = 0 * MAX_COLUMNS + 3  # P4's own r0c3 Dynamite
+    assert not ctx.own_planned and all(opponent.planned for opponent in ctx.opponents)
+    assert ctx.public_rows[0][3][0] == DYNAMITE
+    assert target in ctx.legal_actions
+
+    unguarded = action_mask(ctx)
+    guarded = action_mask(ctx, avoid_contestable_home_row0=True)
+    assert unguarded[target]
+    assert not guarded[target]
+    alternatives = [
+        action
+        for action in ctx.legal_actions
+        if 0 <= action < PIT_CAGE and action != target and guarded[action]
+    ]
+    assert alternatives
+    assert not guarded[int(LORRY)]  # do not retreat while a dig remains
+    assert all(agent.avoid_contestable_home_row0 for agent in controller.agents)
+    snapshot = dict(controller.policy_snapshot(seat=3, limit=56))
+    assert target not in snapshot
+    assert int(LORRY) not in snapshot
+
+    controller.step_one_player_auto()
+    assert controller.last_choice_seat == 3
+    assert controller.last_choice is not None
+    assert int(controller.last_choice.action) in alternatives
+
+
+def test_default_viewer_controller_opens_row0_foreign_cards_instead_of_lorry():
+    """A displaced P1 keeps a row-0 alternative when no deeper card is reachable.
+
+    This valid seed-7 controller state is set up directly so the regression
+    remains stable while the broader policy changes its preceding sampled path.
+    The viewer's default is one neural P1 plus built-in opponents.
+    """
+    from game_env import DYNAMITE, GEM, LORRY, MAX_COLUMNS
+
+    policy = "neural:selfplay4"
+    controller = GameController(3, policy, seed=7)
+    controller.reset(3, policy, seed=7, advance=False)
+    env = controller.env
+
+    # P1 is displaced on its own row-1 card. Every available dig is at row 0;
+    # the other active seats have already planned but can still make a later
+    # move before reveal.
+    for row in env.rows:
+        for column in range(len(row)):
+            row[column] = None
+    env.rows[0][0] = (GEM, 0)
+    env.rows[0][1] = (GEM, 1)
+    env.rows[0][2] = (DYNAMITE, 2)
+    env.rows[0][3] = (GEM, 0)
+    env.rows[1][0] = (DYNAMITE, 0)
+    p1 = env.players[0]
+    p1.position, p1.column, p1.cage_index = 1, 0, None
+    p1.displaced, p1.escaped, p1.dead = True, False, False
+    p1.collected_cards = []
+    p2 = env.players[1]
+    p2.position, p2.column, p2.cage_index = 1, 0, None
+    p2.displaced, p2.escaped, p2.dead = False, False, False
+    for seat in (2, 3):
+        rival = env.players[seat]
+        rival.position, rival.column, rival.cage_index = 2, seat, None
+        rival.displaced, rival.escaped, rival.dead = False, False, False
+    env.planned_players = [False, True, True, True]
+    env.planning_player = 0
+    env.haul, env.round = 1, 0
+    env.consecutive_passes = 0
+
+    ctx = env.player_action_context(0)
+    assert controller.agents[0].avoid_contestable_home_row0
+    assert ctx.own_displaced and ctx.own_position == 1
+    assert all(opponent.planned for opponent in ctx.opponents)
+    assert ctx.public_rows[0][0][0] == GEM
+    assert 0 in ctx.legal_actions
+    guarded = action_mask(ctx, avoid_contestable_home_row0=True)
+    assert not guarded[0]
+    foreign_row0 = [
+        action
+        for action in ctx.legal_actions
+        if 0 <= action < MAX_COLUMNS and action % MAX_COLUMNS != ctx.player_index
+    ]
+    assert foreign_row0
+    assert all(guarded[action] for action in foreign_row0)
+    assert not guarded[int(LORRY)]
+
+    controller.step_one_player_auto()
+    assert controller.last_choice_seat == 0
+    assert controller.last_choice is not None
+    assert int(controller.last_choice.action) in foreign_row0
+
+
 def test_the_viewer_names_who_plays_each_seat(tiny_net):
     """"P3 walks to the cage" is unreadable unless the table says who P3 is.
 
@@ -134,8 +377,8 @@ def test_autoplay_picks_and_resolves_a_blast_card(tiny_net):
     assert len(player.blast_cards) == 3
     assert controller.pending_blast_seat() == 0
 
-    # A blast reveals its three cards one at a time (keep two, return the
-    # third), so the driver has to keep resolving until the blast is over.
+    # The three cards stay face down; reveal each selected card immediately,
+    # then request another choice only when it was safe.
     messages = []
     for _ in range(4):
         result = controller.step_one_player_auto()
@@ -261,6 +504,20 @@ def test_the_command_line_accepts_a_checkpoint_that_exists(tiny_net):
     # A bare path is the same request, and is normalised to the viewer's form.
     assert parse_policy(str(tiny_net)) == f"neural:{tiny_net}"
     assert parse_policy("simple") == "simple"
+
+
+def test_gui_defaults_to_selfplay4_in_every_seat_and_keeps_cli_overrides():
+    from mine_gui import build_argument_parser
+
+    parser = build_argument_parser()
+    defaults = parser.parse_args([])
+    assert defaults.policy == "neural:selfplay4"
+    assert defaults.all_seats is True
+
+    human_seat = parser.parse_args(["--policy", "simple", "--no-all-seats"])
+    assert human_seat.policy == "simple"
+    assert human_seat.all_seats is False
+    assert parser.parse_args(["--all-seats"]).all_seats is True
 
 
 def test_the_command_line_explains_a_missing_checkpoint_instead_of_listing_names(tmp_path):
@@ -399,6 +656,22 @@ def test_tie_break_falls_back_when_the_requested_pile_is_empty(tiny_net):
     assert "tie-break" in result.message or result.game_over
 
 
+def test_tie_break_exhaustion_message_lists_every_shared_winner():
+    result = GameController._tie_break_message({
+        "player": 2,
+        "card": (1, 0),
+        "source": "deck",
+        "outcome": "dragon",
+        "winner": None,
+        "winners": [0, 1],
+        "all_survivors_win": True,
+        "game_over": True,
+    })
+
+    assert result.game_over
+    assert "Player 1, Player 2 share the win" in result.message
+
+
 def test_blaster_policy_announces_and_fires_blasts():
     """The viewer needs a baseline that actually blasts; the learner does not."""
     announced = fired = 0
@@ -435,11 +708,12 @@ def test_every_seat_neural_finishes_across_seeds(tiny_net):
         assert controller.env.game_finished
 
 
-def test_the_watchable_blast_rules_all_finish_and_trap_blasts_less():
+def test_the_watchable_blast_policies_all_finish_and_make_blasts():
     """"Blast when a dragon is waiting for me" must be watchable, not a hang.
 
-    It is a losing rule (BALANCE.md §5), which is exactly why the viewer offers
-    it: the announced counts should sit between never and always.
+    The lorry/cage rule changes how many blast opportunities a short set of
+    seeds produces, so this checks termination and nonzero use rather than an
+    old small-sample ordering between policies.
     """
     announced = {}
     for policy in ("blaster:behind", "blaster:trap", "blaster"):
@@ -455,7 +729,8 @@ def test_the_watchable_blast_rules_all_finish_and_trap_blasts_less():
                     break
             else:  # pragma: no cover - the driver must terminate
                 raise AssertionError("the game did not finish")
-    assert announced["blaster"] > announced["blaster:trap"] > 0
+    assert announced["blaster"] > 0
+    assert announced["blaster:trap"] > 0
 
 
 def test_the_viewer_names_what_the_deciding_seat_knows(tiny_net):
@@ -570,3 +845,346 @@ def test_dropdown_labels_a_legal_push_as_a_push(tmp_path):
     )
     MineViewer._action_label_selected(viewer, None)
     assert viewer.action_var.get() == action
+
+
+def test_gui_renderer_uses_token_size_without_an_active_highlight_ring():
+    from game_env import LORRY
+    from mine_gui import LAYOUT, PLAYER_COLORS, MineRenderer
+
+    class FakeCanvas:
+        def __init__(self, width=640, height=520):
+            self.width = width
+            self.height = height
+            self.ovals = []
+            self.texts = []
+            self.rects = []
+
+        def delete(self, _tag):
+            self.ovals.clear()
+            self.texts.clear()
+            self.rects.clear()
+
+        def winfo_width(self):
+            return self.width
+
+        def winfo_height(self):
+            return self.height
+
+        def create_rectangle(self, *coords, **kwargs):
+            self.rects.append((coords, kwargs))
+
+        def create_oval(self, *coords, **kwargs):
+            self.ovals.append((coords, kwargs))
+
+        def create_text(self, *coords, **kwargs):
+            self.texts.append((coords, kwargs))
+
+    controller = GameController(3, "simple", seed=1)
+    controller.reset(3, "simple", seed=1, advance=False)
+    env = controller.env
+    for player in env.players:
+        player.position = LORRY
+        player.column = None
+        player.escaped = False
+        player.dead = False
+        player.displaced = False
+        player.blast_pending = False
+
+    canvas = FakeCanvas()
+    renderer = MineRenderer(canvas)
+
+    def token_radius(seat):
+        color = PLAYER_COLORS[seat]
+        coords, kwargs = next(
+            (coords, kwargs) for coords, kwargs in canvas.ovals
+            if kwargs.get("fill") == color
+        )
+        return {"coords": coords, **kwargs}
+
+    env.planning_player = 0
+    renderer.render(env)
+    active_p1 = token_radius(0)
+    idle_p2 = token_radius(1)
+    assert active_p1["outline"] == idle_p2["outline"] == "#101820"
+    assert active_p1["width"] == idle_p2["width"] == 2
+    assert (active_p1["coords"][2] - active_p1["coords"][0]) / 2 == LAYOUT.active_token_radius
+    assert (idle_p2["coords"][2] - idle_p2["coords"][0]) / 2 == LAYOUT.token_radius
+
+    env.planning_player = 1
+    renderer.render(env)
+    assert (token_radius(0)["coords"][2] - token_radius(0)["coords"][0]) / 2 == LAYOUT.token_radius
+    assert (token_radius(1)["coords"][2] - token_radius(1)["coords"][0]) / 2 == LAYOUT.active_token_radius
+
+
+def test_spectator_viewer_shows_only_player_one_column_fronts():
+    from types import SimpleNamespace
+
+    from game_env import (
+        BACKSIDE_A,
+        BACKSIDE_B,
+        BACKSIDE_C,
+        DRAGON,
+        DYNAMITE,
+        GEM,
+        MineEnv,
+    )
+    from mine_gui import MineRenderer, MineViewer
+
+    class FakeCanvas:
+        def __init__(self):
+            self.width = 640
+            self.height = 520
+            self.texts = []
+
+        def delete(self, _tag):
+            self.texts.clear()
+
+        def winfo_width(self):
+            return self.width
+
+        def winfo_height(self):
+            return self.height
+
+        def create_rectangle(self, *coords, **kwargs):
+            pass
+
+        def create_oval(self, *coords, **kwargs):
+            pass
+
+        def create_text(self, *coords, **kwargs):
+            self.texts.append(kwargs.get("text"))
+
+    class Variable:
+        def set(self, _value):
+            pass
+
+    env = MineEnv(opponents=2)
+    env.reset(seed=1)
+    env.rows = [[
+        (GEM, BACKSIDE_A),
+        (DRAGON, BACKSIDE_B),
+        (DYNAMITE, BACKSIDE_C),
+    ]]
+    canvas = FakeCanvas()
+    viewer = MineViewer.__new__(MineViewer)
+    viewer.controller = SimpleNamespace(env=env, all_seats=True)
+    viewer.renderer = MineRenderer(canvas)
+    viewer.haul_var = Variable()
+    viewer.stack_var = Variable()
+    viewer._update_player_list = lambda: None
+    viewer._update_policy_panel = lambda: None
+
+    MineViewer.draw_scene(viewer)
+
+    revealed_fronts = [
+        text for text in canvas.texts if text in {"GEM", "DRAGON", "DYNAMITE"}
+    ]
+    assert revealed_fronts == ["GEM"]
+    assert any("o " in text or "v " in text or "~ " in text for text in canvas.texts)
+
+
+def test_gui_renderer_draws_displacer_and_displaced_opponent_on_same_card():
+    """Headless canvas test: displaced opponent stays on the card side-by-side."""
+    from game_env import BACKSIDE_A, GEM, MAX_COLUMNS
+    from mine_gui import LAYOUT, MineRenderer
+
+    class FakeCanvas:
+        def __init__(self, width=640, height=520):
+            self.width = width
+            self.height = height
+            self.ovals = []
+            self.texts = []
+            self.rects = []
+
+        def delete(self, _tag):
+            self.ovals.clear()
+            self.texts.clear()
+            self.rects.clear()
+
+        def winfo_width(self):
+            return self.width
+
+        def winfo_height(self):
+            return self.height
+
+        def create_rectangle(self, *coords, **kwargs):
+            self.rects.append((coords, kwargs))
+
+        def create_oval(self, *coords, **kwargs):
+            self.ovals.append((coords, kwargs))
+
+        def create_text(self, *coords, **kwargs):
+            self.texts.append((coords, kwargs))
+
+    controller = GameController(3, "simple", seed=1)
+    controller.reset(3, "simple", seed=1, advance=False)
+    env = controller.env
+    env.rows[1][1] = (GEM, BACKSIDE_A)
+    env.players[1].position, env.players[1].column = 1, 1
+    env.players[0].position, env.players[0].column = 2, 0
+    env.planned_players = [True, True, True, True]
+    env.planning_player = 0
+
+    canvas = FakeCanvas()
+    renderer = MineRenderer(canvas)
+
+    # Before displacement: P2 is centered alone on (1, 1).
+    renderer.render(env)
+    p2_text_before = [coords for coords, kw in canvas.texts if kw.get("text") == "2"]
+    assert len(p2_text_before) == 1
+    center_x_before, center_y_before = p2_text_before[0]
+
+    # P1 displaces P2 on (1, 1): P2 stays on the same card alongside P1.
+    env.step_one_player(1 * MAX_COLUMNS + 1, force_action=True)
+    assert env.players[0].position == 1 and env.players[0].column == 1
+    assert env.players[1].position == 1 and env.players[1].column == 1
+    assert env.players[1].displaced is True
+
+    renderer.render(env)
+    p1_xy = [coords for coords, kw in canvas.texts if kw.get("text") == "1"][0]
+    p2_xy = [coords for coords, kw in canvas.texts if kw.get("text") == "2"][0]
+    assert p1_xy[1] == p2_xy[1] == center_y_before, "both tokens sit on the same card row"
+    assert p1_xy[0] < center_x_before < p2_xy[0], "claimant left, displaced opponent right"
+    assert abs(p2_xy[0] - p1_xy[0]) >= 14.0, "tokens do not overlap completely"
+    # Dashed amber ring marks the displaced token.
+    dashed_rings = [
+        (coords, kw) for coords, kw in canvas.ovals if kw.get("dash") is not None
+    ]
+    assert len(dashed_rings) == 1
+    ring_coords, _ = dashed_rings[0]
+    ring_cx = (ring_coords[0] + ring_coords[2]) / 2
+    assert abs(ring_cx - p2_xy[0]) < 1e-6
+
+    # Plan summary and displacement message reflect the rule.
+    assert "displaced, must move - cannot pass" in controller.plan_summary(1)
+
+    # After P2 takes its non-pass turn (e.g. row 0), P1 is centered alone on (1, 1).
+    env.step_one_player(0 * MAX_COLUMNS + 1, force_action=True)
+    renderer.render(env)
+    p1_after = [coords for coords, kw in canvas.texts if kw.get("text") == "1"][0]
+    assert abs(p1_after[0] - center_x_before) < 1e-6
+    assert not any(kw.get("dash") is not None for _, kw in canvas.ovals)
+    assert LAYOUT.token_radius > 0
+
+
+def test_gui_viewer_offers_all_regular_options_except_pass_when_p1_displaced():
+    """Headless viewer test: displaced P1 sees regular options + blasts, never Pass."""
+    from game_env import BACKSIDE_A, BACKSIDE_B, DYNAMITE, GEM, LORRY, MAX_COLUMNS, PASS, PIT_CAGE
+    from mine_gui import MineViewer
+
+    class Menu:
+        def __init__(self):
+            self.values = []
+            self.value = ""
+        def configure(self, **kwargs):
+            self.values = list(kwargs["values"])
+        def get(self):
+            return self.value
+        def set(self, value):
+            self.value = value
+
+    class Var:
+        def __init__(self, value=None):
+            self._value = value
+        def set(self, value):
+            self._value = value
+        def get(self):
+            return self._value
+
+    class TextBox:
+        def __init__(self):
+            self.content = ""
+        def configure(self, **_kwargs):
+            pass
+        def delete(self, _start, _end):
+            self.content = ""
+        def insert(self, _pos, text):
+            self.content += text
+
+    controller = GameController(3, "simple", seed=1)
+    controller.reset(3, "simple", seed=1, advance=False)
+    env = controller.env
+    env.rows[2][0] = (GEM, BACKSIDE_A)
+    env.rows[1][0] = (GEM, BACKSIDE_A)
+    env.rows[0][1] = (GEM, BACKSIDE_B)
+    env.players[0].collected_cards = [(DYNAMITE, BACKSIDE_A), (DYNAMITE, BACKSIDE_B)]
+    env.players[0].position, env.players[0].column = 2, 0
+    env.players[1].position, env.players[1].column = 0, 1  # displaceable shallower opponent
+    env.players[2].position, env.players[2].column = 2, 2
+    env.players[3].position, env.players[3].column = 3, None
+    env.planned_players = [True, True, True, True]
+    env.planning_player = 3
+
+    # P4 displaces P1 at (2, 0); next planning player is P1 (0).
+    env.step_one_player(2 * MAX_COLUMNS + 0, force_action=True)
+    assert env.planning_player == 0
+    assert env.players[0].displaced is True
+    assert PASS not in controller.legal_actions()
+    assert PIT_CAGE in controller.legal_actions()
+    assert LORRY in controller.legal_actions()
+    assert (1 * MAX_COLUMNS + 0) in controller.legal_actions()
+    assert (0 * MAX_COLUMNS + 1) in controller.legal_actions()
+
+    viewer = MineViewer.__new__(MineViewer)
+    viewer.controller = controller
+    viewer.action_menu = Menu()
+    viewer.action_var = Var(-1)
+    viewer.action_header_var = Var("YOUR ACTION")
+    viewer.players_text = TextBox()
+    viewer.blast_requested = False
+    viewer._action_choice_by_label = {}
+
+    MineViewer._update_action_options(viewer)
+    MineViewer._update_player_list(viewer)
+
+    labels = viewer.action_menu.values
+    assert "Pass" not in labels
+    assert "Leave via pit cage" in labels
+    assert "Lorry" in labels
+    assert "Card row 1, column 1" in labels
+    assert "Displace Player 2: card row 0, column 2" in labels
+    assert any(label.startswith("Blast: ") for label in labels)
+    assert viewer.action_header_var.get() == "YOUR ACTION (displaced - no Pass)"
+    assert "DISPLACED" in viewer.players_text.content
+
+
+def test_auto_blast_hides_drawn_fronts_and_chooses_by_backside_risk():
+    """Agents resolving blasts in GameController never see drawn card fronts."""
+    from agents import RuleAgent
+    from game_env import BACKSIDE_A, BACKSIDE_B, BACKSIDE_C, DRAGON, DYNAMITE, FRONT_UNKNOWN, GEM
+
+    seen_cards = []
+
+    class SpyAgent(RuleAgent):
+        def blast_choice(self, cards, ctx):
+            seen_cards.append(tuple(cards))
+            return super().blast_choice(cards, ctx)
+
+    controller = GameController(2, "simple", seed=1, all_seats=True)
+    controller.reset(2, "simple", seed=1, advance=False)
+    env = controller.env
+    assert env.blast_choice_sees_fronts is False
+
+    # Seat 1 sees both dragons of BACKSIDE_A in its own column -> BACKSIDE_A is 0% dragon risk.
+    env.rows[0][1] = (DRAGON, BACKSIDE_A)
+    env.rows[1][1] = (DRAGON, BACKSIDE_A)
+    # Give seat 1 a pending blast where index 0 is a GEM on risky BACKSIDE_B,
+    # index 1 is DYNAMITE on zero-risk BACKSIDE_A, and index 2 is DRAGON on BACKSIDE_C.
+    # A peeking agent would pick index 0 (GEM); a rules-correct blind agent must
+    # see FRONT_UNKNOWN on all three and pick index 1 (zero-risk BACKSIDE_A).
+    env.players[1].blast_pending = True
+    env.players[1].blast_cards = [
+        (GEM, BACKSIDE_B),
+        (DYNAMITE, BACKSIDE_A),
+        (DRAGON, BACKSIDE_C),
+    ]
+    controller.agents[1] = SpyAgent()
+
+    result = controller.step_one_player_auto()
+    assert len(seen_cards) == 1
+    assert seen_cards[0] == (
+        (FRONT_UNKNOWN, BACKSIDE_B),
+        (FRONT_UNKNOWN, BACKSIDE_A),
+        (FRONT_UNKNOWN, BACKSIDE_C),
+    )
+    assert "DYNAMITE" in result.message, "picked zero-risk BACKSIDE_A without peeking at GEM"

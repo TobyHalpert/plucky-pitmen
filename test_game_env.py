@@ -17,12 +17,14 @@ from game_env import (
     MineEnv,
     PASS,
     PIT_CAGE,
+    TIE_BREAK_DECK,
 )
 
-# The observation is 15 state values, then one backside per mine cell, then one
-# front per cell. The mine block is sized by the deepest board a deck can build.
+# The observation is 15 planning-state values, then one backside per mine cell,
+# one front per cell, and four tie-break fields at the tail.
 CELLS = MAX_ROWS * MAX_COLUMNS
 FRONT_OFFSET = 15 + CELLS
+TIE_BREAK_OFFSET = FRONT_OFFSET + CELLS
 
 
 def test_random_game_terminates():
@@ -34,12 +36,29 @@ def test_random_game_terminates():
         if env._game_over():
             break
         legal = env.action_mask()
-        assert legal.any()
-        action = PASS if legal[PASS] else int(legal.argmax())
-        observation, _, terminated, truncated, _ = env.step(action)
+        if not legal.any():
+            assert env.players[0].escaped or env.players[0].dead
+            observation, _, terminated, truncated, _ = env.step_one_player()
+        else:
+            action = PASS if legal[PASS] else int(legal.argmax())
+            observation, _, terminated, truncated, _ = env.step(action)
         if terminated or truncated:
             break
     assert terminated or truncated
+
+
+def test_observation_saturates_unbounded_counters_to_int8_space():
+    env = MineEnv(opponents=2)
+    env.reset(seed=3)
+    env.round = 128
+    env.planning_turns = 256
+
+    observation = env._observation()
+
+    assert observation.dtype == env.observation_space.dtype
+    assert observation[0] == 127
+    assert observation[13] == 127
+    assert env.observation_space.contains(observation)
 
 
 def test_tie_breaker_uses_turn_order_and_eliminates_dragon_drawers():
@@ -67,6 +86,177 @@ def test_tie_breaker_uses_turn_order_and_eliminates_dragon_drawers():
     assert second["outcome"] == "dragon"
     assert second["winner"] == 1
     assert second["game_over"] is True
+
+
+def test_tie_break_exhaustion_makes_all_remaining_contenders_winners():
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    for player in env.players:
+        player.score = 5
+    env.rows = [[None] * env.n_players]
+    env.cards_remaining = [(GEM, BACKSIDE_A), (GEM, BACKSIDE_B)]
+
+    assert env._begin_tie_breaker() is True
+    assert env.tie_breaker_shortage is True
+    first = env.resolve_tie_breaker("deck")
+    assert first["outcome"] == "safe"
+    assert env.tie_breaker_contenders
+    second = env.resolve_tie_breaker("deck")
+
+    assert second["winners"] == list(range(env.n_players))
+    assert second["winner"] is None
+    assert second["all_survivors_win"] is True
+    assert env.winners == list(range(env.n_players))
+    assert env.tie_breaker_contenders == []
+    assert env.game_finished
+
+
+def test_tie_break_exhaustion_after_a_dragon_awards_all_survivors():
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    for player in env.players:
+        player.score = 5
+    env.rows = [[None] * env.n_players]
+    env.cards_remaining = [(DRAGON, BACKSIDE_A)]
+
+    assert env._begin_tie_breaker() is True
+    eliminated = env.tie_breaker_contenders[env.tie_breaker_turn]
+    result = env.resolve_tie_breaker("deck")
+    survivors = [index for index in range(env.n_players) if index != eliminated]
+
+    assert result["outcome"] == "dragon"
+    assert result["winners"] == survivors
+    assert result["all_survivors_win"] is True
+    assert env.game_finished
+
+
+def test_tie_break_with_no_available_cards_immediately_shares_the_win():
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    env.haul = 3
+    for player in env.players:
+        player.score = 5
+    env.rows = [[None] * env.n_players]
+    env.cards_remaining = []
+
+    _reward, terminated = env._finish_round(
+        0.0, {"round": env.round, "outcome": "continued"}
+    )
+
+    assert terminated
+    assert env.game_finished
+    assert env.winners == list(range(env.n_players))
+    assert env.tie_breaker_contenders == []
+
+
+def _final_tie_gym_env(scores=(0, 0, 0), deck=None, opponent_policy="simple"):
+    env = MineEnv(opponents=2, opponent_policy=opponent_policy)
+    env.reset(seed=12)
+    env.haul = 3
+    # The final action advances this to seat 0, who should start the tie-break.
+    env.starting_player = 2
+    env.planning_player = 0
+    env.rows = [[(GEM, BACKSIDE_A), None, None]]
+    env.cards_remaining = list(
+        deck if deck is not None else [(DRAGON, BACKSIDE_B)]
+    )
+    env.planned_players = [True, False, False]
+    env.passed_players = [False, False, False]
+    env.consecutive_passes = 0
+    env.planning_turns = 0
+    for player, score in zip(env.players, scores):
+        player.position = LORRY
+        player.column = None
+        player.score = score
+    return env
+
+
+def test_gym_step_integrates_final_tie_break_and_phase_actions():
+    env = _final_tie_gym_env()
+
+    observation, _reward, terminated, truncated, info = env.step(PASS)
+
+    assert not terminated and not truncated
+    assert info["phase"] == "tie_breaker"
+    assert info["tie_break_active"] is True
+    assert info["tie_breaker_current_player"] == 0
+    assert info["action_mask"] == env.action_mask().tolist()
+    assert env.action_mask()[0]  # draw this mine card
+    assert env.action_mask()[TIE_BREAK_DECK]  # or draw from the deck
+    assert not env.action_mask()[PIT_CAGE]
+    assert observation[TIE_BREAK_OFFSET:].tolist() == [1, 0, 0b111, 1]
+    assert env.observation_space.contains(observation)
+
+    _obs, _reward, terminated, _truncated, invalid = env.step(PIT_CAGE)
+    assert not terminated
+    assert invalid["illegal_action"] is True
+    assert env.tie_breaker_contenders == [0, 1, 2]
+
+    _obs, reward, terminated, truncated, info = env.step(0)
+    assert terminated and not truncated
+    assert reward == 1.0
+    assert info["phase"] == "terminal"
+    assert info["winners"] == [0, 2]
+    assert [draw["outcome"] for draw in info["tie_break_draws"]] == [
+        "safe",
+        "dragon",
+    ]
+    assert info["tie_break_draws"][0]["source"] == "mine"
+
+
+def test_gym_tie_break_pass_action_draws_from_the_deck():
+    env = _final_tie_gym_env()
+    env.step(PASS)
+
+    _observation, reward, terminated, truncated, info = env.step(TIE_BREAK_DECK)
+
+    assert terminated and not truncated
+    assert reward == 0.0
+    assert info["winners"] == [1, 2]
+    assert info["tie_break_draws"][0]["player"] == 0
+    assert info["tie_break_draws"][0]["source"] == "deck"
+    assert info["tie_break_draws"][0]["outcome"] == "dragon"
+
+
+def test_gym_step_auto_resolves_tie_when_player_zero_is_not_a_contender():
+    env = _final_tie_gym_env(
+        scores=(-1, 0, 0),
+        deck=[(GEM, BACKSIDE_B), (DRAGON, BACKSIDE_C)],
+    )
+
+    _observation, reward, terminated, truncated, info = env.step(PASS)
+
+    assert terminated and not truncated
+    assert reward == 0.0
+    assert info["phase"] == "terminal"
+    assert info["winners"] in ([1], [2])
+    assert info["tie_break_draws"]
+    assert all(
+        draw["outcome"] in ("safe", "dragon")
+        for draw in info["tie_break_draws"]
+    )
+
+
+def test_step_one_player_exposes_and_resolves_tie_break_actions():
+    env = _final_tie_gym_env()
+
+    _observation, _reward, terminated, _truncated, info = env.step_one_player(PASS)
+
+    assert not terminated
+    assert info["tie_break_active"] is True
+    assert info["tie_breaker_current_player"] == 0
+    assert env.action_mask()[0]
+
+    _observation, _reward, terminated, _truncated, info = env.step_one_player(
+        0, force_action=True
+    )
+    assert not terminated
+    assert info["tie_break_draw"]["source"] == "mine"
+
+    _observation, reward, terminated, _truncated, info = env.step_one_player()
+    assert terminated
+    assert reward == 1.0
+    assert info["winners"] == [0, 2]
 
 
 def test_seeded_reset_is_reproducible():
@@ -113,6 +303,20 @@ def test_passing_is_not_allowed_on_first_planning_turn():
     assert not env._legal(PASS)
     env.step(0)
     assert env._legal(PASS)
+
+
+def test_legacy_step_resets_planned_players_after_a_continuing_round():
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    env.planned_players = [True] * env.n_players
+    env.consecutive_passes = env._pass_threshold() - 1
+
+    _observation, _reward, terminated, _truncated, info = env.step(PASS)
+
+    assert not terminated
+    assert info["outcome"] == "continued"
+    assert env.planned_players == [False] * env.n_players
+    assert not env._legal(PASS)
 
 
 def test_row_zero_allows_pit_cage_lorry_and_pass_choices():
@@ -268,18 +472,141 @@ def test_blast_choice_draw_and_resolution_are_limited_to_three_cards():
 
     env._execute_round()
 
+    assert env.players[0].collected_cards == [(GEM, BACKSIDE_A)]
     assert len(env.players[0].blast_cards) == 3
     assert env.used_blast_backsides == [BACKSIDE_A, BACKSIDE_B]
     assert [card[1] for card in env.players[0].blast_cards] == [BACKSIDE_A, BACKSIDE_B, BACKSIDE_C]
     assert len(env.cards_remaining) == 3
 
+    # Reveal a chosen safe card now; it becomes visible in the player's hand
+    # before the player is asked to choose the second card.
     chosen = env.resolve_blast(0, 1)
 
-    assert chosen[1] == BACKSIDE_B
+    assert chosen == (DYNAMITE, BACKSIDE_B)
     assert env.players[0].blast_pending is True
+    after_first_choice = env.player_action_context(0)
+    assert chosen in after_first_choice.private_cards
+    assert len(after_first_choice.own_blast_cards) == 2
     second = env.resolve_blast(0, 0)
     assert env.players[0].blast_pending is False
     assert env.players[0].collected_cards[-2:] == [chosen, second]
+
+
+def test_first_blast_dragon_returns_unselected_cards_for_a_five_way_tie_break():
+    env = MineEnv(opponents=4)
+    env.reset(seed=5)
+    env.haul = 3
+    dragons = [card for card in env._new_deck() if card[0] == DRAGON]
+    env.rows = [[*dragons[3:], None, None]]
+    env.cards_remaining = []
+    for player in env.players:
+        player.score = -1
+        player.position = LORRY
+        player.column = None
+    env.players[0].blast_pending = True
+    env.players[0].blast_cards = dragons[:3]
+
+    chosen = env.resolve_blast(0, 0)
+
+    assert chosen == dragons[0]
+    assert Counter(env.cards_remaining) == Counter(dragons[1:3])
+    assert env._dragons_left_to_draw() == 5
+    assert env.tie_breaker_contenders == list(range(5))
+    assert not env.tie_breaker_shortage
+    assert not env.game_finished
+
+
+def test_short_deck_blast_stops_at_the_first_dragon():
+    env = MineEnv(opponents=2)
+    env.reset(seed=5)
+    env.haul = 3
+    env.players[0].score = 10
+    for player in env.players:
+        player.position = LORRY
+        player.column = None
+    env.players[0].collected_cards = [
+        (DYNAMITE, BACKSIDE_A),
+        (DYNAMITE, BACKSIDE_B),
+    ]
+    env.players[1].collected_cards = [
+        (DYNAMITE, BACKSIDE_A),
+        (DYNAMITE, BACKSIDE_B),
+    ]
+    env.begin_blast(0)
+    env.begin_blast(1)
+    env.cards_remaining = [
+        (DRAGON, BACKSIDE_A),
+        (GEM, BACKSIDE_B),
+    ]
+
+    reward, info = env._execute_round()
+
+    assert info["outcome"] == "blast_dragon"
+    assert info["dragon_player"] == 0
+    assert env.players[0].collected_cards == []
+    assert env.cards_remaining == [(GEM, BACKSIDE_B)]
+    assert all(player.dead for player in env.players)
+    assert all(not player.blast_pending for player in env.players)
+    assert all(not player.blast_cards for player in env.players)
+
+    reward, terminated = env._finish_round(reward, info)
+    assert terminated
+    assert env.game_finished
+    assert info["winner"] == 0
+
+
+def test_short_deck_blast_keeps_safe_cards_before_the_first_dragon():
+    env = MineEnv(opponents=2)
+    env.reset(seed=5)
+    for player in env.players:
+        player.position = LORRY
+        player.column = None
+    env.players[0].collected_cards = [
+        (DYNAMITE, BACKSIDE_A),
+        (DYNAMITE, BACKSIDE_B),
+    ]
+    env.begin_blast(0)
+    env.cards_remaining = [
+        (GEM, BACKSIDE_A),
+        (DRAGON, BACKSIDE_B),
+    ]
+
+    _reward, info = env._execute_round()
+
+    assert info["outcome"] == "blast_dragon"
+    assert env.players[0].collected_cards == [(GEM, BACKSIDE_A)]
+    assert env.cards_remaining == []
+    assert all(player.dead for player in env.players)
+    assert all(not player.blast_pending for player in env.players)
+    assert all(not player.blast_cards for player in env.players)
+
+
+def test_short_deck_blast_without_a_dragon_takes_all_remaining_cards():
+    env = MineEnv(opponents=2)
+    env.reset(seed=5)
+    for player in env.players:
+        player.position = LORRY
+        player.column = None
+    env.players[0].collected_cards = [
+        (DYNAMITE, BACKSIDE_A),
+        (DYNAMITE, BACKSIDE_B),
+    ]
+    env.begin_blast(0)
+    env.cards_remaining = [
+        (GEM, BACKSIDE_A),
+        (DYNAMITE, BACKSIDE_B),
+    ]
+
+    _reward, info = env._execute_round()
+
+    assert info["outcome"] == "continued"
+    assert env.players[0].collected_cards == [
+        (GEM, BACKSIDE_A),
+        (DYNAMITE, BACKSIDE_B),
+    ]
+    assert all(not player.dead for player in env.players)
+    assert not env.players[0].blast_pending
+    assert not env.players[0].blast_cards
 
 
 def test_blast_announcement_survives_a_turn_that_reaches_execution():
@@ -337,11 +664,13 @@ def test_opponent_passes_complete_the_pass_sequence():
     _observation, reward, terminated, truncated, info = env.step(PASS)
 
     assert env.players[0].dynamite == 1
-    assert info["outcome"] in {"continued", "escaped", "dragon"}
+    assert info["outcome"] in {
+        "continued", "escaped", "dragon", "own_column_dragon"
+    }
     assert reward != 0.0 or terminated or truncated
 
 
-def test_woken_dragon_kills_everyone_still_in_the_mine():
+def test_woken_foreign_column_dragon_kills_everyone_still_in_the_mine():
     env = MineEnv(opponents=2)
     env.reset(seed=4)
     env.rows[0][0] = (DRAGON, BACKSIDE_A)
@@ -350,16 +679,107 @@ def test_woken_dragon_kills_everyone_still_in_the_mine():
     for player_index, player in enumerate(env.players):
         player.position = 0
         player.column = player_index
+    # Player 2 raided Player 0's Dragon: it is foreign to the digger.
+    env.players[0].column = 1
+    env.players[1].column = 2
+    env.players[2].column = 0
 
     _reward, info = env._execute_round()
 
     assert info["outcome"] == "dragon"
+    assert info["dragon_player"] == 2
     assert all(player.dead for player in env.players)
+
+
+def test_own_column_dragon_eliminates_only_its_owner_and_resolution_continues():
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    env.starting_player = 0
+    env.rows[0][0] = (DRAGON, BACKSIDE_A)
+    env.rows[0][1] = (GEM, BACKSIDE_B)
+    env.rows[0][2] = (DYNAMITE, BACKSIDE_C)
+    for player_index, player in enumerate(env.players):
+        player.position = 0
+        player.column = player_index
+
+    reward, info = env._execute_round()
+
+    assert info["outcome"] == "own_column_dragon"
+    assert info["own_column_eliminations"] == [0]
+    assert env.players[0].dead
+    assert not env.players[1].dead and not env.players[2].dead
+    assert env.players[1].collected_cards == [(GEM, BACKSIDE_B)]
+    assert env.players[2].collected_cards == [(DYNAMITE, BACKSIDE_C)]
+    assert reward == -2.0
+    assert env._haul_over() is False
+
+
+def test_a_later_global_dragon_does_not_penalize_an_own_column_casualty_again():
+    env = MineEnv(opponents=3)
+    env.reset(seed=4)
+    env.starting_player = 0
+    for player in env.players:
+        player.score = 4
+        player.position = 0
+    env.players[0].column = 0
+    env.players[1].column = 3
+    env.players[2].column = 1
+    env.players[3].column = 2
+    env.rows[0][0] = (DRAGON, BACKSIDE_A)
+    env.rows[0][3] = (DRAGON, BACKSIDE_B)
+    env.rows[0][1] = (GEM, BACKSIDE_C)
+    env.rows[0][2] = (DYNAMITE, BACKSIDE_A)
+
+    reward, info = env._execute_round()
+    assert info["outcome"] == "dragon"
+    assert info["dragon_player"] == 1
+    assert info["own_column_eliminations"] == [0]
+    assert all(player.dead for player in env.players)
+    assert reward == -2.0
+
+    env._finish_round(reward, info)
+    assert info["scores"] == [2, 2, 3, 3]
+
+
+def test_an_own_column_dragon_casualty_remains_tie_break_eligible():
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    for player in env.players:
+        player.score = -1
+    env.players[0].dead = True
+    env.own_column_eliminated = {0}
+    env.rows = [[None] * env.n_players]
+    env.cards_remaining = [(GEM, BACKSIDE_A)]
+
+    assert env._begin_tie_breaker() is True
+    assert env.tie_breaker_contenders == list(range(env.n_players))
+
+
+def test_own_column_dragon_penalty_is_floored_and_old_plus_two_is_gone():
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    for player in env.players:
+        player.dead = True
+        player.score = 5
+    env.own_column_eliminated = {0}
+
+    env._score_haul({
+        "outcome": "dragon",
+        "dragon_player": 1,
+        "home_column_dragon": True,
+    })
+
+    assert [player.score for player in env.players] == [3, 3, 4]
+
+    env.players[0].score = -4
+    env._score_haul({"outcome": "own_column_dragon", "dragon_player": 0})
+    assert env.players[0].score == -1
 
 
 def test_player_can_displace_occupant_in_that_players_own_column(monkeypatch):
     import game_env
 
+    monkeypatch.setattr(game_env, "DISPLACEMENT_STAYS_ON_THE_SAME_CARD", False)
     monkeypatch.setattr(game_env, "DISPLACEMENT_STEPS_TO_THE_NEXT_CARD", False)
     env = MineEnv(opponents=2)
     env.reset(seed=4)
@@ -388,6 +808,7 @@ def test_a_pushed_figure_is_not_out_of_the_haul_yet(monkeypatch):
     """
     import game_env
 
+    monkeypatch.setattr(game_env, "DISPLACEMENT_STAYS_ON_THE_SAME_CARD", False)
     monkeypatch.setattr(game_env, "DISPLACEMENT_STEPS_TO_THE_NEXT_CARD", False)
     env = MineEnv(opponents=2)
     env.reset(seed=4)
@@ -523,8 +944,8 @@ def test_pit_cage_is_planned_before_the_player_leaves():
     assert not env.players[0].escaped
     assert env.players[0].position == PIT_CAGE
     assert env.players[0].cage_index == 2
-    assert not env.action_mask()[PIT_CAGE]
-    assert any(env.action_mask()[:PIT_CAGE])
+    assert LORRY in env.legal_actions(0)
+    assert PASS in env.legal_actions(0)
 
     env.step(PASS)
     assert env.haul == 1
@@ -555,17 +976,28 @@ def test_game_scores_three_hauls_and_terminates_after_the_third():
     assert env.players[0].score == 10
 
 
-def test_player_gets_regular_choices_again_from_pit_cage():
+def test_voluntary_pit_cage_move_can_be_revised_before_execution():
     env = MineEnv(opponents=2)
     env.reset(seed=4)
+    env.starting_player = 0
+    env.planning_player = 0
+    player = env.players[0]
 
-    env.step(PIT_CAGE)
+    assert env._legal(PIT_CAGE, 0)
+    _obs, _reward, terminated, _truncated, info = env.step_one_player(
+        PIT_CAGE, force_action=True
+    )
 
-    legal_card_actions = [
-        action for action in range(PIT_CAGE) if env.action_mask()[action]
-    ]
-    assert legal_card_actions
-    assert all(action // 5 < 2 for action in legal_card_actions)
+    legal = set(env.legal_actions(0))
+    card_actions = {action for action in legal if action < PIT_CAGE}
+    assert not terminated
+    assert info["outcome"] == "planning"
+    assert player.position == PIT_CAGE
+    assert player.cage_index > 0  # deeper than the last pit cage
+    assert card_actions
+    assert LORRY in legal
+    assert PASS in legal
+    assert PIT_CAGE not in legal
 
 
 def test_lorry_allows_only_previous_cage_or_pass():
@@ -599,26 +1031,92 @@ def _pushable_board(env, column=1):
     return row, column
 
 
-def test_default_displacement_steps_the_victim_towards_the_lorry():
-    """``DISPLACEMENT_STEPS_TO_THE_NEXT_CARD``: the victim stays in the mine."""
+def test_default_displacement_keeps_victim_on_same_card_without_pass():
+    """Default displacement rule: victim stays on the same card and cannot pass."""
     import game_env
 
     env = MineEnv(opponents=2)
     env.reset(seed=4)
     row, column = _pushable_board(env)
-    assert game_env.DISPLACEMENT_STEPS_TO_THE_NEXT_CARD
+    assert game_env.DISPLACEMENT_STAYS_ON_THE_SAME_CARD
+    assert not game_env.DISPLACEMENT_STEPS_TO_THE_NEXT_CARD
+
+    # Place P3 on its own column at a shallower row so P2 can also displace on its turn.
+    env.players[2].position, env.players[2].column = 0, 2
+    env.planned_players = [True, True, True]
 
     push = row * MAX_COLUMNS + column
-    assert env._legal(push)
+    assert env._legal(push, player_index=0)
     env._apply_action(0, push)
 
     victim = env.players[column]
-    assert victim.position == row - 1, "one card closer to the lorries, not a cage"
-    assert victim.column == column, "still on its own column, so still in the game"
-    assert not victim.escaped, "a push no longer takes it out of the haul"
+    assert victim.position == row, "stays on the same card"
+    assert victim.column == column, "stays on the same column"
+    assert victim.displaced is True
+    assert not victim.escaped
     assert victim.cage_index is None
-    assert len(victim.collected_cards) == 1, "it still keeps what it collected"
-    assert env.players[0].position == row, "the pusher still stands on the card"
+    assert len(victim.collected_cards) == 1, "keeps collected loot"
+    assert env.players[0].position == row and env.players[0].column == column
+
+    # Nobody else can displace at (row, column) now because P1 holds it (not own column).
+    assert env._card_occupant(row, column) == 0
+    assert not env._can_displace(row, column, 2)
+
+    # On the victim's turn, all regular options from ``row`` are legal EXCEPT Pass.
+    mask = env.action_mask(column)
+    assert not mask[PASS], "Pass must not be allowed when displaced"
+    assert mask[PIT_CAGE], "nearest pit cage is allowed"
+    assert mask[LORRY], "sitting on lorry is allowed"
+    assert mask[(row - 1) * MAX_COLUMNS + column], "shallower free card is allowed"
+    assert mask[0 * MAX_COLUMNS + 2], "displacing a shallower opponent is allowed"
+    assert not any(mask[row * MAX_COLUMNS : PIT_CAGE]), "same or deeper rows are not allowed"
+
+
+def test_displaced_player_at_row_zero_has_pit_cage_and_lorry_but_not_pass():
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    env.players[1].position, env.players[1].column = 0, 1
+    env.players[0].position, env.players[0].column = 2, 0
+    env.planned_players = [True, True, True]
+
+    env.planning_player = 0
+    env.step_one_player(0 * MAX_COLUMNS + 1, force_action=True)
+
+    victim = env.players[1]
+    assert victim.position == 0 and victim.column == 1 and victim.displaced
+    legal = set(env.legal_actions(1))
+    assert legal == {PIT_CAGE, LORRY}
+
+    # Once the victim takes a legal move, ``displaced`` clears and Pass is legal next turn.
+    env.step_one_player(PIT_CAGE, force_action=True)
+    assert not victim.displaced
+    assert victim.position == PIT_CAGE and victim.cage_index == 0
+    assert env._legal(PASS, player_index=1)
+
+
+def test_displacing_a_blasting_player_cancels_blast_and_allows_reannouncing():
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    env.players[1].collected_cards = [(DYNAMITE, BACKSIDE_A), (DYNAMITE, BACKSIDE_B)]
+    env.players[1].position, env.players[1].column = 2, 1
+    env.begin_blast(1)
+    assert env.players[1].blast_pending
+
+    env.players[0].position, env.players[0].column = 3, None
+    env.planning_player = 0
+    env.step_one_player(2 * MAX_COLUMNS + 1, force_action=True)
+
+    assert env.players[1].displaced
+    assert not env.players[1].blast_pending, "blast on displaced card is aborted"
+    assert env.players[1].dynamite == 2, "dynamite returns to hand"
+
+    # On P2's turn, P2 can announce a blast on a shallower card, and cannot pass.
+    assert env.planning_player == 1
+    assert not env._legal(PASS, player_index=1)
+    env.step_one_player(1 * MAX_COLUMNS + 1, announce_blast=True, force_action=True)
+    assert not env.players[1].displaced
+    assert env.players[1].blast_pending
+    assert env.players[1].position == 1 and env.players[1].column == 1
 
 
 def test_the_next_card_variant_puts_a_victim_off_the_last_card_on_the_lorry(monkeypatch):
@@ -637,9 +1135,32 @@ def test_the_next_card_variant_puts_a_victim_off_the_last_card_on_the_lorry(monk
     assert env._legal(push), "row 0 is the last card before the lorries"
     env._apply_action(0, push)
 
-    assert env.players[column].position == LORRY
-    assert env.players[column].column is None
-    assert env.lorry_touched[column], "the lorry rule binds the phase for it too"
+    assert victim.position == LORRY
+    assert victim.column is None
+
+
+def test_returning_from_lorry_to_pit_cage_cannot_reenter_the_mine():
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    player = env.players[0]
+
+    # Start in a reachable position with ordinary card moves available.
+    assert any(env._legal(action) for action in range(PIT_CAGE))
+    assert env._legal(LORRY)
+    env._apply_action(0, LORRY)
+
+    assert player.position == LORRY
+    assert not any(env._legal(action) for action in range(PIT_CAGE))
+    assert env._legal(PIT_CAGE)
+
+    # The lorry can be revisited via the outermost pit cage, whose movement
+    # depth is zero, so the ordinary legality checks keep cards inaccessible.
+    env._apply_action(0, PIT_CAGE)
+    assert player.position == PIT_CAGE
+    assert player.cage_index == 0
+    assert env._movement_depth(player) == 0
+    assert not any(env._legal(action) for action in range(PIT_CAGE))
+    assert env._legal(LORRY)
 
 
 def test_the_next_card_variant_skips_an_empty_cell(monkeypatch):
@@ -655,102 +1176,68 @@ def test_the_next_card_variant_skips_an_empty_cell(monkeypatch):
     assert env._next_card_towards_the_lorries(column, row, column) == row - 2
 
 
-def test_sitting_on_the_lorry_keeps_the_seat_out_of_the_mine_for_the_phase():
-    """README, "Sit on their lorry": lorry and last pit cage only, for the phase."""
+def test_forced_cage_displacement_keeps_normal_follow_up_options(monkeypatch):
+    """A forced cage state still gives the player its normal follow-up move."""
     import game_env
+
+    monkeypatch.setattr(game_env, "DISPLACEMENT_STAYS_ON_THE_SAME_CARD", False)
+    monkeypatch.setattr(game_env, "DISPLACEMENT_STEPS_TO_THE_NEXT_CARD", False)
 
     env = MineEnv(opponents=2)
     env.reset(seed=4)
-    env.players[0].position = PIT_CAGE
-    env.players[0].cage_index = 2  # deep enough that the mine is still open
+    player = env.players[1]
+    player.position, player.column = 2, 1
 
-    # With the rule lifted, the seat standing in the cage gets the mine back.
-    assert game_env.LORRY_COMMITS_THE_SEAT is True
-    try:
-        game_env.LORRY_COMMITS_THE_SEAT = False
-        cards_from_the_cage = [a for a in range(PIT_CAGE) if env._legal(a)]
-    finally:
-        game_env.LORRY_COMMITS_THE_SEAT = True
-    assert cards_from_the_cage
+    env._displace(2, 1, player_index=0)
 
-    # Having sat on the lorry, it may only switch between cage and lorry.
-    env.lorry_touched[0] = True
-    assert not any(env._legal(a) for a in range(PIT_CAGE))
-    assert env._legal(LORRY)
+    assert player.position == PIT_CAGE
+    assert player.cage_index == 2
+    assert 1 in env.legal_actions(1)  # row 0, column 1 remains reachable
 
 
-def test_a_seat_that_has_sat_on_its_lorry_is_not_asked_again_in_the_phase():
-    """Why the lorry rule never fires today: the lorry closes the seat's phase.
-
-    The check is kept as a guard -- it is what the printed rule says, and a change
-    to the planning order would make it live -- but measured over play a seat that
-    has sat on the lorry is never handed another decision before the round ends, so
-    the old code could not have let it re-enter the mine either. That is also why
-    the rule A/B measures exactly zero (BALANCE.md, "Sit on their lorry").
-    """
-    import game_env
-
-    rng = random.Random(0)
-    asked_again = 0
-    original = game_env.MineEnv._legal
-
-    def spy(self, action, player_index=None):
-        nonlocal asked_again
-        seat = self.planning_player if player_index is None else player_index
-        if self.lorry_touched[seat] and not self.planned_players[seat]:
-            asked_again += 1
-        if player_index is None:
-            return original(self, action)
-        return original(self, action, player_index)
-
-    game_env.MineEnv._legal = spy
-    try:
-        for seed in range(6):
-            env = MineEnv(opponents=3)
-            env.reset(seed=seed)
-            for _ in range(600):
-                if env.game_finished:
-                    break
-                legal = [a for a in range(env.action_space.n) if env.action_mask()[a]]
-                if not legal:
-                    break
-                env.step(rng.choice(legal))
-    finally:
-        game_env.MineEnv._legal = original
-    assert asked_again == 0
-
-
-def test_haul_scores_when_only_one_player_remains_for_next_planning_phase():
-    env = MineEnv(opponents=2)
+def test_single_remaining_player_ends_haul_by_the_ordinary_haul_rule():
+    """An automatic lorry pass does not add a special exit bonus or rule."""
+    env = MineEnv(opponents=2, solo_escape_bonus=False)
     env.reset(seed=4)
-    env.players[1].escaped = True
-    env.players[2].escaped = True
+    env.players[1].dead = True
+    env.players[2].dead = True
 
-    env.step(LORRY)
-    _observation, _reward, terminated, _truncated, info = env.step(PASS)
+    _observation, _reward, terminated, _truncated, info = env.step(LORRY)
 
     assert not terminated
     assert info["haul"] == 1
     assert info["next_haul"] == 2
+    assert info["auto_passed"] == [0]
+    assert info["scores"][0] == 0  # no loot and no solo-escape bonus
     assert env.haul == 2
 
 
-def test_surviving_players_keep_unused_dynamite_for_next_haul():
+def test_only_escapees_keep_dynamite_and_next_haul_conserves_the_deck():
     env = MineEnv(opponents=2)
     env.reset(seed=4)
     env.players[0].collected_cards = [
         (DYNAMITE, BACKSIDE_A),
         (GEM, BACKSIDE_B),
     ]
+    env.players[0].escaped = True
     env.players[1].collected_cards = [(DYNAMITE, BACKSIDE_C)]
+    env.players[1].escaped = True
+    # P3 did not escape, so its Dynamite returns to the shared deck.
     env.players[2].collected_cards = [(DYNAMITE, BACKSIDE_B)]
-    env.players[2].dead = True
 
     env._start_next_haul()
 
     assert env.players[0].collected_cards == [(DYNAMITE, BACKSIDE_A)]
     assert env.players[1].collected_cards == [(DYNAMITE, BACKSIDE_C)]
     assert env.players[2].collected_cards == []
+
+    cards_in_play = (
+        list(env.cards_remaining)
+        + [card for row in env.rows for card in row if card is not None]
+        + [card for player in env.players for card in player.collected_cards]
+    )
+    assert Counter(cards_in_play) == Counter(env._new_deck())
+    assert len(env.cards_remaining) == DECK_SIZE - 2 - 3 * env.n_players
 
 
 def test_collected_cards_disappear_and_new_row_requires_no_departure():
@@ -799,8 +1286,8 @@ def test_lorry_player_stays_in_the_mine_for_the_next_round():
     assert len(env.rows) == initial_row_count + 1
 
 
-def test_everybody_on_the_lorry_ends_the_haul_at_once():
-    """Nobody can collect a card, so no new row is dealt and the haul is over."""
+def test_everybody_on_the_lorry_waits_for_the_next_round_without_auto_scoring():
+    """The lorry is a waiting place; parking there is not an automatic escape."""
     env = MineEnv(opponents=2)
     env.reset(seed=4)
     env.starting_player = 0
@@ -813,11 +1300,91 @@ def test_everybody_on_the_lorry_ends_the_haul_at_once():
     _observation, _reward, terminated, _truncated, info = env.step(PASS)
 
     assert not terminated
-    assert info["outcome"] == "lorry"
-    assert env.haul == 2
-    # No extra row is dealt: the haul ended instead of growing the mine.
-    assert len(env.haul_history) == 1
-    assert rows_before == 3
+    assert info["outcome"] == "continued"
+    assert info["auto_passed"] == [1, 2]
+    assert env.haul == 1
+    assert env.round == 1
+    assert len(env.haul_history) == 0
+    assert len(env.rows) == rows_before + 1
+    assert all(not player.escaped for player in env.players)
+    assert all(player.position == len(env.rows) for player in env.players)
+
+
+def test_lorry_and_final_cage_auto_pass_after_deeper_players_pass():
+    """A deeper cage must pass manually before exit-zone players auto-pass."""
+    env = MineEnv(opponents=3)
+    env.reset(seed=4)
+    env.starting_player = 3
+    env.planning_player = 3
+
+    env.players[0].position, env.players[0].column = LORRY, None
+    env.players[1].position, env.players[1].column = PIT_CAGE, None
+    env.players[1].cage_index = 0
+    env.players[2].position, env.players[2].column = PIT_CAGE, None
+    env.players[2].cage_index = 1
+    env.players[3].position, env.players[3].column = 2, 3
+    env.rows[2][3] = (GEM, BACKSIDE_A)
+    env.planned_players = [False, False, True, True]
+
+    # The card player passes, but the deeper-cage player has not yet passed.
+    _obs, _reward, _term, _trunc, info = env.step_one_player(
+        PASS, force_action=True
+    )
+    assert info["outcome"] == "planning"
+    assert env.planning_player == 0
+
+    # Both exit-zone players get a chance to revise their positions before the
+    # deeper players have passed; the lorry sitter moves into the last cage.
+    env.step_one_player(PIT_CAGE, force_action=True)
+    _obs, _reward, _term, _trunc, info = env.step_one_player(
+        LORRY, force_action=True
+    )
+    assert info["outcome"] == "planning"
+    assert env.planning_player == 2
+
+    # Once the deeper-cage player passes too, the lorry and last-cage occupants
+    # pass automatically. Only the player still on a card and the deeper-cage
+    # player are left for execution to resolve.
+    _obs, _reward, terminated, _truncated, info = env.step_one_player(
+        PASS, force_action=True
+    )
+
+    assert not terminated
+    assert info["auto_passed"] == [0, 1]
+    assert env.players[0].escaped
+    assert not env.players[1].escaped  # on a lorry at execution
+    assert env.players[2].escaped  # deeper cage still leaves at execution
+    assert not env.players[3].escaped
+    assert env.round == 1
+
+
+def test_exit_auto_pass_metadata_is_kept_while_a_blast_is_pending():
+    env = MineEnv(opponents=2)
+    env.reset(seed=4)
+    env.starting_player = 0
+    env.planning_player = 0
+
+    player = env.players[0]
+    player.position, player.column = 2, 0
+    player.collected_cards = [
+        (DYNAMITE, BACKSIDE_A),
+        (DYNAMITE, BACKSIDE_B),
+    ]
+    env.rows[2][0] = (GEM, BACKSIDE_C)
+    env.begin_blast(0)
+    for exit_player in env.players[1:]:
+        exit_player.position, exit_player.column = LORRY, None
+    env.planned_players[0] = True
+
+    _obs, _reward, terminated, _truncated, info = env.step_one_player(
+        PASS, force_action=True
+    )
+
+    assert not terminated
+    assert info["blast_active"]
+    assert info["auto_passed"] == [1, 2]
+    assert player.blast_pending
+    assert all(not exit_player.escaped for exit_player in env.players[1:])
 
 
 def test_players_leave_when_no_cards_remain_in_the_mine():
@@ -975,8 +1542,8 @@ def test_escaped_player_is_inactive_while_other_players_continue():
     env = MineEnv(opponents=2)
     env.reset(seed=4)
     env.players[0].escaped = True
-    env.players[1].position = LORRY
-    env.players[2].position = LORRY
+    env.players[1].position, env.players[1].column = 1, 1
+    env.players[2].position, env.players[2].column = 2, 2
     env.planning_player = 0
     env.planned_players = [False] * env.n_players
 
@@ -1007,6 +1574,15 @@ def test_deck_has_thirty_cards_with_three_backside_sets():
     for backside in (BACKSIDE_A, BACKSIDE_B, BACKSIDE_C):
         fronts = Counter(front for front, card_backside in deck if card_backside == backside)
         assert fronts == Counter({DRAGON: 2, GEM: 4, DYNAMITE: 4})
+
+
+def test_deal_rows_does_not_recreate_an_exhausted_live_deck():
+    env = MineEnv(opponents=2)
+    env.reset(seed=12)
+    env.cards_remaining.clear()
+
+    assert env._deal_rows(1) == [[]]
+    assert env.cards_remaining == []
 
 
 # ----------------------------------------------------------------------
@@ -1069,36 +1645,42 @@ def test_every_row_of_a_grown_mine_has_a_reachable_card_action():
     } == legal_card_rows
 
 
-def test_a_live_locked_round_is_broken_rather_than_left_to_run_away():
-    """Two seats caged at index 0 (nothing to dig) and two on their lorries
-    (nothing to dig): cage and lorry are both legal for the other pair, so a
-    table that keeps choosing them never passes.  In a real four-net game that
-    bounced until ``planning_turns`` reached 128 and the int8 observation
-    overflowed; the breaker has to close the round long before that."""
+def test_no_card_guard_still_breaks_a_deep_cage_lorry_standoff():
+    """The legacy guard still handles a no-card state outside auto-pass scope."""
     env = MineEnv(opponents=3)
     env.reset(seed=11)
-    for index, player in enumerate(env.players):
-        player.position = PIT_CAGE if index % 2 == 0 else LORRY
-        player.column = None
-        player.cage_index = 0
+    env.starting_player = 0
+    env.planning_player = 0
+    env.rows[0] = [None] * env.n_players
+    env.rows[1] = [None] * env.n_players
+    env.rows[2][0] = (GEM, BACKSIDE_A)
+
+    deep_player = env.players[0]
+    deep_player.position, deep_player.column = 2, 0
+    deep_player.cage_index = None
+    for player in env.players[1:]:
+        player.position, player.column = LORRY, None
+        player.cage_index = None
 
     assert env._nobody_can_reach_a_card()
-    # Ordinary rounds never get near the bound: the busiest seen is 28.
-    assert HANG_BREAKER_TURNS > 32
+    env.planning_turns = HANG_BREAKER_TURNS - 1
+    assert PIT_CAGE in env.legal_actions(0)
 
-    env.planning_turns = HANG_BREAKER_TURNS
-    env.consecutive_passes = 0
-    haul_before = env.haul
-    seat = env.planning_player
-    bounce = LORRY if env.players[seat].position == PIT_CAGE else PIT_CAGE
-    env.step_one_player(bounce, force_action=True)
+    _obs, _reward, terminated, _truncated, info = env.step_one_player(
+        PIT_CAGE, force_action=True
+    )
 
-    assert env.planning_turns == 0            # the round closed
-    assert env.haul > haul_before or env.game_finished
+    assert not terminated
+    assert "auto_passed" not in info  # the deep-cage player has not passed
+    assert env.planning_turns == 0  # the 64-turn last-resort breaker fired
+    assert env.round == 1
+    assert env.haul == 1
+    assert deep_player.escaped
+    assert all(not player.escaped for player in env.players[1:])
 
 
 def test_default_push_preserves_victims_next_decision_and_shelter_choice():
-    """B takes A's dragon; A still gets to choose a cage, not free shelter."""
+    """B takes A's dragon; A stays on the card, cannot pass, and can choose a cage."""
     env = MineEnv(opponents=3)
     env.reset(seed=4)
     row, victim_index = _pushable_board(env)
@@ -1110,11 +1692,16 @@ def test_default_push_preserves_victims_next_decision_and_shelter_choice():
     victim = env.players[victim_index]
     assert env.round == old_round
     assert env.planning_player == victim_index
-    assert victim.position == row - 1
+    assert victim.position == row
+    assert victim.column == victim_index
+    assert victim.displaced
     assert not victim.escaped
-    assert env._legal(PASS, player_index=victim_index)
+    assert not env._legal(PASS, player_index=victim_index)
     assert env._legal(PIT_CAGE, player_index=victim_index)
+    assert env._legal(LORRY, player_index=victim_index)
     env.step_one_player(PIT_CAGE, force_action=True)
     assert victim.position == PIT_CAGE
+    assert victim.cage_index == row
+    assert not victim.displaced
     assert env.players[0].position == row
     assert env.round == old_round

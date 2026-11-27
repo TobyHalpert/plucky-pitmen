@@ -2,7 +2,7 @@
 from dataclasses import replace
 
 from features import action_mask
-from game_env import DYNAMITE, PASS
+from game_env import DECK_SIZE, DYNAMITE, PASS
 from learning import PolicyNet
 from train_last_haul import scenario, collect_last, BlastPlanTeacher
 
@@ -15,6 +15,14 @@ def test_late_scenario_has_really_executed_three_rounds():
         assert env.haul == 3 and env.round == 3
         assert len(env.rows) == 6
         assert sum(card is None for row in env.rows for card in row) == 12
+        retained_count = sum(env.tactical_retained_counts)
+        assert retained_count <= DECK_SIZE - 6 * env.n_players
+        assert (
+            len(env.cards_remaining)
+            + sum(card is not None for row in env.rows for card in row)
+            + sum(len(player.collected_cards) for player in env.players)
+            == DECK_SIZE
+        )
         assert all(not p.dead and not p.escaped for p in env.players)
         assert all(not p.blast_pending for p in env.players)
         assert env.planning_player == env.starting_player == seat
@@ -26,6 +34,22 @@ def test_curriculum_varies_scores_and_dynamite_and_keeps_seed_splits_separate():
     starts = [scenario(seed, 0)[0] for seed in range(2300000, 2300020)]
     assert len({tuple(p.score for p in env.players) for env in starts}) > 5
     assert {p.dynamite for env in starts for p in env.players} == {0, 1, 2, 4, 6}
+    for env in starts:
+        retained = [
+            card for player in env.players for card in player.collected_cards
+        ]
+        assert len(retained) <= 12
+        assert all(
+            sum(card == (DYNAMITE, backside) for card in retained) <= 4
+            for backside in range(3)
+        )
+        assert len(env.cards_remaining) == 30 - len(retained) - 3 * env.n_players
+        assert (
+            len(env.cards_remaining)
+            + sum(card is not None for row in env.rows for card in row)
+            + len(retained)
+            == 30
+        )
     net = PolicyNet(hidden=8, seed=1)
     train = collect_last(net, 8, 2300000)
     held = collect_last(net, 8, 2400000)

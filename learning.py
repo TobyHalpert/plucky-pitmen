@@ -47,14 +47,17 @@ class Decision:
     logp: float = 0.0
     value: float = 0.0
     generation: int = 0
+    # Assigned by the game runner so returns never leak across self-play games.
+    episode_id: object | None = None
 
 
 def compute_returns(decisions: Sequence[Decision], gamma: float = 0.99) -> None:
-    """Fill ``ret`` with the discounted return-to-go for each player."""
-    by_player: dict[int, list[Decision]] = {}
+    """Fill per-player returns, resetting at every episode boundary."""
+    by_player_episode: dict[tuple[int, object | None], list[Decision]] = {}
     for decision in decisions:
-        by_player.setdefault(decision.player, []).append(decision)
-    for sequence in by_player.values():
+        key = (decision.player, decision.episode_id)
+        by_player_episode.setdefault(key, []).append(decision)
+    for sequence in by_player_episode.values():
         running = 0.0
         for decision in reversed(sequence):
             running = decision.reward + gamma * running

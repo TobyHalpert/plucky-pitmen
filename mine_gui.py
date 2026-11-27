@@ -4,9 +4,14 @@ from __future__ import annotations
 
 import argparse
 import sys
-import tkinter as tk
 from dataclasses import dataclass
-from tkinter import ttk
+
+try:
+    import tkinter as tk
+    from tkinter import ttk
+except ModuleNotFoundError:  # pragma: no cover - headless environments without Tk
+    tk = None  # type: ignore[assignment]
+    ttk = None  # type: ignore[assignment]
 
 from game_env import (
     BACKSIDE_A, BACKSIDE_B, BACKSIDE_C, DRAGON, DYNAMITE, GEM, LORRY,
@@ -35,6 +40,7 @@ SPECIAL_ACTION_LABELS = {
 PLAYER_COLORS = ("#f5c451", "#e05a5a", "#4d8fe8", "#55b979", "#f5f5f5")
 BACKSIDE_SYMBOLS = {BACKSIDE_A: "o", BACKSIDE_B: "v", BACKSIDE_C: "~"}
 FRONT_LABELS = {GEM: "GEM", DRAGON: "DRAGON", DYNAMITE: "DYNAMITE"}
+DEFAULT_POLICY = "neural:selfplay4"
 POLICIES = agent_policies()
 BLAST_ACTION_PREFIX = "Blast: "
 # The action space is the base primitives plus one "and announce a blast" copy
@@ -90,6 +96,7 @@ class Layout:
     card_pad_top: int = 27
     card_pad_bottom: int = 9
     token_radius: int = 11
+    active_token_radius: int = 16
     blast_radius: int = 16
     exit_offset: int = 12
     exit_token_offset: int = 36
@@ -111,6 +118,7 @@ class MineRenderer:
         self.canvas = canvas
 
     def render(self, env: MineEnv) -> None:
+        """Draw the mine and expose Player 1's own column for analysis."""
         canvas = self.canvas
         canvas.delete("all")
         width = max(canvas.winfo_width(), LAYOUT.min_canvas_width)
@@ -187,8 +195,12 @@ class MineRenderer:
                     )
                     if col == 0:
                         self.canvas.create_text(
-                            card_left + 4, card_top + 8, text=FRONT_LABELS[card_entry[0]],
-                            anchor="w", fill="#f5c451", font=ui_font(7, "bold"),
+                            card_left + 4,
+                            card_top + 8,
+                            text=FRONT_LABELS[card_entry[0]],
+                            anchor="w",
+                            fill="#f5c451",
+                            font=ui_font(7, "bold"),
                         )
                     card_centers[(row_index, col)] = (x, (card_top + card_bottom) / 2)
 
@@ -200,6 +212,101 @@ class MineRenderer:
 
         return row_height, row_step, cage_centers, card_centers
 
+    @staticmethod
+    def token_positions(
+        env: MineEnv,
+        left: float,
+        column_width: float,
+        exit_y: float,
+        cage_centers: list[float],
+        card_centers: dict[tuple[int, int], tuple[float, float]],
+    ) -> dict[int, tuple[float, float]]:
+        """Compute canvas ``(x, y)`` coordinates for every visible player token.
+
+        When a player displaces an opponent, the opponent stays on that same
+        card until their turn. Grouping co-located card tokens and spreading
+        them horizontally keeps both tokens visible side by side inside the
+        card, with the active claimant on the left and displaced token(s) on
+        the right. The planning player's larger radius is included in spacing.
+        """
+        card_groups: dict[tuple[int, int], list[int]] = {}
+        for i, player in enumerate(env.players):
+            if player.escaped or player.dead:
+                continue
+            if (
+                player.position != PIT_CAGE
+                and player.position != LORRY
+                and player.column is not None
+                and (player.position, player.column) in card_centers
+            ):
+                card_groups.setdefault((player.position, player.column), []).append(i)
+
+        for members in card_groups.values():
+            members.sort(key=lambda idx: (env.players[idx].displaced, idx))
+
+        card_width = max(
+            2 * LAYOUT.active_token_radius + 4.0,
+            column_width - 2 * LAYOUT.card_pad_x,
+        )
+        card_token_x: dict[int, float] = {}
+        for cell, members in card_groups.items():
+            center_x, _center_y = card_centers[cell]
+            if len(members) == 1:
+                card_token_x[members[0]] = center_x
+                continue
+
+            radii = [
+                LAYOUT.active_token_radius
+                if index == env.planning_player
+                else LAYOUT.token_radius
+                for index in members
+            ]
+            desired_steps = [
+                radii[slot] + radii[slot + 1] + 6.0
+                for slot in range(len(members) - 1)
+            ]
+            desired_span = sum(desired_steps)
+            available_span = max(
+                0.0, card_width - radii[0] - radii[-1] - 4.0
+            )
+            compression = min(1.0, available_span / desired_span)
+            actual_span = desired_span * compression
+            x = center_x - (actual_span + radii[-1] - radii[0]) / 2.0
+            for slot, member in enumerate(members):
+                card_token_x[member] = x
+                if slot < len(desired_steps):
+                    x += desired_steps[slot] * compression
+
+        positions: dict[int, tuple[float, float]] = {}
+        for i, player in enumerate(env.players):
+            if player.escaped:
+                continue
+            if player.position == PIT_CAGE and cage_centers:
+                x = left + i * column_width + column_width / 2
+                cage_index = (
+                    player.cage_index
+                    if player.cage_index is not None
+                    else len(cage_centers) - 1
+                )
+                y = cage_centers[min(cage_index, len(cage_centers) - 1)]
+            elif (
+                not player.dead
+                and player.column is not None
+                and (player.position, player.column) in card_centers
+            ):
+                cell = (player.position, player.column)
+                cx, cy = card_centers[cell]
+                x, y = card_token_x[i], cy
+            else:
+                y = (
+                    (LAYOUT.lorry_y1 + LAYOUT.lorry_y2) / 2
+                    if player.position == LORRY
+                    else exit_y + LAYOUT.exit_token_offset
+                )
+                x = left + i * column_width + column_width / 2
+            positions[i] = (x, y)
+        return positions
+
     def _draw_tokens(
         self,
         env: MineEnv,
@@ -209,28 +316,34 @@ class MineRenderer:
         cage_centers: list[float],
         card_centers: dict[tuple[int, int], tuple[float, float]],
     ) -> None:
-        for i, player in enumerate(env.players):
-            if player.escaped:
-                continue
-            if player.position == PIT_CAGE and cage_centers:
-                x = left + i * column_width + column_width / 2
-                cage_index = player.cage_index if player.cage_index is not None else len(cage_centers) - 1
-                y = cage_centers[min(cage_index, len(cage_centers) - 1)]
-            elif not (player.dead or player.escaped) and player.column is not None \
-                    and (player.position, player.column) in card_centers:
-                x, y = card_centers[(player.position, player.column)]
-            else:
-                y = (LAYOUT.lorry_y1 + LAYOUT.lorry_y2) / 2 if player.position == LORRY \
-                    else exit_y + LAYOUT.exit_token_offset
-                x = left + i * column_width + column_width / 2
-
+        positions = self.token_positions(
+            env, left, column_width, exit_y, cage_centers, card_centers
+        )
+        for i, (x, y) in positions.items():
+            player = env.players[i]
             color = PLAYER_COLORS[i]
-            r = LAYOUT.token_radius
-            self.canvas.create_oval(x - r, y - r, x + r, y + r, fill=color, outline="#101820", width=2)
-            self.canvas.create_text(x, y, text=str(i + 1), fill="#101820", font=ui_font(9, "bold"))
+            is_active = i == env.planning_player
+            r = LAYOUT.active_token_radius if is_active else LAYOUT.token_radius
+            self.canvas.create_oval(
+                x - r, y - r, x + r, y + r,
+                fill=color, outline="#101820", width=2,
+            )
+            self.canvas.create_text(
+                x, y, text=str(i + 1), fill="#101820",
+                font=ui_font(11 if is_active else 9, "bold"),
+            )
+            if player.displaced:
+                dr = r + 3
+                self.canvas.create_oval(
+                    x - dr, y - dr, x + dr, y + dr,
+                    outline="#ff9f43", width=2, dash=(3, 2),
+                )
             if player.blast_pending:
-                br = LAYOUT.blast_radius
-                self.canvas.create_oval(x - br, y - br, x + br, y + br, outline="#ff6b6b", width=3)
+                br = max(LAYOUT.blast_radius, r + 5)
+                self.canvas.create_oval(
+                    x - br, y - br, x + br, y + br,
+                    outline="#ff6b6b", width=3,
+                )
 
     def _draw_pit_cage_row(self, left: float, y: float, right: float, height: float) -> None:
         self.canvas.create_rectangle(left, y, right, y + height, fill="#263f48", outline="#52717a", width=1)
@@ -263,7 +376,7 @@ class MineViewer:
         opponents: int,
         policy: str,
         seed: int,
-        all_seats: bool = False,
+        all_seats: bool = True,
         deterministic: bool = False,
     ) -> None:
         self.root = root
@@ -285,6 +398,7 @@ class MineViewer:
         self.haul_var = tk.StringVar()
         self.stack_var = tk.StringVar()
         self.message_var = tk.StringVar()
+        self.action_header_var = tk.StringVar(value="YOUR ACTION")
         self.action_var = tk.IntVar(value=0)
         self.blast_requested = False
         self._action_choice_by_label: dict[str, tuple[int, bool]] = {}
@@ -355,7 +469,7 @@ class MineViewer:
         self.players_text.configure(tabs=("1.55i",))
         self.players_text.pack(fill="x", pady=(8, 18))
 
-        tk.Label(side, text="YOUR ACTION", fg="#f5c451", bg="#14242c",
+        tk.Label(side, textvariable=self.action_header_var, fg="#f5c451", bg="#14242c",
                  font=ui_font(11, "bold")).pack(anchor="w")
         self.action_menu = ttk.Combobox(side, state="readonly", width=20)
         self.action_menu.pack(fill="x", pady=(8, 8))
@@ -629,7 +743,12 @@ class MineViewer:
         self.players_text.delete("1.0", "end")
         for i, player in enumerate(env.players):
             starting = " (starting player)" if i == env.starting_player else ""
-            status = " OUT" if player.escaped else ""
+            if player.escaped:
+                status = " OUT"
+            elif player.displaced:
+                status = " DISPLACED"
+            else:
+                status = ""
             collected = ", ".join(BACKSIDE_SYMBOLS[b] for b in player.collected_backsides) or "-"
             if i == 0:
                 gems = ", ".join(
@@ -713,7 +832,10 @@ class MineViewer:
         self.action_menu.set(selected_label)
 
     def _update_action_options(self, preferred_label: str | None = None) -> None:
+        header = getattr(self, "action_header_var", None)
         if self.controller.in_tie_breaker:
+            if header is not None:
+                header.set("YOUR ACTION")
             choices = [
                 (
                     "Draw from deck" if src == "deck"
@@ -728,12 +850,22 @@ class MineViewer:
 
         player = self.controller.player
         if self.controller.blast_pending:
+            if header is not None:
+                header.set("YOUR ACTION")
+            blast_view = self.controller.env.player_action_context(0).own_blast_cards
             choices = [
                 (f"Blast choice {index + 1} ({BACKSIDE_SYMBOLS[card[1]]})", index, False)
-                for index, card in enumerate(player.blast_cards)
+                for index, card in enumerate(blast_view)
             ]
             self._apply_action_choices(choices)
             return
+
+        if header is not None:
+            header.set(
+                "YOUR ACTION (displaced - no Pass)"
+                if player.displaced
+                else "YOUR ACTION"
+            )
 
         legal = self.controller.legal_actions()
         choices = [(self._action_label(action), action, False) for action in legal]
@@ -750,22 +882,32 @@ class MineViewer:
 # Entry point
 # ---------------------------------------------------------------------------
 
-def main() -> None:
+def build_argument_parser() -> argparse.ArgumentParser:
+    """Build the GUI CLI parser, including the interactive startup defaults."""
     parser = argparse.ArgumentParser(description="View MineEnv player progression.")
     parser.add_argument("--opponents", type=int, choices=(2, 3, 4), default=3)
     parser.add_argument(
         "--policy",
         type=parse_policy,
-        default="simple",
+        default=DEFAULT_POLICY,
         help="scripted policy, or neural:<checkpoint> from checkpoints/ "
         f"(available now: {', '.join(POLICIES)})",
     )
     parser.add_argument("--seed", type=int, default=7)
-    parser.add_argument(
+    seats = parser.add_mutually_exclusive_group()
+    seats.add_argument(
         "--all-seats",
+        dest="all_seats",
         action="store_true",
         help="let the chosen policy (usually neural:<checkpoint>) play every seat",
     )
+    seats.add_argument(
+        "--no-all-seats",
+        dest="all_seats",
+        action="store_false",
+        help="leave Player 1 as the human seat",
+    )
+    parser.set_defaults(all_seats=True)
     parser.add_argument(
         "--deterministic",
         action="store_true",
@@ -775,7 +917,11 @@ def main() -> None:
                         help="open directly with enough dynamite to blast")
     parser.add_argument("--tie-break-test", action="store_true",
                         help="open directly at a tie-break scenario")
-    args = parser.parse_args()
+    return parser
+
+
+def main() -> None:
+    args = build_argument_parser().parse_args()
     root = tk.Tk()
     viewer = MineViewer(
         root,
